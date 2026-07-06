@@ -1,1 +1,5 @@
-v8.8: diseño compacto, Dev Pzs desde hojas mensuales por fecha, pendientes día anterior sumados al total, gráfica combinada.
+# v8.9 Ecatepec Dev / diseño
+- Dev Pzs mensual se detecta por columnas con Fecha + Dev Pzs.
+- Menú recortado.
+- Tarjetas Día anterior estilo versión anterior.
+- Tablas con encabezado rosa y letras blancas.

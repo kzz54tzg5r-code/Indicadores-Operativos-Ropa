@@ -864,6 +864,107 @@ def apply_styles():
     div[data-testid="stDataFrame"] [role="columnheader"] *,
     div[data-testid="stDataEditor"] [role="columnheader"] * {{ color:#FFFFFF !important; fill:#FFFFFF !important; }}
 
+
+    /* Menú recortado al contenido */
+    .nav-wrap {{
+        background:transparent !important;
+        border-top:4px solid #EC007C !important;
+        padding:8px 0 !important;
+        margin:0 -1.6rem 18px -1.6rem !important;
+        box-shadow:none !important;
+    }}
+    .nav-wrap [data-testid="column"]:nth-child(2) {{
+        max-width:520px !important;
+        flex:0 0 520px !important;
+    }}
+    .nav-wrap div[data-baseweb="select"] > div {{
+        min-height:38px !important;
+        height:38px !important;
+        background:#FFFFFF !important;
+        color:#111827 !important;
+        border:1px solid #D1D5DB !important;
+    }}
+    .nav-wrap div[data-baseweb="select"] * {{
+        color:#111827 !important;
+        font-weight:600 !important;
+    }}
+    .nav-wrap button {{
+        max-width:130px !important;
+        height:38px !important;
+        background:#FFFFFF !important;
+        color:#111827 !important;
+        border:1px solid #D1D5DB !important;
+    }}
+
+    .ps-kpi-grid {{
+        display:grid;
+        grid-template-columns: repeat(5, minmax(170px,1fr));
+        gap:18px;
+        margin:18px 0 20px 0;
+    }}
+    .ps-kpi-card {{
+        background:#FFFFFF;
+        border:1px solid #E1E7F0;
+        border-radius:14px;
+        padding:22px 18px;
+        min-height:150px;
+        display:flex;
+        align-items:center;
+        gap:18px;
+        box-shadow:0 8px 20px rgba(16,36,95,.06);
+    }}
+    .ps-kpi-icon {{
+        width:78px;
+        height:78px;
+        min-width:78px;
+        border-radius:50%;
+        color:white;
+        font-size:34px;
+        display:flex;
+        align-items:center;
+        justify-content:center;
+        font-weight:900;
+    }}
+    .ps-kpi-title {{
+        color:#17132D;
+        font-size:15px;
+        font-weight:900;
+        line-height:1.2;
+        margin-bottom:8px;
+    }}
+    .ps-kpi-value {{
+        color:#EC007C;
+        font-size:30px;
+        font-weight:900;
+        line-height:1.1;
+        margin-bottom:8px;
+    }}
+    .ps-kpi-sub {{
+        color:#17132D;
+        font-size:13px;
+        line-height:1.35;
+    }}
+
+    div[data-testid="stDataFrame"] [role="columnheader"],
+    div[data-testid="stDataEditor"] [role="columnheader"] {{
+        background:#EC007C !important;
+        color:#FFFFFF !important;
+        font-weight:900 !important;
+        border-color:#EC007C !important;
+        text-align:center !important;
+    }}
+    div[data-testid="stDataFrame"] [role="columnheader"] *,
+    div[data-testid="stDataEditor"] [role="columnheader"] * {{
+        color:#FFFFFF !important;
+        fill:#FFFFFF !important;
+        font-weight:900 !important;
+    }}
+    div[data-testid="stDataFrame"] [role="gridcell"],
+    div[data-testid="stDataEditor"] [role="gridcell"] {{
+        font-size:12px !important;
+        color:#111827 !important;
+    }}
+
     @media (max-width:1200px) {{
         .top-header {{ grid-template-columns:110px 1fr; }}
         .header-controls {{ display:none; }}
@@ -980,18 +1081,28 @@ def kpi_card(label, value, icon, color, note="", pct=0, delta=""):
     """, unsafe_allow_html=True)
 
 
-def kpis(resumen):
-    cols = st.columns(5)
-    data = [
-        ("Piezas Ingresadas", fmt_num(resumen.get("Ingresos", 0)), "Dev + muertos + cajas + probador"),
-        ("Piezas Acondicionadas", fmt_num(resumen.get("Acondicionado", 0)), fmt_pct(resumen.get("% Acondicionado", 0)) + " vs ingresos"),
-        ("Piezas Ubicadas", fmt_num(resumen.get("Ubicado", 0)), fmt_pct(resumen.get("% Ubicado", 0)) + " vs ingresos"),
-        ("Pendientes por Ubicar", fmt_num(resumen.get("Pendiente", 0)), "Ingreso - ubicado"),
-        ("% Procesado", fmt_pct(resumen.get("% Ubicado", 0)), "Ubicado / ingresadas"),
+def kpis(res):
+    vals = [
+        ("↻", "Piezas Ingresadas", fmt_num(res.get("Ingresos", 0)), "Dev + muertos + cajas + probador", "#EC007C"),
+        ("✓", "Piezas Acondicionadas", fmt_num(res.get("Acondicionado", 0)), "Acondicionado", "#3720B8"),
+        ("⊕", "Piezas Ubicadas", fmt_num(res.get("Ubicado", 0)), "Ubicado", "#F59E0B"),
+        ("⌛", "Pendientes por Ubicar", fmt_num(res.get("Pendiente", 0)), "Ingreso + pendiente ant. - ubicado", "#05B957"),
+        ("%", "% Procesado", fmt_pct(res.get("% Ubicado", res.get("% Procesado", 0))), "Ubicado / base", "#3720B8"),
     ]
-    for col, (label, value, help_text) in zip(cols, data):
-        with col:
-            st.metric(label, value, help=help_text)
+    html = '<div class="ps-kpi-grid">'
+    for icon, title, value, sub, color in vals:
+        html += (
+            '<div class="ps-kpi-card">'
+            f'<div class="ps-kpi-icon" style="background:{color};">{icon}</div>'
+            '<div class="ps-kpi-body">'
+            f'<div class="ps-kpi-title">{title}</div>'
+            f'<div class="ps-kpi-value">{value}</div>'
+            f'<div class="ps-kpi-sub">{sub}</div>'
+            '</div></div>'
+        )
+    html += '</div>'
+    st.markdown(html, unsafe_allow_html=True)
+
 
 def hero(resumen, tiendas_count=0):
     st.markdown(f"""
@@ -1203,40 +1314,61 @@ def parse_header_date(v, sheet_name=""):
     return d
 
 def normalize_monthly_commercial_sheet(df, sheet_name):
-    """Lee hojas tipo Junio 26 con encabezados de fecha y subcolumnas Dev Pzs."""
+    """
+    Lee hojas mensuales como Junio 26:
+    fila superior = fecha, fila inferior = Dev Pzs.
+    Dev Pzs se considera Ingreso Aduana.
+    """
     if df is None or df.empty:
         return pd.DataFrame()
-    records = []
+
     raw = df.copy()
-    scan_rows = min(8, len(raw))
+    records = []
+    scan_rows = min(10, len(raw))
     c_tienda = best_tienda_col(raw) if "best_tienda_col" in globals() else find_col(raw, ["Tienda"])
-    c_id = find_col(raw, ["ID", "Modelo", "Artículo", "Articulo"])
+    c_id = find_col(raw, ["ID", "Modelo", "Artículo", "Articulo", "Id"])
     c_color = find_col(raw, ["Color"])
 
-    for j, col in enumerate(raw.columns):
-        top_text = " ".join(str(raw.iloc[i, j]) for i in range(scan_rows) if str(raw.iloc[i, j]).strip().lower() != "nan")
-        if "DEV PZS" not in norm_text(top_text) and "DEV_PZS" not in norm_text(top_text):
+    for j in range(len(raw.columns)):
+        header_vals = []
+        for i in range(scan_rows):
+            try:
+                header_vals.append(raw.iloc[i, j])
+            except Exception:
+                pass
+        joined = " ".join([str(v) for v in header_vals if str(v).strip() and str(v).lower() != "nan"])
+        joined_all = f"{raw.columns[j]} {joined}"
+        nj = norm_text(joined_all)
+
+        if not ("DEV PZS" in nj or "DEV_PZS" in nj or ("DEV" in nj and "PZS" in nj)):
             continue
 
         fecha = pd.NaT
-        for jj in range(max(0, j-3), j+1):
+        for jj in range(max(0, j-2), j+1):
+            # buscar fecha arriba en columnas cercanas
             for i in range(scan_rows):
-                cand = parse_header_date(raw.iloc[i, jj], sheet_name)
+                cand = pd.to_datetime(raw.iloc[i, jj], errors="coerce", dayfirst=True)
                 if pd.notna(cand):
-                    fecha = cand
+                    fecha = cand.normalize()
                     break
             if pd.notna(fecha):
                 break
+            cand = pd.to_datetime(str(raw.columns[jj]), errors="coerce", dayfirst=True)
+            if pd.notna(cand):
+                fecha = cand.normalize()
+                break
+
         if pd.isna(fecha):
             continue
 
-        vals = pd.to_numeric(
-            raw.iloc[scan_rows:, j].astype(str).str.replace(",", "", regex=False).str.replace("-", "0", regex=False),
-            errors="coerce"
-        ).fillna(0)
+        series = raw.iloc[2:, j].astype(str).str.strip()
+        series = series.str.replace(",", "", regex=False).str.replace("$", "", regex=False).str.replace(" ", "", regex=False)
+        series = series.replace({"-": "0", "": "0", "nan": "0", "None": "0"})
+        vals = pd.to_numeric(series, errors="coerce").fillna(0)
 
         for idx, val in vals.items():
-            if float(val) == 0:
+            val = float(val)
+            if val == 0:
                 continue
             row = raw.loc[idx]
             records.append({
@@ -1245,17 +1377,19 @@ def normalize_monthly_commercial_sheet(df, sheet_name):
                 "Tienda": canon_tienda(row.get(c_tienda, "")) if c_tienda else "",
                 "ID": str(row.get(c_id, "")).strip() if c_id else "",
                 "Color": str(row.get(c_color, "")).strip() if c_color else "",
-                "Dev_Pzs": float(val),
+                "Dev_Pzs": val,
                 "Costo_Dev": 0.0,
                 "Vta_Pzs": 0.0,
                 "Vta_Imp": 0.0,
             })
+
     out = pd.DataFrame(records)
     if not out.empty:
         out["Tienda"] = out["Tienda"].map(canon_tienda)
         out["Semana ISO"] = out["Fecha"].dt.isocalendar().week.astype(int)
         out["Mes"] = out["Fecha"].dt.to_period("M").astype(str)
     return out
+
 
 def monthly_dev_by_date(sheets):
     frames = []
@@ -1524,6 +1658,10 @@ def operational_table(op, co=None, tiendas_base=None, periodo_label="Día", prev
         ct = co[co["Tienda"].map(norm_text) == norm_text(t)] if not co.empty and "Tienda" in co else pd.DataFrame()
 
         dev = float(ct["Dev_Pzs"].sum()) if not ct.empty and "Dev_Pzs" in ct else 0
+        if dev == 0 and not co.empty and "Dev_Pzs" in co and "Tienda" in co:
+            blank_co = co[co["Tienda"].astype(str).str.strip().isin(["", "nan", "None"])]
+            if len(tiendas_all) == 1 and not blank_co.empty:
+                dev = float(blank_co["Dev_Pzs"].sum())
         muertos = cajas = probador = recolectadas = habilitadas = ubicadas = 0.0
 
         if not ot.empty:
