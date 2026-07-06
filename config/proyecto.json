@@ -1,0 +1,26 @@
+{
+  "nombre": "Indicadores Operaciones Ropa",
+  "subtitulo": "Plataforma Ejecutiva de Recuperación de Mercancía",
+  "tiendas_proyecto": [
+    "Arco Norte",
+    "Ecatepec",
+    "Miravalle",
+    "Puebla Sur",
+    "Vallejo"
+  ],
+  "pestanas": [
+    "Dashboard",
+    "Por Día",
+    "Reporte Semanal",
+    "Reporte Mensual",
+    "Conversión",
+    "Recuperación Económica",
+    "Productividad",
+    "Recorridos",
+    "Rankings",
+    "Macro",
+    "Diagnóstico",
+    "Configuración",
+    "Usuarios"
+  ]
+}

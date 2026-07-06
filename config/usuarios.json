@@ -1,0 +1,10 @@
+[
+  {
+    "nomina": "admin",
+    "nombre": "Administrador",
+    "correo": "",
+    "permiso": "Administrador",
+    "password": "admin123",
+    "activo": true
+  }
+]
