@@ -16,6 +16,12 @@ import pandas as pd
 import streamlit as st
 import plotly.express as px
 import plotly.graph_objects as go
+try:
+    from st_aggrid import AgGrid, GridOptionsBuilder, JsCode
+    AGGRID_OK = True
+except Exception:
+    AGGRID_OK = False
+
 
 
 # ============================================================
@@ -1185,6 +1191,40 @@ div[data-testid="stDataEditor"] [role="gridcell"]{{
     min-width:0!important;
 }}
 
+
+/* V9.4 AGGRID TABLES */
+.ag-header,
+.ag-header-viewport,
+.ag-header-container,
+.ag-header-row,
+.ag-header-cell{{
+    background:#10245F!important;
+}}
+.ag-header-cell-text,
+.ag-header-cell-label,
+.ag-header-cell-label span{{
+    color:#FFFFFF!important;
+    font-weight:900!important;
+}}
+.ag-icon{{
+    color:#FFFFFF!important;
+    fill:#FFFFFF!important;
+}}
+.ag-root-wrapper{{
+    border-radius:10px!important;
+    border:1px solid #E1E7F0!important;
+    overflow:hidden!important;
+}}
+.ag-cell{{
+    font-size:12px!important;
+}}
+.ag-row-even{{
+    background:#FFFFFF!important;
+}}
+.ag-row-odd{{
+    background:#F8FAFC!important;
+}}
+
     @media (max-width:1200px) {{
         .top-header {{ grid-template-columns:110px 1fr; }}
         .header-controls {{ display:none; }}
@@ -1374,17 +1414,122 @@ def safe_df(df, height=360, editable=False):
         st.caption(f"Vista previa de 500 filas de {len(df):,}. Descarga Excel para ver todo.")
     return df
 
-def panel(title, df, height=360, editable=False):
-    st.markdown(f'<div class="panel-title">{title}</div>', unsafe_allow_html=True)
+
+def aggrid_table(df, height=360, editable=False, key=None):
+    """Tabla corporativa con encabezado azul y letras blancas."""
     if df is None or df.empty:
         st.info("Sin información para mostrar.")
         return df
+
     show = format_table_for_display(df.copy())
-    auto_height = min(max(96 + len(show) * 35, 150), height)
-    if editable:
-        return st.data_editor(show, hide_index=True, width="stretch", height=auto_height)
-    st.dataframe(show, hide_index=True, width="stretch", height=auto_height)
+    auto_height = min(max(118 + len(show) * 34, 170), height)
+
+    if not AGGRID_OK:
+        st.warning("AgGrid no está instalado. Se muestra tabla nativa temporal.")
+        return st.data_editor(show, hide_index=True, width="stretch", height=auto_height) if editable else st.dataframe(show, hide_index=True, width="stretch", height=auto_height)
+
+    gb = GridOptionsBuilder.from_dataframe(show)
+    gb.configure_default_column(
+        filter=True,
+        sortable=True,
+        resizable=True,
+        editable=editable,
+        wrapText=False,
+        autoHeight=False,
+        minWidth=105,
+    )
+
+    # Primera columna fija si existe Tienda / Nombre
+    for first_col in ["Tienda", "Nombre", "Colaborador"]:
+        if first_col in show.columns:
+            gb.configure_column(first_col, pinned="left", minWidth=145)
+            break
+
+    # Alinear números a la derecha y texto a la izquierda
+    for col in show.columns:
+        if col not in ["Tienda", "Nombre", "Colaborador", "Actividad", "Área", "Area"]:
+            gb.configure_column(col, type=["rightAligned"], minWidth=115)
+
+    grid_options = gb.build()
+    grid_options["domLayout"] = "normal"
+    grid_options["rowHeight"] = 34
+    grid_options["headerHeight"] = 38
+    grid_options["suppressRowClickSelection"] = True
+    grid_options["animateRows"] = False
+    grid_options["enableCellTextSelection"] = True
+
+    grid_options["defaultColDef"].update({
+        "cellStyle": {"fontSize": "12px", "color": "#111827"},
+    })
+
+    grid_options["getRowStyle"] = JsCode("""
+        function(params) {
+            if (params.node.rowIndex % 2 === 0) {
+                return {'backgroundColor': '#FFFFFF'};
+            }
+            return {'backgroundColor': '#F8FAFC'};
+        }
+    """)
+
+    custom_css = {
+        ".ag-header": {
+            "background-color": "#10245F !important",
+            "border-bottom": "2px solid #10245F !important",
+        },
+        ".ag-header-cell": {
+            "background-color": "#10245F !important",
+            "color": "#FFFFFF !important",
+            "font-weight": "800 !important",
+            "font-size": "12px !important",
+            "border-right": "1px solid #2E4387 !important",
+        },
+        ".ag-header-cell-label": {
+            "color": "#FFFFFF !important",
+            "justify-content": "center !important",
+        },
+        ".ag-header-cell-text": {
+            "color": "#FFFFFF !important",
+            "font-weight": "800 !important",
+        },
+        ".ag-icon": {
+            "color": "#FFFFFF !important",
+            "fill": "#FFFFFF !important",
+        },
+        ".ag-cell": {
+            "font-size": "12px !important",
+            "border-right": "1px solid #E5E7EB !important",
+        },
+        ".ag-row-hover": {
+            "background-color": "#EAF1FF !important",
+        },
+        ".ag-root-wrapper": {
+            "border": "1px solid #E1E7F0 !important",
+            "border-radius": "10px !important",
+            "overflow": "hidden !important",
+        },
+    }
+
+    response = AgGrid(
+        show,
+        gridOptions=grid_options,
+        height=auto_height,
+        width="100%",
+        fit_columns_on_grid_load=True,
+        allow_unsafe_jscode=True,
+        custom_css=custom_css,
+        theme="alpine",
+        key=key or f"aggrid_{abs(hash(str(show.columns.tolist()) + str(len(show))))}",
+        reload_data=False,
+    )
+
+    if editable and response is not None and "data" in response:
+        return pd.DataFrame(response["data"])
     return df
+
+
+def panel(title, df, height=360, editable=False):
+    st.markdown(f'<div class="panel-title">{title}</div>', unsafe_allow_html=True)
+    return aggrid_table(df, height=height, editable=editable, key=f"aggrid_panel_{norm_text(title)}")
 
 
 def excel_button(df, filename, label="Descargar Excel"):
