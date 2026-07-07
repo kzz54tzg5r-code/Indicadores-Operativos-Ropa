@@ -1,1 +1,1 @@
-v9.0 ajustes finales: pestañas azules, header compacto, tablas azules, gráficas sin zoom, parser Dev Pzs mensual reforzado.
+v9.1 diseño final: logo, pestañas azules, línea rosa, tablas azules, gráficas con datos y sin zoom.
