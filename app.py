@@ -1031,6 +1031,59 @@ section.main > div{{max-width:100%!important;}}
 @media(max-width:1350px){{.ps-header{{max-width:100%;padding:14px 18px}}.ps-title{{font-size:29px}}.ps-meta{{min-width:160px}}.ps-kpi-grid{{grid-template-columns:repeat(3,minmax(210px,1fr))}}.ps-tabbar{{padding:0 20px}}}}
 @media(max-width:900px){{.ps-header{{flex-direction:column;align-items:flex-start}}.ps-header-right{{width:100%;justify-content:flex-start;flex-wrap:wrap}}.ps-kpi-grid{{grid-template-columns:1fr}}}}
 
+
+/* V9.2 FIX: pestañas sin abrir ventana nueva */
+.ps-tabbar,
+.nav-tabs-bar,
+.nav-wrap{{
+    display:none!important;
+}}
+.ps-tabbar-real{{
+    background:#10245F;
+    border-top:4px solid #EC007C;
+    margin:0 -1.6rem 22px -1.6rem;
+    padding:0 70px;
+    overflow-x:auto;
+    white-space:nowrap;
+    min-height:58px;
+}}
+.ps-tabbar-real [data-testid="stHorizontalBlock"]{{
+    gap:0!important;
+}}
+.ps-tabbar-real [data-testid="column"]{{
+    padding:0!important;
+    min-width:max-content!important;
+    flex:0 0 auto!important;
+}}
+.ps-tabbar-real .stButton > button{{
+    background:#10245F!important;
+    color:#C7D2FE!important;
+    border:0!important;
+    border-radius:0!important;
+    height:58px!important;
+    min-height:58px!important;
+    padding:0 16px!important;
+    font-weight:900!important;
+    font-size:15px!important;
+    box-shadow:none!important;
+    white-space:nowrap!important;
+}}
+.ps-tabbar-real .stButton > button:hover{{
+    background:#142E73!important;
+    color:#FFFFFF!important;
+}}
+.ps-tab-cell.active .stButton > button{{
+    background:#142E73!important;
+    color:#FFFFFF!important;
+    border-bottom:4px solid #EC007C!important;
+}}
+.ps-tab-cell{{
+    height:58px;
+}}
+@media(max-width:1350px){{
+    .ps-tabbar-real{{padding:0 20px;}}
+}}
+
     @media (max-width:1200px) {{
         .top-header {{ grid-template-columns:110px 1fr; }}
         .header-controls {{ display:none; }}
@@ -1090,21 +1143,42 @@ def nav_bar():
         "Macro","Diagnóstico","Configuración","Usuarios"
     ]]
     if not items:
-        items = ["Dashboard","Por Día","Reporte Semanal","Reporte Mensual","Conversión","Recuperación Económica","Productividad","Recorridos","Rankings","Macro","Diagnóstico","Configuración","Usuarios"]
+        items = ["Dashboard","Por Día","Reporte Semanal","Reporte Mensual","Conversión",
+                 "Recuperación Económica","Productividad","Recorridos","Rankings",
+                 "Macro","Diagnóstico","Configuración","Usuarios"]
+
     if "page" not in st.session_state or st.session_state.page not in items:
         st.session_state.page = items[0]
 
-    qp = st.query_params
-    if "page" in qp and qp["page"] in items:
-        st.session_state.page = qp["page"]
+    labels = {
+        "Dashboard":"Resumen",
+        "Por Día":"Por Día",
+        "Reporte Semanal":"Reporte Semanal",
+        "Reporte Mensual":"Reporte Mensual",
+        "Conversión":"Conversión",
+        "Recuperación Económica":"Recuperación Económica",
+        "Productividad":"Productividad",
+        "Recorridos":"Recorridos",
+        "Rankings":"Ranking",
+        "Macro":"Macro",
+        "Diagnóstico":"Diagnóstico",
+        "Configuración":"Configuración",
+        "Usuarios":"Usuarios",
+    }
 
-    labels = {"Dashboard":"Resumen", "Rankings":"Ranking"}
-    html = '<div class="ps-tabbar">'
-    for item in items:
-        active = " active" if st.session_state.page == item else ""
-        html += f'<a class="ps-tab{active}" href="?page={item}">{labels.get(item,item)}</a>'
-    html += '</div>'
-    st.markdown(html, unsafe_allow_html=True)
+    st.markdown('<div class="ps-tabbar-real">', unsafe_allow_html=True)
+    cols = st.columns([max(7, min(18, len(labels.get(x, x)) + 2)) for x in items], gap="small")
+
+    for col, item in zip(cols, items):
+        with col:
+            active_class = "active" if st.session_state.page == item else ""
+            st.markdown(f'<div class="ps-tab-cell {active_class}">', unsafe_allow_html=True)
+            if st.button(labels.get(item, item), key=f"tab_nav_{item}", use_container_width=True):
+                st.session_state.page = item
+                st.rerun()
+            st.markdown('</div>', unsafe_allow_html=True)
+
+    st.markdown('</div>', unsafe_allow_html=True)
     return st.session_state.page
 
 
