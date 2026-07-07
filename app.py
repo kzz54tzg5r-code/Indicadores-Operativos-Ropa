@@ -1084,6 +1084,107 @@ section.main > div{{max-width:100%!important;}}
     .ps-tabbar-real{{padding:0 20px;}}
 }}
 
+
+/* ===== V9.3 FIX DISEÑO ===== */
+.ps-top-line,
+.top-pink-line{{
+    height:6px!important;
+    background:#EC007C!important;
+    margin:0 -1.6rem 18px -1.6rem!important;
+    border-radius:0!important;
+}}
+.ps-header{{
+    border-top:0!important;
+}}
+
+/* Menú de pestañas en azul, letras blancas */
+.ps-radio-tabbar{{
+    background:#10245F!important;
+    border-top:4px solid #EC007C!important;
+    margin:0 -1.6rem 22px -1.6rem!important;
+    padding:0 70px!important;
+    min-height:58px!important;
+    overflow-x:auto!important;
+    white-space:nowrap!important;
+}}
+.ps-radio-tabbar [role="radiogroup"]{{
+    display:flex!important;
+    flex-wrap:nowrap!important;
+    gap:0!important;
+    align-items:center!important;
+    min-height:58px!important;
+}}
+.ps-radio-tabbar label{{
+    background:#10245F!important;
+    color:#C7D2FE!important;
+    border:0!important;
+    border-radius:0!important;
+    min-height:58px!important;
+    padding:0 18px!important;
+    display:flex!important;
+    align-items:center!important;
+    font-weight:900!important;
+    white-space:nowrap!important;
+}}
+.ps-radio-tabbar label:hover{{
+    background:#142E73!important;
+    color:#FFFFFF!important;
+}}
+.ps-radio-tabbar label:has(input:checked){{
+    background:#142E73!important;
+    color:#FFFFFF!important;
+    border-bottom:4px solid #EC007C!important;
+}}
+.ps-radio-tabbar label *{{
+    color:inherit!important;
+    font-weight:900!important;
+}}
+.ps-radio-tabbar div[data-testid="stRadio"]{{
+    width:max-content!important;
+}}
+.ps-tabbar,
+.ps-tabbar-real,
+.nav-tabs-bar,
+.nav-wrap{{
+    display:none!important;
+}}
+
+/* Encabezados tablas azul + letras blancas */
+div[data-testid="stDataFrame"] [role="columnheader"],
+div[data-testid="stDataEditor"] [role="columnheader"],
+div[data-testid="stDataFrame"] div[role="columnheader"],
+div[data-testid="stDataEditor"] div[role="columnheader"]{{
+    background:#10245F!important;
+    color:#FFFFFF!important;
+    font-weight:900!important;
+    border-color:#10245F!important;
+}}
+div[data-testid="stDataFrame"] [role="columnheader"] *,
+div[data-testid="stDataEditor"] [role="columnheader"] *,
+div[data-testid="stDataFrame"] div[role="columnheader"] *,
+div[data-testid="stDataEditor"] div[role="columnheader"] *{{
+    color:#FFFFFF!important;
+    fill:#FFFFFF!important;
+    font-weight:900!important;
+}}
+div[data-testid="stDataFrame"] [role="gridcell"],
+div[data-testid="stDataEditor"] [role="gridcell"]{{
+    font-size:12px!important;
+    color:#111827!important;
+}}
+
+/* Tarjetas: que no se encimen al abrir/cerrar menú */
+.ps-kpi-grid{{
+    grid-template-columns:repeat(auto-fit,minmax(240px,1fr))!important;
+}}
+.ps-kpi-card{{
+    min-width:0!important;
+    overflow:hidden!important;
+}}
+.ps-kpi-text{{
+    min-width:0!important;
+}}
+
     @media (max-width:1200px) {{
         .top-header {{ grid-template-columns:110px 1fr; }}
         .header-controls {{ display:none; }}
@@ -1147,9 +1248,6 @@ def nav_bar():
                  "Recuperación Económica","Productividad","Recorridos","Rankings",
                  "Macro","Diagnóstico","Configuración","Usuarios"]
 
-    if "page" not in st.session_state or st.session_state.page not in items:
-        st.session_state.page = items[0]
-
     labels = {
         "Dashboard":"Resumen",
         "Por Día":"Por Día",
@@ -1166,20 +1264,26 @@ def nav_bar():
         "Usuarios":"Usuarios",
     }
 
-    st.markdown('<div class="ps-tabbar-real">', unsafe_allow_html=True)
-    cols = st.columns([max(7, min(18, len(labels.get(x, x)) + 2)) for x in items], gap="small")
+    label_to_item = {labels.get(i, i): i for i in items}
+    current = st.session_state.get("page", items[0])
+    if current not in items:
+        current = items[0]
+    current_label = labels.get(current, current)
 
-    for col, item in zip(cols, items):
-        with col:
-            active_class = "active" if st.session_state.page == item else ""
-            st.markdown(f'<div class="ps-tab-cell {active_class}">', unsafe_allow_html=True)
-            if st.button(labels.get(item, item), key=f"tab_nav_{item}", use_container_width=True):
-                st.session_state.page = item
-                st.rerun()
-            st.markdown('</div>', unsafe_allow_html=True)
-
+    st.markdown('<div class="ps-radio-tabbar">', unsafe_allow_html=True)
+    selected_label = st.radio(
+        "Pestañas",
+        list(label_to_item.keys()),
+        index=list(label_to_item.keys()).index(current_label),
+        horizontal=True,
+        label_visibility="collapsed",
+        key="ps_nav_radio_unique_v93",
+    )
     st.markdown('</div>', unsafe_allow_html=True)
-    return st.session_state.page
+
+    selected = label_to_item[selected_label]
+    st.session_state.page = selected
+    return selected
 
 
 def section(title, subtitle=""):
@@ -1242,11 +1346,18 @@ def format_table_for_display(df):
         return df
     out = df.copy()
     for c in out.columns:
-        if str(c).startswith("%"):
-            out[c] = out[c].apply(lambda x: fmt_pct(x) if pd.notna(x) and str(x) != "" else "0.0%")
-        elif any(k in str(c).lower() for k in ["piezas", "ingresos", "pendiente", "total", "muertos", "cajas", "recolectadas", "habilitadas", "ubicadas"]):
-            if pd.api.types.is_numeric_dtype(out[c]):
-                out[c] = out[c].apply(lambda x: fmt_num(x))
+        cl = norm_text(c)
+        if c == "Tienda" or "NOMBRE" in cl or "ACTIVIDAD" in cl or "AREA" in cl:
+            continue
+        if "%" in str(c) or "PORC" in cl or "CUMPL" in cl or "CONV" in cl and "%" in cl:
+            out[c] = pd.to_numeric(out[c], errors="coerce").fillna(0).map(lambda x: f"{x:.1f}%")
+        elif "$" in str(c) or "IMP" in cl or "VENTA" in cl or "RECUPER" in cl or "COSTO" in cl:
+            out[c] = pd.to_numeric(out[c], errors="coerce").fillna(0).map(lambda x: f"${x:,.0f}")
+        else:
+            # Si es numérico, entero sin decimales y con comas.
+            ser = pd.to_numeric(out[c], errors="coerce")
+            if ser.notna().mean() > 0.80:
+                out[c] = ser.fillna(0).map(lambda x: f"{x:,.0f}")
     return out
 
 
@@ -1435,17 +1546,33 @@ def parse_header_date(v, sheet_name=""):
     return d
 
 def normalize_monthly_commercial_sheet(df, sheet_name):
-    """Lee hojas mensuales con fecha arriba y subcolumna Dev Pzs."""
+    """
+    Lee hojas mensuales tipo 'Junio 26' aunque pandas haya tomado como encabezado
+    la fila de fechas. Ejemplo:
+      columnas superiores: 28/06/2026, 28/06/2026, 28/06/2026
+      fila visible debajo: Ventas Netas, Dev Pzs, Venta Neta en $
+      columna base: Tienda
+    Dev Pzs se usa como Ingreso Aduana.
+    """
     if df is None or df.empty:
         return pd.DataFrame()
-    raw = df.copy()
-    out = []
-    scan = min(12, len(raw))
-    c_tienda = best_tienda_col(raw) if "best_tienda_col" in globals() else find_col(raw, ["Tienda"])
-    c_id = find_col(raw, ["ID", "Modelo", "Artículo", "Articulo", "Id"])
-    c_color = find_col(raw, ["Color"])
 
-    def to_date(x):
+    raw = df.copy()
+    records = []
+    scan = min(12, len(raw))
+
+    def _norm(x):
+        return norm_text(str(x))
+
+    def _is_dev(x):
+        n = _norm(x)
+        return ("DEV PZS" in n) or ("DEV_PZS" in n) or ("DEV" in n and "PZS" in n)
+
+    def _is_tienda(x):
+        n = _norm(x)
+        return n == "TIENDA" or n.endswith(" TIENDA")
+
+    def _to_date(x):
         if pd.isna(x):
             return pd.NaT
         if isinstance(x, (int, float)) and 20000 < float(x) < 60000:
@@ -1453,75 +1580,113 @@ def normalize_monthly_commercial_sheet(df, sheet_name):
                 return pd.to_datetime(x, unit="D", origin="1899-12-30").normalize()
             except Exception:
                 pass
-        return pd.to_datetime(str(x).strip(), errors="coerce", dayfirst=True)
+        s = str(x).strip()
+        if not s or s.lower() in ["nan", "none", "-"]:
+            return pd.NaT
+        return pd.to_datetime(s, errors="coerce", dayfirst=True)
 
-    def is_dev(x):
-        n = norm_text(x)
-        return ("DEV PZS" in n) or ("DEV_PZS" in n) or ("DEV" in n and "PZS" in n)
+    def _money_number_series(s):
+        ss = s.astype(str).str.strip()
+        ss = ss.str.replace(",", "", regex=False).str.replace("$", "", regex=False).str.replace(" ", "", regex=False)
+        ss = ss.replace({"-": "0", "": "0", "nan": "0", "None": "0"})
+        return pd.to_numeric(ss, errors="coerce").fillna(0)
 
+    # Detectar columna Tienda real buscando el texto "Tienda" en columnas o primeras filas.
+    tienda_j = None
     for j in range(len(raw.columns)):
-        heads = [raw.columns[j]]
+        headers = [raw.columns[j]]
         for i in range(scan):
             try:
-                heads.append(raw.iloc[i, j])
+                headers.append(raw.iloc[i, j])
             except Exception:
                 pass
-        if not any(is_dev(h) for h in heads):
+        if any(_is_tienda(h) for h in headers):
+            tienda_j = j
+            break
+
+    # Respaldo con best_tienda_col si la hoja ya trae columna nombrada Tienda
+    c_tienda = None
+    if tienda_j is None:
+        try:
+            c_tienda = best_tienda_col(raw)
+        except Exception:
+            c_tienda = find_col(raw, ["Tienda", "Sucursal"])
+    else:
+        c_tienda = raw.columns[tienda_j]
+
+    c_id = find_col(raw, ["ID", "Modelo", "Artículo", "Articulo", "Id"])
+    c_color = find_col(raw, ["Color"])
+
+    # Para cada columna, validar si es subcolumna Dev Pzs.
+    for j in range(len(raw.columns)):
+        headers = [raw.columns[j]]
+        for i in range(scan):
+            try:
+                headers.append(raw.iloc[i, j])
+            except Exception:
+                pass
+
+        if not any(_is_dev(h) for h in headers):
             continue
 
+        # Buscar fecha asociada en columnas cercanas y filas superiores.
         fecha = pd.NaT
-        for jj in range(max(0, j-4), j+1):
+        for jj in range(max(0, j - 4), j + 1):
             cands = [raw.columns[jj]]
             for i in range(scan):
                 try:
                     cands.append(raw.iloc[i, jj])
                 except Exception:
                     pass
-            for c in cands:
-                d = to_date(c)
+            for cand in cands:
+                d = _to_date(cand)
                 if pd.notna(d):
                     fecha = d
                     break
             if pd.notna(fecha):
                 break
+
         if pd.isna(fecha):
             continue
 
-        data_start = 2
+        # Empezar datos después de la fila donde aparece "Dev Pzs".
+        data_start = 1
         for i in range(scan):
             try:
-                if is_dev(raw.iloc[i, j]):
-                    data_start = max(i+1, 2)
+                if _is_dev(raw.iloc[i, j]):
+                    data_start = max(i + 1, 1)
                     break
             except Exception:
                 pass
 
-        vals = raw.iloc[data_start:, j].astype(str).str.strip()
-        vals = vals.str.replace(",", "", regex=False).str.replace("$", "", regex=False).str.replace(" ", "", regex=False)
-        vals = vals.replace({"-":"0", "":"0", "nan":"0", "None":"0"})
-        vals = pd.to_numeric(vals, errors="coerce").fillna(0)
+        vals = _money_number_series(raw.iloc[data_start:, j])
 
         for idx, val in vals.items():
-            if float(val) == 0:
+            val = float(val)
+            if val == 0:
                 continue
             row = raw.loc[idx]
-            out.append({
+            tienda_val = row.iloc[tienda_j] if tienda_j is not None else row.get(c_tienda, "")
+            tienda = canon_tienda(tienda_val)
+
+            records.append({
                 "Hoja": sheet_name,
                 "Fecha": pd.to_datetime(fecha),
-                "Tienda": canon_tienda(row.get(c_tienda, "")) if c_tienda else "",
+                "Tienda": tienda,
                 "ID": str(row.get(c_id, "")).strip() if c_id else "",
                 "Color": str(row.get(c_color, "")).strip() if c_color else "",
-                "Dev_Pzs": float(val),
+                "Dev_Pzs": val,
                 "Costo_Dev": 0.0,
                 "Vta_Pzs": 0.0,
                 "Vta_Imp": 0.0,
             })
-    dfout = pd.DataFrame(out)
-    if not dfout.empty:
-        dfout["Tienda"] = dfout["Tienda"].map(canon_tienda)
-        dfout["Semana ISO"] = dfout["Fecha"].dt.isocalendar().week.astype(int)
-        dfout["Mes"] = dfout["Fecha"].dt.to_period("M").astype(str)
-    return dfout
+
+    out = pd.DataFrame(records)
+    if not out.empty:
+        out["Tienda"] = out["Tienda"].map(canon_tienda)
+        out["Semana ISO"] = out["Fecha"].dt.isocalendar().week.astype(int)
+        out["Mes"] = out["Fecha"].dt.to_period("M").astype(str)
+    return out
 
 
 def monthly_dev_by_date(sheets):
@@ -1845,6 +2010,12 @@ def combined_chart(df, title):
         st.info("Sin información para graficar.")
         return
     p = df.copy()
+    ymax = 0
+    for col in ["Total", "Habilitadas", "Ubicadas"]:
+        if col in p:
+            ymax = max(ymax, float(pd.to_numeric(p[col], errors="coerce").fillna(0).max()))
+    ymax = ymax * 1.18 if ymax > 0 else 10
+
     fig = go.Figure()
     fig.add_trace(go.Scatter(
         x=p["Tienda"], y=p["Total"], mode="lines+markers+text",
@@ -1868,13 +2039,18 @@ def combined_chart(df, title):
         textfont=dict(color="#111827", size=12, family="Arial Black")
     ))
     fig.update_layout(
-        title=title, barmode="group", height=460, plot_bgcolor="white", paper_bgcolor="white",
-        legend=dict(orientation="h", y=1.08, x=1, xanchor="right"),
-        margin=dict(l=10, r=10, t=60, b=100), dragmode=False
+        title=title, barmode="group", height=470, plot_bgcolor="white", paper_bgcolor="white",
+        legend=dict(orientation="h", y=1.10, x=1, xanchor="right"),
+        margin=dict(l=10, r=10, t=70, b=100), dragmode=False,
+        uniformtext_minsize=10, uniformtext_mode="show"
     )
     fig.update_xaxes(tickangle=-45, showgrid=False, fixedrange=True)
-    fig.update_yaxes(showgrid=True, gridcolor="#E5E7EB", fixedrange=True)
-    st.plotly_chart(fig, width="stretch", config={"displayModeBar": False, "scrollZoom": False, "doubleClick": False, "staticPlot": False})
+    fig.update_yaxes(showgrid=True, gridcolor="#E5E7EB", fixedrange=True, range=[0, ymax])
+    st.plotly_chart(
+        fig,
+        width="stretch",
+        config={"displayModeBar": False, "scrollZoom": False, "doubleClick": False, "staticPlot": False},
+    )
 
 
 def pdf_placeholder(title):
