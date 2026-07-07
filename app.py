@@ -965,6 +965,32 @@ def apply_styles():
         color:#111827 !important;
     }}
 
+
+    .top-pink-line{{height:6px;background:#EC007C;border-radius:8px;margin:0 0 16px 0;}}
+    .header-card{{max-width:1180px;margin:0 auto 14px auto;background:#FFF;display:flex;align-items:center;justify-content:space-between;gap:24px;padding:18px 28px;box-sizing:border-box;}}
+    .header-brand{{display:flex;align-items:center;gap:28px;min-width:560px;}}
+    .header-logo img{{max-height:76px!important;max-width:120px!important;object-fit:contain!important;}}
+    .header-sep{{width:5px;height:92px;background:#EC007C;border-radius:3px;}}
+    .header-title{{color:#1D1259;font-weight:900;font-size:34px;line-height:1.05;}}
+    .header-sub{{color:#5B6476;font-weight:700;font-size:15px;margin-top:6px;}}
+    .header-meta{{display:flex;gap:16px;flex:1;justify-content:flex-end;}}
+    .meta-box{{min-width:190px;background:#F8FAFC;border:1px solid #DDE4F0;border-radius:0 0 14px 14px;padding:14px 18px;}}
+    .meta-label{{color:#6B7280;letter-spacing:5px;font-size:12px;font-weight:900;}}
+    .meta-value{{color:#1D1259;font-size:18px;font-weight:900;margin-top:6px;}}
+
+    .nav-tabs-bar{{background:#10245F;border-top:4px solid #EC007C;margin:0 -1.6rem 22px -1.6rem;padding:0 72px;overflow-x:auto;white-space:nowrap;box-shadow:none;}}
+    .nav-tabs-bar [data-testid="column"]{{padding:0!important;min-width:max-content!important;}}
+    .nav-tabs-bar button{{background:#10245F!important;color:#C7D2FE!important;border:0!important;border-radius:0!important;height:54px!important;font-size:15px!important;font-weight:900!important;box-shadow:none!important;padding:0 14px!important;}}
+    .nav-tabs-bar button:hover{{background:#142E73!important;color:#FFF!important;}}
+    .nav-active-marker{{height:4px;background:transparent;margin-top:-4px;}}
+    .nav-active-marker.active{{background:#EC007C;}}
+
+    .panel-title{{background:#FFF;border:1px solid #E1E7F0;border-radius:12px;padding:18px 22px;margin:18px 0 12px 0;font-size:20px;font-weight:900;color:#17132D;}}
+    div[data-testid="stDataFrame"] [role="columnheader"],div[data-testid="stDataEditor"] [role="columnheader"]{{background:#10245F!important;color:#FFF!important;font-weight:900!important;border-color:#10245F!important;text-align:center!important;}}
+    div[data-testid="stDataFrame"] [role="columnheader"] *,div[data-testid="stDataEditor"] [role="columnheader"] *{{color:#FFF!important;fill:#FFF!important;font-weight:900!important;}}
+    div[data-testid="stDataFrame"] [role="gridcell"],div[data-testid="stDataEditor"] [role="gridcell"]{{font-size:12px!important;color:#111827!important;}}
+    @media(max-width:1200px){{.header-card{{max-width:100%;padding:14px 18px}}.header-brand{{min-width:420px;gap:18px}}.header-title{{font-size:27px}}.meta-box{{min-width:150px}}.nav-tabs-bar{{padding:0 18px}}}}
+
     @media (max-width:1200px) {{
         .top-header {{ grid-template-columns:110px 1fr; }}
         .header-controls {{ display:none; }}
@@ -1020,50 +1046,24 @@ def login_screen():
 
 
 def nav_bar():
-    items = [t for t in get_tab_order() if t in [
-        "Dashboard", "Por Día", "Reporte Semanal", "Reporte Mensual", "Conversión",
-        "Recuperación Económica", "Productividad", "Recorridos", "Rankings",
-        "Macro", "Diagnóstico", "Configuración", "Usuarios"
-    ]]
+    items = [t for t in get_tab_order() if t in ["Dashboard","Por Día","Reporte Semanal","Reporte Mensual","Conversión","Recuperación Económica","Productividad","Recorridos","Rankings","Macro","Diagnóstico","Configuración","Usuarios"]]
     if not items:
-        items = ["Dashboard", "Por Día", "Reporte Semanal", "Reporte Mensual", "Conversión",
-                 "Recuperación Económica", "Productividad", "Recorridos", "Rankings",
-                 "Macro", "Diagnóstico", "Configuración", "Usuarios"]
-
+        items = ["Dashboard","Por Día","Reporte Semanal","Reporte Mensual","Conversión","Recuperación Económica","Productividad","Recorridos","Rankings","Macro","Diagnóstico","Configuración","Usuarios"]
     if "page" not in st.session_state or st.session_state.page not in items:
         st.session_state.page = items[0]
-
-    st.markdown('<div class="nav-wrap">', unsafe_allow_html=True)
-    c0, c1, c2 = st.columns([0.8, 7.8, 0.8])
-
-    with c0:
-        if st.button("◀", key="nav_prev_btn", use_container_width=True):
-            i = items.index(st.session_state.page)
-            st.session_state.page = items[(i - 1) % len(items)]
-            st.rerun()
-
-    with c1:
-        selected = st.selectbox(
-            "Pestaña",
-            items,
-            index=items.index(st.session_state.page),
-            label_visibility="collapsed",
-            key="nav_selectbox_v869",
-        )
-
-    with c2:
-        if st.button("▶", key="nav_next_btn", use_container_width=True):
-            i = items.index(st.session_state.page)
-            st.session_state.page = items[(i + 1) % len(items)]
-            st.rerun()
-
+    labels = {"Dashboard":"Resumen","Rankings":"Ranking"}
+    st.markdown('<div class="nav-tabs-bar">', unsafe_allow_html=True)
+    cols = st.columns([max(1, len(labels.get(x, x))) for x in items], gap="small")
+    for c, item in zip(cols, items):
+        with c:
+            if st.button(labels.get(item, item), key=f"nav_btn_{item}", use_container_width=True):
+                st.session_state.page = item
+                st.rerun()
+            active = " active" if st.session_state.page == item else ""
+            st.markdown(f'<div class="nav-active-marker{active}"></div>', unsafe_allow_html=True)
     st.markdown('</div>', unsafe_allow_html=True)
-
-    if selected != st.session_state.page:
-        st.session_state.page = selected
-        st.rerun()
-
     return st.session_state.page
+
 
 def section(title, subtitle=""):
     st.markdown(f'<div class="section-title">{title}</div><div class="section-subtitle">{subtitle}</div>', unsafe_allow_html=True)
@@ -1146,13 +1146,17 @@ def safe_df(df, height=360, editable=False):
         st.caption(f"Vista previa de 500 filas de {len(df):,}. Descarga Excel para ver todo.")
     return df
 
-def panel(title, df=None, height=360, editable=False):
-    st.markdown(f'<div class="panel"><div class="panel-title">{title}</div>', unsafe_allow_html=True)
-    out = None
-    if df is not None:
-        out = safe_df(df, height=height, editable=editable)
-    st.markdown("</div>", unsafe_allow_html=True)
-    return out
+def panel(title, df, height=360, editable=False):
+    st.markdown(f'<div class="panel-title">{title}</div>', unsafe_allow_html=True)
+    if df is None or df.empty:
+        st.info("Sin información para mostrar.")
+        return df
+    show = format_table_for_display(df.copy())
+    auto_height = min(max(100 + len(show) * 36, 160), height)
+    if editable:
+        return st.data_editor(show, hide_index=True, width="stretch", height=auto_height)
+    st.dataframe(show, hide_index=True, width="stretch", height=auto_height)
+    return df
 
 
 def excel_button(df, filename, label="Descargar Excel"):
@@ -1314,81 +1318,93 @@ def parse_header_date(v, sheet_name=""):
     return d
 
 def normalize_monthly_commercial_sheet(df, sheet_name):
-    """
-    Lee hojas mensuales como Junio 26:
-    fila superior = fecha, fila inferior = Dev Pzs.
-    Dev Pzs se considera Ingreso Aduana.
-    """
+    """Lee hojas mensuales con fecha arriba y subcolumna Dev Pzs."""
     if df is None or df.empty:
         return pd.DataFrame()
-
     raw = df.copy()
-    records = []
-    scan_rows = min(10, len(raw))
+    out = []
+    scan = min(12, len(raw))
     c_tienda = best_tienda_col(raw) if "best_tienda_col" in globals() else find_col(raw, ["Tienda"])
     c_id = find_col(raw, ["ID", "Modelo", "Artículo", "Articulo", "Id"])
     c_color = find_col(raw, ["Color"])
 
-    for j in range(len(raw.columns)):
-        header_vals = []
-        for i in range(scan_rows):
+    def to_date(x):
+        if pd.isna(x):
+            return pd.NaT
+        if isinstance(x, (int, float)) and 20000 < float(x) < 60000:
             try:
-                header_vals.append(raw.iloc[i, j])
+                return pd.to_datetime(x, unit="D", origin="1899-12-30").normalize()
             except Exception:
                 pass
-        joined = " ".join([str(v) for v in header_vals if str(v).strip() and str(v).lower() != "nan"])
-        joined_all = f"{raw.columns[j]} {joined}"
-        nj = norm_text(joined_all)
+        return pd.to_datetime(str(x).strip(), errors="coerce", dayfirst=True)
 
-        if not ("DEV PZS" in nj or "DEV_PZS" in nj or ("DEV" in nj and "PZS" in nj)):
+    def is_dev(x):
+        n = norm_text(x)
+        return ("DEV PZS" in n) or ("DEV_PZS" in n) or ("DEV" in n and "PZS" in n)
+
+    for j in range(len(raw.columns)):
+        heads = [raw.columns[j]]
+        for i in range(scan):
+            try:
+                heads.append(raw.iloc[i, j])
+            except Exception:
+                pass
+        if not any(is_dev(h) for h in heads):
             continue
 
         fecha = pd.NaT
-        for jj in range(max(0, j-2), j+1):
-            # buscar fecha arriba en columnas cercanas
-            for i in range(scan_rows):
-                cand = pd.to_datetime(raw.iloc[i, jj], errors="coerce", dayfirst=True)
-                if pd.notna(cand):
-                    fecha = cand.normalize()
+        for jj in range(max(0, j-4), j+1):
+            cands = [raw.columns[jj]]
+            for i in range(scan):
+                try:
+                    cands.append(raw.iloc[i, jj])
+                except Exception:
+                    pass
+            for c in cands:
+                d = to_date(c)
+                if pd.notna(d):
+                    fecha = d
                     break
             if pd.notna(fecha):
                 break
-            cand = pd.to_datetime(str(raw.columns[jj]), errors="coerce", dayfirst=True)
-            if pd.notna(cand):
-                fecha = cand.normalize()
-                break
-
         if pd.isna(fecha):
             continue
 
-        series = raw.iloc[2:, j].astype(str).str.strip()
-        series = series.str.replace(",", "", regex=False).str.replace("$", "", regex=False).str.replace(" ", "", regex=False)
-        series = series.replace({"-": "0", "": "0", "nan": "0", "None": "0"})
-        vals = pd.to_numeric(series, errors="coerce").fillna(0)
+        data_start = 2
+        for i in range(scan):
+            try:
+                if is_dev(raw.iloc[i, j]):
+                    data_start = max(i+1, 2)
+                    break
+            except Exception:
+                pass
+
+        vals = raw.iloc[data_start:, j].astype(str).str.strip()
+        vals = vals.str.replace(",", "", regex=False).str.replace("$", "", regex=False).str.replace(" ", "", regex=False)
+        vals = vals.replace({"-":"0", "":"0", "nan":"0", "None":"0"})
+        vals = pd.to_numeric(vals, errors="coerce").fillna(0)
 
         for idx, val in vals.items():
-            val = float(val)
-            if val == 0:
+            if float(val) == 0:
                 continue
             row = raw.loc[idx]
-            records.append({
+            out.append({
                 "Hoja": sheet_name,
                 "Fecha": pd.to_datetime(fecha),
                 "Tienda": canon_tienda(row.get(c_tienda, "")) if c_tienda else "",
                 "ID": str(row.get(c_id, "")).strip() if c_id else "",
                 "Color": str(row.get(c_color, "")).strip() if c_color else "",
-                "Dev_Pzs": val,
+                "Dev_Pzs": float(val),
                 "Costo_Dev": 0.0,
                 "Vta_Pzs": 0.0,
                 "Vta_Imp": 0.0,
             })
-
-    out = pd.DataFrame(records)
-    if not out.empty:
-        out["Tienda"] = out["Tienda"].map(canon_tienda)
-        out["Semana ISO"] = out["Fecha"].dt.isocalendar().week.astype(int)
-        out["Mes"] = out["Fecha"].dt.to_period("M").astype(str)
-    return out
+    dfout = pd.DataFrame(out)
+    if not dfout.empty:
+        dfout["Tienda"] = dfout["Tienda"].map(canon_tienda)
+        dfout["Semana ISO"] = dfout["Fecha"].dt.isocalendar().week.astype(int)
+        dfout["Mes"] = dfout["Fecha"].dt.to_period("M").astype(str)
+    return dfout
 
 
 def monthly_dev_by_date(sheets):
@@ -1716,12 +1732,10 @@ def combined_chart(df, title):
     fig.add_trace(go.Scatter(x=p["Tienda"], y=p["Total"], mode="lines+markers+text", name="Total ingresos", text=p["Total"], line=dict(color="#1D3F8F", width=3)))
     fig.add_trace(go.Bar(x=p["Tienda"], y=p["Habilitadas"], name="Pzas Habilitadas", marker_color="#1D4ED8"))
     fig.add_trace(go.Bar(x=p["Tienda"], y=p["Ubicadas"], name="Pzas Ubicadas", marker_color="#EC007C"))
-    fig.update_layout(title=title, barmode="group", height=430, plot_bgcolor="white", paper_bgcolor="white",
-                      legend=dict(orientation="h", y=1.08, x=1, xanchor="right"), margin=dict(l=10,r=10,t=55,b=100))
-    fig.update_xaxes(tickangle=-45, showgrid=False)
-    fig.update_yaxes(showgrid=True, gridcolor="#E5E7EB")
-    st.plotly_chart(fig, width="stretch")
-
+    fig.update_layout(title=title, barmode="group", height=430, plot_bgcolor="white", paper_bgcolor="white", legend=dict(orientation="h", y=1.08, x=1, xanchor="right"), margin=dict(l=10,r=10,t=55,b=100), dragmode=False)
+    fig.update_xaxes(tickangle=-45, showgrid=False, fixedrange=True)
+    fig.update_yaxes(showgrid=True, gridcolor="#E5E7EB", fixedrange=True)
+    st.plotly_chart(fig, width="stretch", config={"displayModeBar": False, "scrollZoom": False, "doubleClick": False, "staticPlot": False})
 
 
 def pdf_placeholder(title):
