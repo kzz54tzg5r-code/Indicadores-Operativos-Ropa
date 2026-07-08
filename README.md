@@ -1,11 +1,15 @@
-# v9.7 Cache de procesamiento
+# Indicadores Cambios y Muertos v10.0
 
-Esta versión evita que el sistema intente leer el Excel de 77 MB en cada carga.
+Versión reestructurada para rendimiento:
+- No procesa el Excel al iniciar.
+- El administrador carga el Excel y luego presiona "Procesar archivo activo".
+- Guarda cache en Parquet para que las siguientes cargas sean rápidas.
+- Lee la hoja "Resultados productividad" y las hojas mensuales por openpyxl read_only.
+- Pestañas con cálculo bajo demanda.
+- Tablas AgGrid con encabezado azul y letras blancas.
+- Diseño Price Shoes con línea rosa superior.
+- Usuarios persistentes en SQLite.
 
-Flujo:
-1. Carga el Excel.
-2. Presiona Procesar archivo.
-3. La app guarda una copia procesada en data/cache.
-4. Las siguientes cargas abren parquet/cache y son mucho más rápidas.
-
-También aparece el botón "Procesar archivo activo" si ya hay archivo guardado pero falta procesarlo.
+Usuario inicial:
+- admin
+- admin123
