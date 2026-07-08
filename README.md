@@ -1,11 +1,7 @@
-# v9.4 AgGrid tablas
+# v9.5 Fix Dev Pzs mensual
 
-Cambio principal:
-- Todas las tablas que salen por la función panel() ahora usan AgGrid.
-- Encabezados azul corporativo (#10245F) con letras blancas.
-- Filtros, ordenamiento, columnas redimensionables y filas alternadas.
-- Altura automática sin espacios vacíos.
-- Fallback a tabla nativa si AgGrid no instala.
-
-Importante:
-- Subir también requirements.txt actualizado a GitHub.
+Corrección principal:
+- La función que lee Dev Pzs de hojas mensuales ya existía, pero no se estaba anexando al dataframe comercial.
+- Ahora load_normalized une co + monthly_dev_by_date(sheets).
+- La pestaña Por Día ya debe tomar Ecatepec 28/06/2026 desde Junio 26 -> columna Dev Pzs.
+- Se agregó diagnóstico en la leyenda: Dev Pzs mensual detectado.

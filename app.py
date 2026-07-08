@@ -1692,12 +1692,11 @@ def parse_header_date(v, sheet_name=""):
 
 def normalize_monthly_commercial_sheet(df, sheet_name):
     """
-    Lee hojas mensuales tipo 'Junio 26' aunque pandas haya tomado como encabezado
-    la fila de fechas. Ejemplo:
-      columnas superiores: 28/06/2026, 28/06/2026, 28/06/2026
-      fila visible debajo: Ventas Netas, Dev Pzs, Venta Neta en $
-      columna base: Tienda
-    Dev Pzs se usa como Ingreso Aduana.
+    Lee hojas mensuales tipo 'Junio 26':
+    - Columna base: Tienda
+    - Encabezado fecha: 28/06/2026
+    - Subcolumna: Dev Pzs
+    Dev Pzs se considera Ingreso Aduana.
     """
     if df is None or df.empty:
         return pd.DataFrame()
@@ -1730,39 +1729,42 @@ def normalize_monthly_commercial_sheet(df, sheet_name):
             return pd.NaT
         return pd.to_datetime(s, errors="coerce", dayfirst=True)
 
-    def _money_number_series(s):
+    def _num_series(s):
         ss = s.astype(str).str.strip()
         ss = ss.str.replace(",", "", regex=False).str.replace("$", "", regex=False).str.replace(" ", "", regex=False)
         ss = ss.replace({"-": "0", "": "0", "nan": "0", "None": "0"})
         return pd.to_numeric(ss, errors="coerce").fillna(0)
 
-    # Detectar columna Tienda real buscando el texto "Tienda" en columnas o primeras filas.
+    # Detectar columna Tienda revisando nombres de columnas y primeras filas.
     tienda_j = None
     for j in range(len(raw.columns)):
-        headers = [raw.columns[j]]
+        candidates = [raw.columns[j]]
         for i in range(scan):
             try:
-                headers.append(raw.iloc[i, j])
+                candidates.append(raw.iloc[i, j])
             except Exception:
                 pass
-        if any(_is_tienda(h) for h in headers):
+        if any(_is_tienda(c) for c in candidates):
             tienda_j = j
             break
 
-    # Respaldo con best_tienda_col si la hoja ya trae columna nombrada Tienda
-    c_tienda = None
+    # Respaldo: cualquier columna que tenga muchas tiendas conocidas.
     if tienda_j is None:
-        try:
-            c_tienda = best_tienda_col(raw)
-        except Exception:
-            c_tienda = find_col(raw, ["Tienda", "Sucursal"])
-    else:
-        c_tienda = raw.columns[tienda_j]
+        known = [norm_text(x) for x in project_stores] if "project_stores" in globals() else []
+        best_j, best_hits = None, 0
+        for j in range(len(raw.columns)):
+            vals = raw.iloc[:, j].astype(str).map(norm_text)
+            hits = vals.isin(known).sum()
+            if hits > best_hits:
+                best_hits = hits
+                best_j = j
+        if best_hits > 0:
+            tienda_j = best_j
 
+    c_tienda = raw.columns[tienda_j] if tienda_j is not None else None
     c_id = find_col(raw, ["ID", "Modelo", "Artículo", "Articulo", "Id"])
     c_color = find_col(raw, ["Color"])
 
-    # Para cada columna, validar si es subcolumna Dev Pzs.
     for j in range(len(raw.columns)):
         headers = [raw.columns[j]]
         for i in range(scan):
@@ -1774,16 +1776,15 @@ def normalize_monthly_commercial_sheet(df, sheet_name):
         if not any(_is_dev(h) for h in headers):
             continue
 
-        # Buscar fecha asociada en columnas cercanas y filas superiores.
         fecha = pd.NaT
         for jj in range(max(0, j - 4), j + 1):
-            cands = [raw.columns[jj]]
+            candidates = [raw.columns[jj]]
             for i in range(scan):
                 try:
-                    cands.append(raw.iloc[i, jj])
+                    candidates.append(raw.iloc[i, jj])
                 except Exception:
                     pass
-            for cand in cands:
+            for cand in candidates:
                 d = _to_date(cand)
                 if pd.notna(d):
                     fecha = d
@@ -1794,7 +1795,6 @@ def normalize_monthly_commercial_sheet(df, sheet_name):
         if pd.isna(fecha):
             continue
 
-        # Empezar datos después de la fila donde aparece "Dev Pzs".
         data_start = 1
         for i in range(scan):
             try:
@@ -1804,14 +1804,14 @@ def normalize_monthly_commercial_sheet(df, sheet_name):
             except Exception:
                 pass
 
-        vals = _money_number_series(raw.iloc[data_start:, j])
+        vals = _num_series(raw.iloc[data_start:, j])
 
         for idx, val in vals.items():
             val = float(val)
             if val == 0:
                 continue
             row = raw.loc[idx]
-            tienda_val = row.iloc[tienda_j] if tienda_j is not None else row.get(c_tienda, "")
+            tienda_val = row.iloc[tienda_j] if tienda_j is not None else ""
             tienda = canon_tienda(tienda_val)
 
             records.append({
@@ -1952,6 +1952,7 @@ def apply_nombre_map(op, nombre_map):
 def load_normalized(file_path, mtime):
     sheets = pd.read_excel(file_path, sheet_name=None, engine="openpyxl")
     ops, coms, diagnostics = [], [], []
+
     for name, df in sheets.items():
         kind = classify_sheet(name, df)
         diagnostics.append({
@@ -1968,10 +1969,35 @@ def load_normalized(file_path, mtime):
             ops.append(normalize_operation(df, name))
         elif kind == "comercial":
             coms.append(normalize_commercial(df, name))
+
     op = pd.concat(ops, ignore_index=True) if ops else pd.DataFrame()
     co = pd.concat(coms, ignore_index=True) if coms else pd.DataFrame()
+
+    # IMPORTANTE:
+    # Las hojas mensuales (Abril 26, Mayo 26, Junio 26, etc.) traen Dev Pzs por fecha.
+    # En versiones anteriores la función existía, pero NO se estaba anexando a co.
+    co_monthly = monthly_dev_by_date(sheets) if "monthly_dev_by_date" in globals() else pd.DataFrame()
+    if co_monthly is not None and not co_monthly.empty:
+        co = pd.concat([co, co_monthly], ignore_index=True) if co is not None and not co.empty else co_monthly
+
     nombre_map = build_nombre_map(sheets)
     op = apply_nombre_map(op, nombre_map)
+
+    # Diagnóstico adicional para comprobar Dev Pzs mensual detectado.
+    if co_monthly is not None and not co_monthly.empty:
+        diag_month = co_monthly.groupby(["Hoja", "Fecha", "Tienda"], dropna=False)["Dev_Pzs"].sum().reset_index()
+        for _, r in diag_month.head(50).iterrows():
+            diagnostics.append({
+                "Hoja": r["Hoja"],
+                "Tipo detectado": "comercial mensual Dev Pzs",
+                "Filas": int(r["Dev_Pzs"]),
+                "Columnas": "",
+                "Columnas Tienda candidatas": str(r["Tienda"]),
+                "Col Tienda detectada": str(r["Tienda"]),
+                "Col Fecha detectada": str(pd.to_datetime(r["Fecha"]).date()),
+                "Col Piezas detectada": "Dev_Pzs",
+            })
+
     return op, co, pd.DataFrame(diagnostics), list(sheets.keys()), nombre_map
 
 
@@ -2425,7 +2451,7 @@ def dia_anterior():
     d = pd.to_datetime(selected_date).normalize()
     op_d = op_all[pd.to_datetime(op_all["Fecha"], errors="coerce").dt.normalize() == d].copy() if not op_all.empty and "Fecha" in op_all else pd.DataFrame()
     co_d = co_all[pd.to_datetime(co_all["Fecha"], errors="coerce").dt.normalize() == d].copy() if not co_all.empty and "Fecha" in co_all else pd.DataFrame()
-    st.caption(f"Registros detectados: operación {len(op_d):,} | aduana mensual {len(co_d):,}")
+    st.caption(f"Registros detectados: operación {len(op_d):,} | aduana mensual {len(co_d):,} | Dev Pzs mensual: {co_d['Dev_Pzs'].sum() if not co_d.empty and 'Dev_Pzs' in co_d else 0:,.0f}")
     prev_pend = add_pending_previous_day(op_all, selected_date, co_all=co_all, tiendas_base=project_stores)
     table = operational_table(op_d, co_d, tiendas_base=project_stores, periodo_label="Día", prev_pending=prev_pend)
 
