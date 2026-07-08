@@ -110,17 +110,30 @@ def safe_num(x) -> float:
 def parse_date(x):
     if pd.isna(x):
         return pd.NaT
+
+    def _normalize_datetime(value, dayfirst=True):
+        d = pd.to_datetime(value, errors="coerce", dayfirst=dayfirst)
+        if pd.isna(d):
+            return pd.NaT
+        return d.normalize()
+
     if isinstance(x, (datetime, date)):
-        return pd.to_datetime(x).normalize()
+        return _normalize_datetime(x, dayfirst=False)
+
     if isinstance(x, (int, float)) and 20000 < float(x) < 60000:
-        return pd.to_datetime(x, unit="D", origin="1899-12-30", errors="coerce").normalize()
+        d = pd.to_datetime(x, unit="D", origin="1899-12-30", errors="coerce")
+        if pd.isna(d):
+            return pd.NaT
+        return d.normalize()
+
     s = str(x).strip()
     if not s or s.lower() in ["nan", "none", "-"]:
         return pd.NaT
-    # ISO primero para evitar warning dayfirst
+
     if re.match(r"^\d{4}-\d{2}-\d{2}", s):
-        return pd.to_datetime(s[:10], errors="coerce").normalize()
-    return pd.to_datetime(s, errors="coerce", dayfirst=True).normalize()
+        return _normalize_datetime(s[:10], dayfirst=False)
+
+    return _normalize_datetime(s, dayfirst=True)
 
 
 def fmt_num(x):
@@ -726,7 +739,10 @@ def read_monthly_dev(file_path, progress=None):
                 fecha = pd.NaT
                 for cc in range(max(0, c - 4), c + 1):
                     for r in range(len(header_rows)):
-                        d = parse_date(header_rows[r][cc])
+                        try:
+                            d = parse_date(header_rows[r][cc])
+                        except Exception:
+                            d = pd.NaT
                         if pd.notna(d):
                             fecha = d
                             break
