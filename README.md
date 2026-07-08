@@ -1,11 +1,9 @@
-# Indicadores Cambios y Muertos v10.2
+# Indicadores Cambios y Muertos v10.3
 
 Correcciones:
-- Dashboard Ejecutivo ahora muestra tarjetas de últimas 4 semanas como el boceto.
-- Pendiente anterior corregido: sólo toma lo pendiente por ubicar del día anterior al periodo, no todo el histórico.
-- Base del periodo: ingresos del periodo + pendiente anterior.
-- Parser mensual lee Dev Pzs desde la fila 3 para no perder datos visibles del archivo.
-- Cache versionado v10.2: obliga a reprocesar el Excel para evitar usar datos viejos.
-- Diagnóstico incluye validación Dev Pzs por fecha y tienda.
-
-Después de subir esta versión, presiona "Procesar archivo activo" nuevamente.
+- Dev Pzs mensual: lector robusto fila 1 fecha + fila 2 Dev Pzs + fila 2 Tienda.
+- Muertos sólo cuenta si Actividad Realizada = Recolección de muertos y Motivo de ingreso = Muertos.
+- Total ahora suma los ingresos del periodo + Pend. Ant.
+- Pend. Ant. sólo toma el pendiente por ubicar del día anterior al periodo.
+- Corrige HTML crudo en tarjetas del Resumen Ejecutivo.
+- Cache versionado v10.3: después de subirlo hay que volver a procesar el archivo activo.

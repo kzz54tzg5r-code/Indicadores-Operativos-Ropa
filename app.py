@@ -46,7 +46,7 @@ for p in [DATA_DIR, UPLOAD_DIR, CACHE_DIR, CONFIG_DIR, ASSETS_DIR]:
     p.mkdir(parents=True, exist_ok=True)
 
 MX_TZ = ZoneInfo("America/Mexico_City")
-APP_CACHE_VERSION = "v10.2"
+APP_CACHE_VERSION = "v10.3"
 AZUL = "#10245F"
 ROSA = "#EC007C"
 LAVANDA = "#F3F6FB"
@@ -721,9 +721,12 @@ def read_plantilla(file_path):
 
 def read_monthly_dev(file_path, progress=None):
     """
-    Lee hojas mensuales con la estructura:
-    fila superior con fecha, fila de subencabezado con Dev Pzs, y columna Tienda.
-    NO usa pandas en todas las hojas: usa openpyxl read_only para que sea más ligero.
+    Lee hojas mensuales tipo Junio 26.
+    Estructura esperada:
+    - Fila 1: fechas repetidas por día.
+    - Fila 2: subencabezados: Ventas Netas, Dev Pzs, Venta Neta en $.
+    - Columna con encabezado Tienda en fila 2.
+    Dev Pzs se toma como ingreso aduana por tienda y fecha.
     """
     wb = load_workbook(file_path, read_only=True, data_only=True)
     monthly_sheets = [
@@ -738,90 +741,76 @@ def read_monthly_dev(file_path, progress=None):
 
     for idx_sheet, sheet_name in enumerate(monthly_sheets, start=1):
         if progress:
-            progress.progress(idx_sheet / total_sheets, text=f"Leyendo devoluciones mensuales: {sheet_name}")
+            progress.progress(idx_sheet / total_sheets, text=f"Leyendo Dev Pzs mensual: {sheet_name}")
 
         ws = wb[sheet_name]
-        rows_iter = ws.iter_rows(values_only=True)
-        header_rows = []
-        data_rows = []
+        max_col = ws.max_column or 1
+        max_row = ws.max_row or 1
 
-        for i, row in enumerate(rows_iter, start=1):
-            if i <= 10:
-                header_rows.append(list(row))
-            if i >= 3:
-                data_rows.append(list(row))
+        row1 = [ws.cell(row=1, column=c).value for c in range(1, max_col + 1)]
+        row2 = [ws.cell(row=2, column=c).value for c in range(1, max_col + 1)]
 
-        if not header_rows:
-            continue
-
-        max_cols = max(len(r) for r in header_rows)
-        for r in header_rows:
-            r.extend([None] * (max_cols - len(r)))
-
-        # Detectar columna Tienda.
         tienda_col = None
-        for c in range(max_cols):
-            vals = [header_rows[r][c] for r in range(len(header_rows))]
-            if any(norm_text(v) == "TIENDA" for v in vals):
-                tienda_col = c
+        for idx, value in enumerate(row2, start=1):
+            if norm_text(value) == "TIENDA":
+                tienda_col = idx
                 break
 
         if tienda_col is None:
-            # respaldo: columna con muchas tiendas conocidas
-            best_c, best_hits = None, 0
-            known = set(norm_text(x) for x in STORE_MAP.keys())
-            for c in range(max_cols):
+            # respaldo: columna con más coincidencias de tiendas conocidas.
+            best_col, best_hits = None, 0
+            known = set(norm_text(k) for k in STORE_MAP.keys())
+            for c in range(1, max_col + 1):
                 hits = 0
-                for row in data_rows[:500]:
-                    if c < len(row) and norm_text(row[c]) in known:
+                for r in range(3, min(max_row, 350) + 1):
+                    if norm_text(ws.cell(row=r, column=c).value) in known:
                         hits += 1
                 if hits > best_hits:
-                    best_hits, best_c = hits, c
-            if best_hits > 0:
-                tienda_col = best_c
+                    best_hits, best_col = hits, c
+            tienda_col = best_col if best_hits > 0 else None
 
         if tienda_col is None:
-            diag_rows.append({"Hoja": sheet_name, "Estado": "Sin columna Tienda"})
+            diag_rows.append({"Hoja": sheet_name, "Estado": "Sin columna Tienda", "Dev Pzs": 0})
             continue
 
-        # Detectar columnas Dev Pzs y fecha asociada.
         dev_cols = []
-        for c in range(max_cols):
-            heads = [header_rows[r][c] for r in range(len(header_rows))]
-            if any("DEV" in norm_text(h) and "PZS" in norm_text(h) for h in heads):
-                # fecha asociada en misma columna o anteriores cercanas
-                fecha = pd.NaT
-                for cc in range(max(0, c - 4), c + 1):
-                    for r in range(len(header_rows)):
-                        try:
-                            d = parse_date(header_rows[r][cc])
-                        except Exception:
-                            d = pd.NaT
-                        if pd.notna(d):
-                            fecha = d
-                            break
-                    if pd.notna(fecha):
-                        break
-                if pd.notna(fecha):
-                    dev_cols.append((c, fecha))
+        for idx, subhead in enumerate(row2, start=1):
+            n = norm_text(subhead)
+            if not ("DEV" in n and "PZS" in n):
+                continue
+
+            fecha = pd.NaT
+            # Buscar fecha en fila 1, misma columna o columnas anteriores cercanas.
+            for cc in range(idx, max(0, idx - 5), -1):
+                try:
+                    d = parse_date(row1[cc - 1])
+                except Exception:
+                    d = pd.NaT
+                if pd.notna(d):
+                    fecha = d
+                    break
+
+            if pd.notna(fecha):
+                dev_cols.append((idx, fecha))
 
         if not dev_cols:
-            diag_rows.append({"Hoja": sheet_name, "Estado": "Sin columnas Dev Pzs"})
+            diag_rows.append({"Hoja": sheet_name, "Estado": "Sin columnas Dev Pzs", "Dev Pzs": 0})
             continue
 
-        count_vals = 0
-        for row in data_rows:
-            if tienda_col >= len(row):
-                continue
-            tienda = canon_store(row[tienda_col])
+        sheet_sum = 0
+        sheet_records = 0
+
+        for r in range(3, max_row + 1):
+            tienda_raw = ws.cell(row=r, column=tienda_col).value
+            tienda = canon_store(tienda_raw)
             if not tienda:
                 continue
+
             for c, fecha in dev_cols:
-                if c >= len(row):
-                    continue
-                val = safe_num(row[c])
+                val = safe_num(ws.cell(row=r, column=c).value)
                 if val == 0:
                     continue
+
                 all_records.append({
                     "Hoja": sheet_name,
                     "Fecha": fecha,
@@ -833,9 +822,17 @@ def read_monthly_dev(file_path, progress=None):
                     "ID": "",
                     "Color": "",
                 })
-                count_vals += 1
+                sheet_sum += val
+                sheet_records += 1
 
-        diag_rows.append({"Hoja": sheet_name, "Estado": "OK", "Columnas Dev": len(dev_cols), "Valores Dev": count_vals})
+        diag_rows.append({
+            "Hoja": sheet_name,
+            "Estado": "OK",
+            "Columnas Dev": len(dev_cols),
+            "Valores Dev": sheet_records,
+            "Dev Pzs": sheet_sum,
+            "Col Tienda": tienda_col,
+        })
 
     wb.close()
 
@@ -846,6 +843,7 @@ def read_monthly_dev(file_path, progress=None):
         co["Semana ISO"] = co["Fecha"].dt.isocalendar().week.astype(int)
         co["Mes"] = co["Fecha"].dt.to_period("M").astype(str)
     return co, pd.DataFrame(diag_rows)
+
 
 
 def process_excel(file_path):
@@ -877,13 +875,20 @@ def split_operation(op):
     act = df["Actividad"].map(norm_text)
     mot = df["Motivo"].map(norm_text)
 
-    df["Muertos"] = np.where(mot.str.contains("MUERTO", na=False) | act.str.contains("RECOLECCION DE MUERTOS|RECOLECCIÓN DE MUERTOS", na=False), df["Piezas"], 0)
+    # Regla exacta solicitada:
+    # Muertos sólo cuenta cuando Actividad Realizada es Recolección de muertos
+    # Y Motivo de ingreso es Muertos.
+    es_recoleccion_muertos = act.str.contains("RECOLECCION DE MUERTOS|RECOLECCIÓN DE MUERTOS", na=False)
+    es_motivo_muertos = mot.str.contains("MUERTO", na=False)
+
+    df["Muertos"] = np.where(es_recoleccion_muertos & es_motivo_muertos, df["Piezas"], 0)
     df["Cajas"] = np.where(mot.str.contains("CAJA", na=False), df["Piezas"], 0)
     df["Probador"] = np.where(mot.str.contains("PROBADOR", na=False) | act.str.contains("PROBADOR", na=False), df["Piezas"], 0)
     df["Recolectadas"] = np.where(act.str.contains("RECOLECCION|RECOLECCIÓN", na=False), df["Piezas"], 0)
     df["Habilitadas"] = np.where(act.str.contains("ACONDICION|HABILIT", na=False), df["Piezas"], 0)
     df["Ubicadas"] = np.where(act.str.contains("UBIC", na=False), df["Piezas"], 0)
     return df
+
 
 
 def filter_stores(df, stores=None):
@@ -904,6 +909,7 @@ def table_by_store(op, co, start_date, end_date, stores=None):
     co_p = co[(co["Fecha"] >= start) & (co["Fecha"] <= end)] if not co.empty else co
     co_p = filter_stores(co_p, stores_list)
 
+    # Pendiente anterior: sólo día anterior al inicio del periodo.
     prev_day = start - pd.Timedelta(days=1)
     op_prev = op2[(op2["Fecha"] >= prev_day) & (op2["Fecha"] <= prev_day)] if not op2.empty else op2
     op_prev = filter_stores(op_prev, stores_list)
@@ -929,16 +935,17 @@ def table_by_store(op, co, start_date, end_date, stores=None):
         prev_muertos = prev["Muertos"].sum() if not prev.empty else 0
         prev_cajas = prev["Cajas"].sum() if not prev.empty else 0
         prev_prob = prev["Probador"].sum() if not prev.empty else 0
-        prev_total = prev_dev + prev_muertos + prev_cajas + prev_prob
+        prev_total_ing = prev_dev + prev_muertos + prev_cajas + prev_prob
         prev_ubic = prev["Ubicadas"].sum() if not prev.empty else 0
-        pend_ant = max(prev_total - prev_ubic, 0)
+        pend_ant = max(prev_total_ing - prev_ubic, 0)
 
-        total = dev + muertos + cajas + prob
-        base = total + pend_ant
-        pend_hab = max(base - hab, 0)
-        pend_ub = max(base - ubic, 0)
-        pct_hab = hab / base * 100 if base else 0
-        pct_ub = ubic / base * 100 if base else 0
+        ingresos_dia = dev + muertos + cajas + prob
+        total_base = ingresos_dia + pend_ant
+
+        pend_hab = max(total_base - hab, 0)
+        pend_ub = max(total_base - ubic, 0)
+        pct_hab = hab / total_base * 100 if total_base else 0
+        pct_ub = ubic / total_base * 100 if total_base else 0
 
         rows.append({
             "Tienda": t,
@@ -946,7 +953,7 @@ def table_by_store(op, co, start_date, end_date, stores=None):
             "Muertos": muertos,
             "Cajas": cajas,
             "Probador": prob,
-            "Total": total,
+            "Total": total_base,
             "Pend. Ant.": pend_ant,
             "Recolectadas": reco,
             "Habilitadas": hab,
@@ -1237,19 +1244,20 @@ def executive_week_cards(op, co):
         d_hab, c_hab = delta(hab, prev_hab)
         d_ub, c_ub = delta(ub, prev_ub)
 
-        html += f"""
-        <div class="week-card">
-            <div class="week-card-head">Sem {w}</div>
-            <div class="week-row"><span>INGRESOS</span><b>{ingresos:,.0f}</b><em style="color:{c_ing};">{d_ing}</em></div>
-            <div class="week-row"><span>ACONDICIONADO</span><b>{hab:,.0f}</b><em style="color:{c_hab};">{d_hab}</em></div>
-            <div class="week-row"><span>UBICADO</span><b>{ub:,.0f}</b><em style="color:{c_ub};">{d_ub}</em></div>
-            <div class="week-row"><span>RECORRIDOS</span><b>{recorridos:,.0f}</b><em>—</em></div>
-        </div>
-        """
+        html += (
+            f'<div class="week-card">'
+            f'<div class="week-card-head">Sem {w}</div>'
+            f'<div class="week-row"><span>INGRESOS</span><b>{ingresos:,.0f}</b><em style="color:{c_ing};">{d_ing}</em></div>'
+            f'<div class="week-row"><span>ACONDICIONADO</span><b>{hab:,.0f}</b><em style="color:{c_hab};">{d_hab}</em></div>'
+            f'<div class="week-row"><span>UBICADO</span><b>{ub:,.0f}</b><em style="color:{c_ub};">{d_ub}</em></div>'
+            f'<div class="week-row"><span>RECORRIDOS</span><b>{recorridos:,.0f}</b><em>—</em></div>'
+            f'</div>'
+        )
         prev_ing, prev_hab, prev_ub = ingresos, hab, ub
 
     html += '</div>'
     st.markdown(html, unsafe_allow_html=True)
+
 
 
 def page_resumen(op, co):
@@ -1390,7 +1398,7 @@ def page_diagnostico(op, co, diag):
     panel("Diagnóstico de hojas", diag, height=420)
     if not co.empty:
         dev_diag = co.groupby(["Fecha", "Tienda"], as_index=False)["Dev_Pzs"].sum().sort_values(["Fecha","Tienda"])
-        panel("Validación Dev Pzs por fecha y tienda", dev_diag.tail(200), height=520)
+        panel("Validación Dev Pzs por fecha y tienda", dev_diag.tail(250), height=520)
 
 
 
