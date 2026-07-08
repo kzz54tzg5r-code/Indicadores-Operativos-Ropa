@@ -46,7 +46,7 @@ for p in [DATA_DIR, UPLOAD_DIR, CACHE_DIR, CONFIG_DIR, ASSETS_DIR]:
     p.mkdir(parents=True, exist_ok=True)
 
 MX_TZ = ZoneInfo("America/Mexico_City")
-APP_CACHE_VERSION = "v10.4"
+APP_CACHE_VERSION = "v10.5"
 AZUL = "#10245F"
 ROSA = "#EC007C"
 LAVANDA = "#F3F6FB"
@@ -723,10 +723,11 @@ def read_plantilla(file_path):
 
 def read_monthly_dev(file_path, progress=None):
     """
-    Lector rápido de hojas mensuales:
-    - Fila 1 contiene fechas.
-    - Fila 2 contiene subencabezados, incluyendo Tienda y Dev Pzs.
-    - Lee con iter_rows(values_only=True), sin llamadas ws.cell por celda.
+    Lector robusto para hojas mensuales:
+    - Detecta dinámicamente la fila donde están Tienda y Dev Pzs.
+    - La fecha se toma de la fila superior al encabezado.
+    - Si la fecha no está exactamente arriba de Dev Pzs, busca a la izquierda/derecha del bloque.
+    - Dev Pzs se agrupa por Hoja + Fecha + Tienda.
     """
     wb = load_workbook(file_path, read_only=True, data_only=True)
     monthly_sheets = [
@@ -745,77 +746,105 @@ def read_monthly_dev(file_path, progress=None):
             progress.progress(min(idx_sheet / total_sheets, 0.95), text=f"Leyendo Dev Pzs mensual: {sheet_name}")
 
         ws = wb[sheet_name]
-        rows = ws.iter_rows(values_only=True)
+        all_rows_iter = ws.iter_rows(values_only=True)
 
-        try:
-            row1 = list(next(rows))
-            row2 = list(next(rows))
-        except StopIteration:
+        # Cargar primeras filas para ubicar encabezado real.
+        top_rows = []
+        for _ in range(25):
+            try:
+                top_rows.append(list(next(all_rows_iter)))
+            except StopIteration:
+                break
+
+        if not top_rows:
             diag_rows.append({"Hoja": sheet_name, "Estado": "Hoja vacía", "Dev Pzs": 0})
             continue
 
-        max_len = max(len(row1), len(row2))
-        row1 += [None] * (max_len - len(row1))
-        row2 += [None] * (max_len - len(row2))
+        max_len = max(len(r) for r in top_rows)
+        top_rows = [r + [None] * (max_len - len(r)) for r in top_rows]
 
+        header_idx = None
         tienda_col = None
-        for i, v in enumerate(row2):
-            if norm_text(v) == "TIENDA":
-                tienda_col = i
+        dev_cols_raw = []
+
+        for ridx, row in enumerate(top_rows):
+            tienda_candidates = [i for i, v in enumerate(row) if norm_text(v) == "TIENDA"]
+            dev_candidates = [i for i, v in enumerate(row) if ("DEV" in norm_text(v) and "PZS" in norm_text(v))]
+            if tienda_candidates and dev_candidates:
+                header_idx = ridx
+                tienda_col = tienda_candidates[0]
+                dev_cols_raw = dev_candidates
                 break
 
+        if header_idx is None:
+            diag_rows.append({"Hoja": sheet_name, "Estado": "No encontró fila con Tienda y Dev Pzs", "Dev Pzs": 0})
+            continue
+
+        header_row = top_rows[header_idx]
+        date_row = top_rows[header_idx - 1] if header_idx > 0 else [None] * len(header_row)
+
+        # Fallback de tienda por coincidencias visuales si la columna detectada falla.
+        # Normalmente debe ser Z/Tienda como en el archivo.
         if tienda_col is None:
-            # Respaldo por nombre visual de tiendas en primeras 600 filas.
-            buffered_rows = []
             hit_counts = {}
-            for ridx, row in enumerate(rows, start=3):
-                row = list(row)
-                buffered_rows.append(row)
-                for c, val in enumerate(row):
+            for sample in top_rows[header_idx+1:]:
+                for c, val in enumerate(sample):
                     if norm_text(val) in known:
                         hit_counts[c] = hit_counts.get(c, 0) + 1
-                if ridx >= 600:
-                    break
             tienda_col = max(hit_counts, key=hit_counts.get) if hit_counts else None
-            # reconstruir iterador incluyendo buffer y resto
-            def chained():
-                for r in buffered_rows:
-                    yield r
-                for r in rows:
-                    yield list(r)
-            data_iter = chained()
-        else:
-            data_iter = (list(r) for r in rows)
 
         if tienda_col is None:
             diag_rows.append({"Hoja": sheet_name, "Estado": "Sin columna Tienda", "Dev Pzs": 0})
             continue
 
+        # Fecha por columna, haciendo forward fill desde la fila de fechas.
+        date_by_col = {}
+        current_date = pd.NaT
+        for c, val in enumerate(date_row):
+            d = parse_date(val)
+            if pd.notna(d):
+                current_date = d
+            date_by_col[c] = current_date
+
         dev_cols = []
-        for i, subhead in enumerate(row2):
-            n = norm_text(subhead)
-            if "DEV" in n and "PZS" in n:
-                fecha = pd.NaT
-                for cc in range(i, max(-1, i - 6), -1):
-                    d = parse_date(row1[cc]) if cc >= 0 else pd.NaT
-                    if pd.notna(d):
-                        fecha = d
+        for c in dev_cols_raw:
+            fecha = date_by_col.get(c, pd.NaT)
+
+            # Si no se encontró, buscar en ventana cercana.
+            if pd.isna(fecha):
+                for offset in range(0, 7):
+                    for cc in (c - offset, c + offset):
+                        if 0 <= cc < len(date_row):
+                            d = parse_date(date_row[cc])
+                            if pd.notna(d):
+                                fecha = d
+                                break
+                    if pd.notna(fecha):
                         break
-                if pd.notna(fecha):
-                    dev_cols.append((i, fecha))
+
+            if pd.notna(fecha):
+                dev_cols.append((c, fecha))
 
         if not dev_cols:
-            diag_rows.append({"Hoja": sheet_name, "Estado": "Sin columnas Dev Pzs", "Dev Pzs": 0})
+            diag_rows.append({"Hoja": sheet_name, "Estado": "Dev Pzs sin fecha asociada", "Dev Pzs": 0, "Fila encabezado": header_idx + 1})
             continue
 
-        # Agrupar en diccionario para no guardar miles de registros fila por fila innecesarios.
+        # Data = filas posteriores al encabezado, incluyendo las ya leídas arriba + resto del iterador.
+        buffered_data = top_rows[header_idx + 1:]
+        def data_iter():
+            for r in buffered_data:
+                yield r
+            for r in all_rows_iter:
+                yield list(r)
+
         acc = {}
         sheet_sum = 0.0
         row_count = 0
 
-        for row in data_iter:
+        for row in data_iter():
             if tienda_col >= len(row):
                 continue
+
             tienda = canon_store(row[tienda_col])
             if not tienda or norm_text(tienda) == "TIENDA":
                 continue
@@ -847,10 +876,11 @@ def read_monthly_dev(file_path, progress=None):
         diag_rows.append({
             "Hoja": sheet_name,
             "Estado": "OK",
+            "Fila encabezado": header_idx + 1,
+            "Col Tienda": tienda_col + 1,
             "Columnas Dev": len(dev_cols),
             "Valores Dev": row_count,
             "Dev Pzs": sheet_sum,
-            "Col Tienda": tienda_col + 1,
         })
 
     wb.close()
@@ -861,6 +891,7 @@ def read_monthly_dev(file_path, progress=None):
         co["Tienda"] = co["Tienda"].map(canon_store)
         co["Semana ISO"] = co["Fecha"].dt.isocalendar().week.astype(int)
         co["Mes"] = co["Fecha"].dt.to_period("M").astype(str)
+
     return co, pd.DataFrame(diag_rows)
 
 
@@ -1414,7 +1445,10 @@ def page_diagnostico(op, co, diag):
     panel("Diagnóstico de hojas", diag, height=420)
     if not co.empty:
         dev_diag = co.groupby(["Fecha", "Tienda"], as_index=False)["Dev_Pzs"].sum().sort_values(["Fecha","Tienda"])
-        panel("Validación Dev Pzs por fecha y tienda", dev_diag.tail(250), height=520)
+        panel("Validación Dev Pzs por fecha y tienda", dev_diag.tail(300), height=520)
+        ecatepec_2806 = dev_diag[(dev_diag["Tienda"].eq("Ecatepec")) & (dev_diag["Fecha"].eq(pd.Timestamp("2026-06-28")))]
+        if not ecatepec_2806.empty:
+            st.success(f"Validación Ecatepec 28/06/2026 Dev Pzs: {ecatepec_2806['Dev_Pzs'].sum():,.0f}")
 
 
 

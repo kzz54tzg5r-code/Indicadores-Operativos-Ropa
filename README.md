@@ -1,13 +1,12 @@
-# Indicadores Cambios y Muertos v10.4
+# Indicadores Cambios y Muertos v10.5
 
-Correcciones:
-- Se optimizó la lectura de hojas mensuales para que no se quede cargando.
-- Ya no usa ws.cell dentro de ciclos grandes; ahora usa iter_rows(values_only=True).
-- Dev Pzs se agrupa por Hoja + Fecha + Tienda para reducir datos y acelerar cache.
-- Se corrigieron warnings de fechas ISO con dayfirst.
-- Cache versionado v10.4: debes reprocesar el archivo activo.
+Corrección principal:
+- Dev Pzs ahora detecta dinámicamente la fila de encabezados, usando:
+  fila superior = fecha,
+  fila de encabezado = Tienda / Dev Pzs.
+- Esto corrige casos donde la fecha está a la derecha/izquierda del bloque y no quedaba amarrada a Dev Pzs.
+- Cache versionado v10.5: después de subirlo hay que volver a presionar Procesar archivo activo.
 
-Después de subir app.py y requirements.txt:
-1. Reinicia la app en Streamlit Cloud.
-2. Inicia sesión.
-3. Presiona “Procesar archivo activo”.
+Validación:
+- En Diagnóstico se agrega validación de Dev Pzs por fecha/tienda.
+- Si existe Ecatepec 28/06/2026, muestra el total detectado.
