@@ -46,7 +46,7 @@ for p in [DATA_DIR, UPLOAD_DIR, CACHE_DIR, CONFIG_DIR, ASSETS_DIR]:
     p.mkdir(parents=True, exist_ok=True)
 
 MX_TZ = ZoneInfo("America/Mexico_City")
-APP_CACHE_VERSION = "v10.3"
+APP_CACHE_VERSION = "v10.4"
 AZUL = "#10245F"
 ROSA = "#EC007C"
 LAVANDA = "#F3F6FB"
@@ -112,29 +112,31 @@ def parse_date(x):
     if pd.isna(x):
         return pd.NaT
 
-    def _normalize_datetime(value, dayfirst=True):
-        d = pd.to_datetime(value, errors="coerce", dayfirst=dayfirst)
+    def _finish(d):
         if pd.isna(d):
             return pd.NaT
-        return d.normalize()
+        return pd.to_datetime(d).normalize()
 
     if isinstance(x, (datetime, date)):
-        return _normalize_datetime(x, dayfirst=False)
+        return _finish(x)
 
     if isinstance(x, (int, float)) and 20000 < float(x) < 60000:
         d = pd.to_datetime(x, unit="D", origin="1899-12-30", errors="coerce")
-        if pd.isna(d):
-            return pd.NaT
-        return d.normalize()
+        return _finish(d)
 
     s = str(x).strip()
     if not s or s.lower() in ["nan", "none", "-"]:
         return pd.NaT
 
+    # ISO con hora: 2026-04-20 17:48:26
     if re.match(r"^\d{4}-\d{2}-\d{2}", s):
-        return _normalize_datetime(s[:10], dayfirst=False)
+        d = pd.to_datetime(s, errors="coerce", dayfirst=False)
+        return _finish(d)
 
-    return _normalize_datetime(s, dayfirst=True)
+    # dd/mm/yyyy o textos de Excel en español.
+    d = pd.to_datetime(s, errors="coerce", dayfirst=True)
+    return _finish(d)
+
 
 
 def fmt_num(x):
@@ -721,12 +723,10 @@ def read_plantilla(file_path):
 
 def read_monthly_dev(file_path, progress=None):
     """
-    Lee hojas mensuales tipo Junio 26.
-    Estructura esperada:
-    - Fila 1: fechas repetidas por día.
-    - Fila 2: subencabezados: Ventas Netas, Dev Pzs, Venta Neta en $.
-    - Columna con encabezado Tienda en fila 2.
-    Dev Pzs se toma como ingreso aduana por tienda y fecha.
+    Lector rápido de hojas mensuales:
+    - Fila 1 contiene fechas.
+    - Fila 2 contiene subencabezados, incluyendo Tienda y Dev Pzs.
+    - Lee con iter_rows(values_only=True), sin llamadas ws.cell por celda.
     """
     wb = load_workbook(file_path, read_only=True, data_only=True)
     monthly_sheets = [
@@ -738,100 +738,119 @@ def read_monthly_dev(file_path, progress=None):
     all_records = []
     diag_rows = []
     total_sheets = max(1, len(monthly_sheets))
+    known = set(norm_text(k) for k in STORE_MAP.keys())
 
     for idx_sheet, sheet_name in enumerate(monthly_sheets, start=1):
         if progress:
-            progress.progress(idx_sheet / total_sheets, text=f"Leyendo Dev Pzs mensual: {sheet_name}")
+            progress.progress(min(idx_sheet / total_sheets, 0.95), text=f"Leyendo Dev Pzs mensual: {sheet_name}")
 
         ws = wb[sheet_name]
-        max_col = ws.max_column or 1
-        max_row = ws.max_row or 1
+        rows = ws.iter_rows(values_only=True)
 
-        row1 = [ws.cell(row=1, column=c).value for c in range(1, max_col + 1)]
-        row2 = [ws.cell(row=2, column=c).value for c in range(1, max_col + 1)]
+        try:
+            row1 = list(next(rows))
+            row2 = list(next(rows))
+        except StopIteration:
+            diag_rows.append({"Hoja": sheet_name, "Estado": "Hoja vacía", "Dev Pzs": 0})
+            continue
+
+        max_len = max(len(row1), len(row2))
+        row1 += [None] * (max_len - len(row1))
+        row2 += [None] * (max_len - len(row2))
 
         tienda_col = None
-        for idx, value in enumerate(row2, start=1):
-            if norm_text(value) == "TIENDA":
-                tienda_col = idx
+        for i, v in enumerate(row2):
+            if norm_text(v) == "TIENDA":
+                tienda_col = i
                 break
 
         if tienda_col is None:
-            # respaldo: columna con más coincidencias de tiendas conocidas.
-            best_col, best_hits = None, 0
-            known = set(norm_text(k) for k in STORE_MAP.keys())
-            for c in range(1, max_col + 1):
-                hits = 0
-                for r in range(3, min(max_row, 350) + 1):
-                    if norm_text(ws.cell(row=r, column=c).value) in known:
-                        hits += 1
-                if hits > best_hits:
-                    best_hits, best_col = hits, c
-            tienda_col = best_col if best_hits > 0 else None
+            # Respaldo por nombre visual de tiendas en primeras 600 filas.
+            buffered_rows = []
+            hit_counts = {}
+            for ridx, row in enumerate(rows, start=3):
+                row = list(row)
+                buffered_rows.append(row)
+                for c, val in enumerate(row):
+                    if norm_text(val) in known:
+                        hit_counts[c] = hit_counts.get(c, 0) + 1
+                if ridx >= 600:
+                    break
+            tienda_col = max(hit_counts, key=hit_counts.get) if hit_counts else None
+            # reconstruir iterador incluyendo buffer y resto
+            def chained():
+                for r in buffered_rows:
+                    yield r
+                for r in rows:
+                    yield list(r)
+            data_iter = chained()
+        else:
+            data_iter = (list(r) for r in rows)
 
         if tienda_col is None:
             diag_rows.append({"Hoja": sheet_name, "Estado": "Sin columna Tienda", "Dev Pzs": 0})
             continue
 
         dev_cols = []
-        for idx, subhead in enumerate(row2, start=1):
+        for i, subhead in enumerate(row2):
             n = norm_text(subhead)
-            if not ("DEV" in n and "PZS" in n):
-                continue
-
-            fecha = pd.NaT
-            # Buscar fecha en fila 1, misma columna o columnas anteriores cercanas.
-            for cc in range(idx, max(0, idx - 5), -1):
-                try:
-                    d = parse_date(row1[cc - 1])
-                except Exception:
-                    d = pd.NaT
-                if pd.notna(d):
-                    fecha = d
-                    break
-
-            if pd.notna(fecha):
-                dev_cols.append((idx, fecha))
+            if "DEV" in n and "PZS" in n:
+                fecha = pd.NaT
+                for cc in range(i, max(-1, i - 6), -1):
+                    d = parse_date(row1[cc]) if cc >= 0 else pd.NaT
+                    if pd.notna(d):
+                        fecha = d
+                        break
+                if pd.notna(fecha):
+                    dev_cols.append((i, fecha))
 
         if not dev_cols:
             diag_rows.append({"Hoja": sheet_name, "Estado": "Sin columnas Dev Pzs", "Dev Pzs": 0})
             continue
 
-        sheet_sum = 0
-        sheet_records = 0
+        # Agrupar en diccionario para no guardar miles de registros fila por fila innecesarios.
+        acc = {}
+        sheet_sum = 0.0
+        row_count = 0
 
-        for r in range(3, max_row + 1):
-            tienda_raw = ws.cell(row=r, column=tienda_col).value
-            tienda = canon_store(tienda_raw)
-            if not tienda:
+        for row in data_iter:
+            if tienda_col >= len(row):
+                continue
+            tienda = canon_store(row[tienda_col])
+            if not tienda or norm_text(tienda) == "TIENDA":
                 continue
 
             for c, fecha in dev_cols:
-                val = safe_num(ws.cell(row=r, column=c).value)
+                if c >= len(row):
+                    continue
+                val = safe_num(row[c])
                 if val == 0:
                     continue
-
-                all_records.append({
-                    "Hoja": sheet_name,
-                    "Fecha": fecha,
-                    "Tienda": tienda,
-                    "Dev_Pzs": val,
-                    "Vta_Pzs": 0.0,
-                    "Vta_Imp": 0.0,
-                    "Costo_Dev": 0.0,
-                    "ID": "",
-                    "Color": "",
-                })
+                key = (sheet_name, fecha, tienda)
+                acc[key] = acc.get(key, 0.0) + val
                 sheet_sum += val
-                sheet_records += 1
+                row_count += 1
+
+        for (hoja, fecha, tienda), val in acc.items():
+            all_records.append({
+                "Hoja": hoja,
+                "Fecha": fecha,
+                "Tienda": tienda,
+                "Dev_Pzs": val,
+                "Vta_Pzs": 0.0,
+                "Vta_Imp": 0.0,
+                "Costo_Dev": 0.0,
+                "ID": "",
+                "Color": "",
+            })
 
         diag_rows.append({
             "Hoja": sheet_name,
             "Estado": "OK",
             "Columnas Dev": len(dev_cols),
-            "Valores Dev": sheet_records,
+            "Valores Dev": row_count,
             "Dev Pzs": sheet_sum,
-            "Col Tienda": tienda_col,
+            "Col Tienda": tienda_col + 1,
         })
 
     wb.close()
@@ -848,26 +867,24 @@ def read_monthly_dev(file_path, progress=None):
 
 def process_excel(file_path):
     progress = st.progress(0, text="Iniciando procesamiento...")
-    progress.progress(0.15, text="Leyendo Resultados productividad...")
+    progress.progress(0.10, text="Leyendo hoja Resultados productividad...")
     op, diag_op = read_operation_sheet(file_path)
 
-    progress.progress(0.35, text="Leyendo Plantilla...")
+    progress.progress(0.25, text="Leyendo Plantilla...")
     plantilla = read_plantilla(file_path)
     op = apply_nombre_map(op, plantilla)
 
-    progress.progress(0.45, text="Leyendo hojas mensuales Dev Pzs...")
+    progress.progress(0.35, text="Leyendo hojas mensuales Dev Pzs...")
     co, diag_co = read_monthly_dev(file_path, progress=progress)
 
-    progress.progress(0.95, text="Guardando cache...")
+    progress.progress(0.90, text="Guardando cache optimizado...")
     diag = pd.concat([diag_op, diag_co], ignore_index=True)
     write_cache(op, co, diag)
-    progress.progress(1.0, text="Listo")
+    progress.progress(1.0, text="Archivo procesado correctamente.")
     return op, co, diag
 
 
-# ============================================================
-# CÁLCULOS
-# ============================================================
+
 def split_operation(op):
     if op.empty:
         return op
@@ -1007,7 +1024,7 @@ def aggrid_table(df, height=360, editable=False, key=None):
     auto_height = min(max(118 + len(show) * 34, 170), height)
 
     if not AGGRID_OK:
-        st.dataframe(show, hide_index=True, use_container_width=True, height=auto_height)
+        st.dataframe(show, hide_index=True, width="stretch", height=auto_height)
         return df
 
     gb = GridOptionsBuilder.from_dataframe(show)
@@ -1046,8 +1063,7 @@ def aggrid_table(df, height=360, editable=False, key=None):
         custom_css=css,
         theme="alpine",
         key=key or f"ag_{abs(hash(str(show.columns.tolist())+str(len(show))))}",
-        reload_data=False,
-    )
+            )
     if editable and result and "data" in result:
         return pd.DataFrame(result["data"])
     return df
@@ -1108,7 +1124,7 @@ def combined_chart(df, title):
     )
     fig.update_xaxes(tickangle=-45, showgrid=False, fixedrange=True)
     fig.update_yaxes(showgrid=True, gridcolor="#E5E7EB", fixedrange=True, range=[0, ymax])
-    st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False, "scrollZoom": False, "doubleClick": False})
+    st.plotly_chart(fig, width="stretch", config={"displayModeBar": False, "scrollZoom": False, "doubleClick": False})
 
 
 def download_pdf_button(label="Descargar PDF"):
@@ -1132,7 +1148,7 @@ def login_sidebar():
     st.sidebar.info("Para visualizar la información, inicia sesión con un usuario autorizado.")
     nom = st.sidebar.text_input("Nómina / Usuario")
     pwd = st.sidebar.text_input("Contraseña", type="password")
-    if st.sidebar.button("Iniciar sesión", type="primary", use_container_width=True):
+    if st.sidebar.button("Iniciar sesión", type="primary", width="stretch"):
         user = get_user(nom, pwd)
         if user:
             st.session_state.user = user
@@ -1172,7 +1188,7 @@ def sidebar_data_admin():
             st.rerun()
 
         if ACTIVE_FILE.exists() and not cache_valid():
-            if st.sidebar.button("Procesar archivo activo", type="primary", use_container_width=True):
+            if st.sidebar.button("Procesar archivo activo", type="primary", width="stretch"):
                 try:
                     process_excel(str(ACTIVE_FILE))
                     st.success("Archivo procesado correctamente.")
