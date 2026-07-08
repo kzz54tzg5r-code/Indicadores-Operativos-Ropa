@@ -1,12 +1,17 @@
-# Indicadores Cambios y Muertos v10.5
+# Indicadores Cambios y Muertos v10.6
 
 Corrección principal:
-- Dev Pzs ahora detecta dinámicamente la fila de encabezados, usando:
-  fila superior = fecha,
-  fila de encabezado = Tienda / Dev Pzs.
-- Esto corrige casos donde la fecha está a la derecha/izquierda del bloque y no quedaba amarrada a Dev Pzs.
-- Cache versionado v10.5: después de subirlo hay que volver a presionar Procesar archivo activo.
+- El lector de Dev Pzs ahora usa directamente la estructura real del archivo:
+  Fila 1 = Fecha
+  Fila 2 = Tienda / Dev Pzs
+  Datos desde fila 3
+- Se agregó canon_store más agresivo para ECATEPEC, VALLEJO, etc. en mayúsculas.
+- Dev Pzs se agrupa por Hoja + Fecha + Tienda.
+- Cache versionado v10.6.
 
-Validación:
-- En Diagnóstico se agrega validación de Dev Pzs por fecha/tienda.
-- Si existe Ecatepec 28/06/2026, muestra el total detectado.
+Después de subirlo:
+1. Reinicia app.
+2. Presiona Borrar archivo persistido si aparece.
+3. Carga el Excel.
+4. Presiona Procesar archivo activo.
+5. Revisa Diagnóstico: debe mostrar Columnas Dev, Valores Dev y Dev Pzs > 0.

@@ -46,7 +46,7 @@ for p in [DATA_DIR, UPLOAD_DIR, CACHE_DIR, CONFIG_DIR, ASSETS_DIR]:
     p.mkdir(parents=True, exist_ok=True)
 
 MX_TZ = ZoneInfo("America/Mexico_City")
-APP_CACHE_VERSION = "v10.5"
+APP_CACHE_VERSION = "v10.6"
 AZUL = "#10245F"
 ROSA = "#EC007C"
 LAVANDA = "#F3F6FB"
@@ -91,9 +91,47 @@ STORE_MAP = {
 }
 
 
-def canon_store(x) -> str:
-    n = norm_text(x)
-    return STORE_MAP.get(n, str(x).strip().title() if str(x).strip() else "")
+def canon_store(x):
+    if pd.isna(x):
+        return ""
+    s_raw = str(x).strip()
+    if not s_raw:
+        return ""
+    s = norm_text(s_raw)
+
+    aliases = {
+        "ARCO NORTE": "Arco Norte",
+        "ECATEPEC": "Ecatepec",
+        "MIRAVALLE": "Miravalle",
+        "PUEBLA SUR": "Puebla Sur",
+        "VALLEJO": "Vallejo",
+        "PUEBLA": "Puebla",
+        "IZTAPALAPA": "Iztapalapa",
+        "TOLUCA": "Toluca",
+        "CENTRO": "Centro",
+        "QUERETARO": "Querétaro",
+        "LEON": "León",
+        "NAUCALPAN": "Naucalpan",
+        "OLIVAR": "Olivar",
+        "AGUASCALIENTES": "Aguascalientes",
+        "GUADALAJARA": "Guadalajara",
+        "VERACRUZ": "Veracruz",
+        "SAN LUIS": "San Luis",
+        "IXTAPALUCA": "Ixtapaluca",
+    }
+
+    if s in aliases:
+        return aliases[s]
+
+    for k, v in STORE_MAP.items():
+        if norm_text(k) == s:
+            return v
+
+    # Cuando viene texto limpio no mapeado, conservar formato título.
+    if s not in ["TIENDA", "DIA", ""]:
+        return s_raw.title()
+    return ""
+
 
 
 def safe_num(x) -> float:
@@ -723,142 +761,113 @@ def read_plantilla(file_path):
 
 def read_monthly_dev(file_path, progress=None):
     """
-    Lector robusto para hojas mensuales:
-    - Detecta dinámicamente la fila donde están Tienda y Dev Pzs.
-    - La fecha se toma de la fila superior al encabezado.
-    - Si la fecha no está exactamente arriba de Dev Pzs, busca a la izquierda/derecha del bloque.
-    - Dev Pzs se agrupa por Hoja + Fecha + Tienda.
+    Lector comercial mensual v10.6.
+
+    Tu archivo viene así:
+    - Fila 1: fecha por bloque, por ejemplo 28/06/2026.
+    - Fila 2: encabezados, por ejemplo Tienda, Ventas Netas, Dev Pzs, Venta Neta en $.
+    - Datos desde fila 3.
+    Regla: todo valor en columna Dev Pzs se suma por Fecha + Tienda.
     """
     wb = load_workbook(file_path, read_only=True, data_only=True)
     monthly_sheets = [
         s for s in wb.sheetnames
         if s not in ["Resultados productividad", "Plantilla"]
-        and re.search(r"(ABRIL|MAYO|JUNIO|JULIO|AGOSTO|SEPT|OCT|NOV|DIC|ENERO|FEBR|MARZO|\b26\b|\b25\b)", norm_text(s))
+        and re.search(r"(ABRIL|MAYO|JUNIO|JULIO|AGOSTO|SEPT|OCT|NOV|DIC|ENERO|FEBR|MARZO|26|25)", norm_text(s))
     ]
 
     all_records = []
     diag_rows = []
     total_sheets = max(1, len(monthly_sheets))
-    known = set(norm_text(k) for k in STORE_MAP.keys())
 
     for idx_sheet, sheet_name in enumerate(monthly_sheets, start=1):
         if progress:
             progress.progress(min(idx_sheet / total_sheets, 0.95), text=f"Leyendo Dev Pzs mensual: {sheet_name}")
 
         ws = wb[sheet_name]
-        all_rows_iter = ws.iter_rows(values_only=True)
-
-        # Cargar primeras filas para ubicar encabezado real.
-        top_rows = []
-        for _ in range(25):
-            try:
-                top_rows.append(list(next(all_rows_iter)))
-            except StopIteration:
-                break
-
-        if not top_rows:
-            diag_rows.append({"Hoja": sheet_name, "Estado": "Hoja vacía", "Dev Pzs": 0})
+        rows = list(ws.iter_rows(values_only=True))
+        if len(rows) < 3:
+            diag_rows.append({"Hoja": sheet_name, "Estado": "Hoja sin datos", "Dev Pzs": 0})
             continue
 
-        max_len = max(len(r) for r in top_rows)
-        top_rows = [r + [None] * (max_len - len(r)) for r in top_rows]
-
+        # Buscar fila de encabezado en las primeras 15 filas. Preferente: fila con Tienda y Dev Pzs.
         header_idx = None
         tienda_col = None
-        dev_cols_raw = []
+        dev_cols = []
 
-        for ridx, row in enumerate(top_rows):
-            tienda_candidates = [i for i, v in enumerate(row) if norm_text(v) == "TIENDA"]
-            dev_candidates = [i for i, v in enumerate(row) if ("DEV" in norm_text(v) and "PZS" in norm_text(v))]
-            if tienda_candidates and dev_candidates:
+        max_cols = max(len(r) for r in rows[:20])
+        padded_top = [list(r) + [None] * (max_cols - len(r)) for r in rows[:20]]
+
+        for ridx, row in enumerate(padded_top):
+            t_cols = [i for i, v in enumerate(row) if norm_text(v) == "TIENDA"]
+            d_cols = [i for i, v in enumerate(row) if ("DEV" in norm_text(v) and "PZS" in norm_text(v))]
+            if t_cols and d_cols:
                 header_idx = ridx
-                tienda_col = tienda_candidates[0]
-                dev_cols_raw = dev_candidates
+                tienda_col = t_cols[0]
+                dev_cols = d_cols
                 break
 
         if header_idx is None:
-            diag_rows.append({"Hoja": sheet_name, "Estado": "No encontró fila con Tienda y Dev Pzs", "Dev Pzs": 0})
+            diag_rows.append({"Hoja": sheet_name, "Estado": "No encontró Tienda + Dev Pzs", "Dev Pzs": 0})
             continue
 
-        header_row = top_rows[header_idx]
-        date_row = top_rows[header_idx - 1] if header_idx > 0 else [None] * len(header_row)
+        date_row = list(rows[header_idx - 1]) if header_idx > 0 else []
+        date_row += [None] * (max_cols - len(date_row))
 
-        # Fallback de tienda por coincidencias visuales si la columna detectada falla.
-        # Normalmente debe ser Z/Tienda como en el archivo.
-        if tienda_col is None:
-            hit_counts = {}
-            for sample in top_rows[header_idx+1:]:
-                for c, val in enumerate(sample):
-                    if norm_text(val) in known:
-                        hit_counts[c] = hit_counts.get(c, 0) + 1
-            tienda_col = max(hit_counts, key=hit_counts.get) if hit_counts else None
-
-        if tienda_col is None:
-            diag_rows.append({"Hoja": sheet_name, "Estado": "Sin columna Tienda", "Dev Pzs": 0})
-            continue
-
-        # Fecha por columna, haciendo forward fill desde la fila de fechas.
+        # Forward fill de fechas por columna.
         date_by_col = {}
-        current_date = pd.NaT
-        for c, val in enumerate(date_row):
-            d = parse_date(val)
+        current = pd.NaT
+        for c in range(max_cols):
+            d = parse_date(date_row[c])
             if pd.notna(d):
-                current_date = d
-            date_by_col[c] = current_date
+                current = d
+            date_by_col[c] = current
 
-        dev_cols = []
-        for c in dev_cols_raw:
+        # Columnas Dev Pzs con fecha asociada.
+        dev_col_dates = []
+        for c in dev_cols:
             fecha = date_by_col.get(c, pd.NaT)
-
-            # Si no se encontró, buscar en ventana cercana.
             if pd.isna(fecha):
-                for offset in range(0, 7):
-                    for cc in (c - offset, c + offset):
-                        if 0 <= cc < len(date_row):
-                            d = parse_date(date_row[cc])
-                            if pd.notna(d):
-                                fecha = d
-                                break
-                    if pd.notna(fecha):
+                # Busca en columnas cercanas por si la fecha está movida.
+                for cc in range(max(0, c - 8), min(max_cols, c + 9)):
+                    d = parse_date(date_row[cc])
+                    if pd.notna(d):
+                        fecha = d
                         break
-
             if pd.notna(fecha):
-                dev_cols.append((c, fecha))
+                dev_col_dates.append((c, fecha))
 
-        if not dev_cols:
-            diag_rows.append({"Hoja": sheet_name, "Estado": "Dev Pzs sin fecha asociada", "Dev Pzs": 0, "Fila encabezado": header_idx + 1})
+        if not dev_col_dates:
+            diag_rows.append({
+                "Hoja": sheet_name,
+                "Estado": "Dev Pzs sin fecha",
+                "Fila encabezado": header_idx + 1,
+                "Col Tienda": tienda_col + 1,
+                "Dev Pzs": 0
+            })
             continue
-
-        # Data = filas posteriores al encabezado, incluyendo las ya leídas arriba + resto del iterador.
-        buffered_data = top_rows[header_idx + 1:]
-        def data_iter():
-            for r in buffered_data:
-                yield r
-            for r in all_rows_iter:
-                yield list(r)
 
         acc = {}
         sheet_sum = 0.0
-        row_count = 0
+        values_count = 0
+        stores_count = set()
 
-        for row in data_iter():
-            if tienda_col >= len(row):
-                continue
-
+        for row in rows[header_idx + 1:]:
+            row = list(row) + [None] * (max_cols - len(row))
             tienda = canon_store(row[tienda_col])
-            if not tienda or norm_text(tienda) == "TIENDA":
+            if not tienda:
                 continue
+            stores_count.add(tienda)
 
-            for c, fecha in dev_cols:
-                if c >= len(row):
-                    continue
+            for c, fecha in dev_col_dates:
                 val = safe_num(row[c])
+                # En Dev Pzs puede haber 0, pero sólo guardamos valores reales > 0 o < 0.
                 if val == 0:
                     continue
                 key = (sheet_name, fecha, tienda)
                 acc[key] = acc.get(key, 0.0) + val
                 sheet_sum += val
-                row_count += 1
+                values_count += 1
 
         for (hoja, fecha, tienda), val in acc.items():
             all_records.append({
@@ -877,9 +886,11 @@ def read_monthly_dev(file_path, progress=None):
             "Hoja": sheet_name,
             "Estado": "OK",
             "Fila encabezado": header_idx + 1,
+            "Fila fechas": header_idx,
             "Col Tienda": tienda_col + 1,
-            "Columnas Dev": len(dev_cols),
-            "Valores Dev": row_count,
+            "Columnas Dev": len(dev_col_dates),
+            "Valores Dev": values_count,
+            "Tiendas detectadas": len(stores_count),
             "Dev Pzs": sheet_sum,
         })
 
@@ -1441,7 +1452,7 @@ def page_macro(op, co):
 def page_diagnostico(op, co, diag):
     st.markdown("## Diagnóstico")
     st.write(f"Operación: {len(op):,} registros")
-    st.write(f"Comercial mensual Dev Pzs: {len(co):,} registros | Dev Pzs: {co['Dev_Pzs'].sum() if not co.empty else 0:,.0f}")
+    st.write(f"Comercial mensual Dev Pzs: {len(co):,} registros agrupados | Dev Pzs total: {co['Dev_Pzs'].sum() if not co.empty else 0:,.0f}")
     panel("Diagnóstico de hojas", diag, height=420)
     if not co.empty:
         dev_diag = co.groupby(["Fecha", "Tienda"], as_index=False)["Dev_Pzs"].sum().sort_values(["Fecha","Tienda"])
