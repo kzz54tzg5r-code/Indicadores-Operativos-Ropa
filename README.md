@@ -1,10 +1,11 @@
-# v9.6 Fix carga AgGrid
+# v9.7 Cache de procesamiento
 
-El log mostraba:
-warning: streamlit-aggrid==1.1.8 is yanked (bugged)
+Esta versión evita que el sistema intente leer el Excel de 77 MB en cada carga.
 
-Cambio:
-- requirements.txt ahora usa streamlit-aggrid==1.2.0.post2.
-- Evita el paquete yanked que puede dejar la app cargando sin error visible.
+Flujo:
+1. Carga el Excel.
+2. Presiona Procesar archivo.
+3. La app guarda una copia procesada en data/cache.
+4. Las siguientes cargas abren parquet/cache y son mucho más rápidas.
 
-Sube app.py y requirements.txt a GitHub.
+También aparece el botón "Procesar archivo activo" si ya hay archivo guardado pero falta procesarlo.

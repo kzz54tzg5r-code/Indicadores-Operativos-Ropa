@@ -49,6 +49,7 @@ PRICE_GRAY = "#6B7280"
 DATA_DIR = Path("data")
 UPLOAD_DIR = DATA_DIR / "uploads"
 CONFIG_DIR = DATA_DIR / "config"
+CACHE_DIR = DATA_DIR / "cache"
 ACTIVE_FILE = UPLOAD_DIR / "base_activa.xlsx"
 META_FILE = CONFIG_DIR / "metadata.json"
 DB_FILE = CONFIG_DIR / "app_config.db"
@@ -56,6 +57,7 @@ USERS_BACKUP = CONFIG_DIR / "users_backup.json"
 
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+CACHE_DIR.mkdir(parents=True, exist_ok=True)
 
 
 # ============================================================
@@ -295,6 +297,12 @@ def delete_active_file():
         ACTIVE_FILE.unlink()
     if META_FILE.exists():
         META_FILE.unlink()
+    # limpiar cache persistente
+    for p in CACHE_DIR.glob("*"):
+        try:
+            p.unlink()
+        except Exception:
+            pass
     st.cache_data.clear()
 
 
@@ -2001,6 +2009,58 @@ def load_normalized(file_path, mtime):
     return op, co, pd.DataFrame(diagnostics), list(sheets.keys()), nombre_map
 
 
+
+def _cache_paths():
+    return {
+        "op": CACHE_DIR / "op_all.parquet",
+        "co": CACHE_DIR / "co_all.parquet",
+        "diag": CACHE_DIR / "diag_df.parquet",
+        "sheets": CACHE_DIR / "sheet_names.json",
+        "nmap": CACHE_DIR / "nombre_map.json",
+        "meta": CACHE_DIR / "processed_meta.json",
+    }
+
+def processed_cache_valid():
+    if not ACTIVE_FILE.exists():
+        return False
+    paths = _cache_paths()
+    if not paths["meta"].exists() or not paths["op"].exists() or not paths["co"].exists():
+        return False
+    try:
+        meta = json.loads(paths["meta"].read_text(encoding="utf-8"))
+        return float(meta.get("mtime", 0)) == float(ACTIVE_FILE.stat().st_mtime)
+    except Exception:
+        return False
+
+def write_processed_cache(op, co, diag_df, sheet_names, nombre_map):
+    paths = _cache_paths()
+    (op if op is not None else pd.DataFrame()).to_parquet(paths["op"], index=False)
+    (co if co is not None else pd.DataFrame()).to_parquet(paths["co"], index=False)
+    (diag_df if diag_df is not None else pd.DataFrame()).to_parquet(paths["diag"], index=False)
+    paths["sheets"].write_text(json.dumps(sheet_names or [], ensure_ascii=False), encoding="utf-8")
+    paths["nmap"].write_text(json.dumps(nombre_map or {}, ensure_ascii=False), encoding="utf-8")
+    paths["meta"].write_text(json.dumps({
+        "mtime": ACTIVE_FILE.stat().st_mtime,
+        "processed_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+    }, ensure_ascii=False, indent=2), encoding="utf-8")
+
+@st.cache_data(show_spinner=False)
+def read_processed_cache(mtime):
+    paths = _cache_paths()
+    op = pd.read_parquet(paths["op"]) if paths["op"].exists() else pd.DataFrame()
+    co = pd.read_parquet(paths["co"]) if paths["co"].exists() else pd.DataFrame()
+    diag_df = pd.read_parquet(paths["diag"]) if paths["diag"].exists() else pd.DataFrame()
+    sheet_names = json.loads(paths["sheets"].read_text(encoding="utf-8")) if paths["sheets"].exists() else []
+    nombre_map = json.loads(paths["nmap"].read_text(encoding="utf-8")) if paths["nmap"].exists() else {}
+    return op, co, diag_df, sheet_names, nombre_map
+
+def process_active_excel():
+    with st.spinner("Procesando Excel. La primera vez puede tardar por el tamaño del archivo..."):
+        op, co, diag_df, sheet_names, nombre_map = load_normalized(str(ACTIVE_FILE), ACTIVE_FILE.stat().st_mtime)
+        write_processed_cache(op, co, diag_df, sheet_names, nombre_map)
+    return op, co, diag_df, sheet_names, nombre_map
+
+
 def filter_period(op, co, period):
     if period == "Todo el archivo":
         return op, co
@@ -2335,6 +2395,12 @@ if ACTIVE_FILE.exists():
     st.sidebar.success("Archivo cargado")
     st.sidebar.write(meta.get("nombre_original", "Archivo activo"))
     st.sidebar.caption(meta.get("fecha_carga", ""))
+    if processed_cache_valid():
+        try:
+            _pm = json.loads((_cache_paths()["meta"]).read_text(encoding="utf-8"))
+            st.sidebar.caption(f"Procesado: {_pm.get('processed_at','')}")
+        except Exception:
+            pass
 else:
     st.sidebar.warning("No hay archivo cargado")
 
@@ -2343,8 +2409,27 @@ if is_admin:
     if up is not None and st.sidebar.button("Procesar archivo", type="primary"):
         save_uploaded_file(up)
         st.cache_data.clear()
-        st.sidebar.success("Archivo guardado")
+        try:
+            process_active_excel()
+            st.sidebar.success("Archivo procesado y guardado")
+        except Exception as e:
+            st.sidebar.error("No fue posible procesar el archivo.")
+            st.exception(e)
+            st.stop()
         st.rerun()
+
+    if ACTIVE_FILE.exists() and not processed_cache_valid():
+        st.sidebar.warning("Archivo cargado pendiente de procesar.")
+        if st.sidebar.button("Procesar archivo activo", type="primary"):
+            st.cache_data.clear()
+            try:
+                process_active_excel()
+                st.sidebar.success("Archivo procesado")
+            except Exception as e:
+                st.sidebar.error("No fue posible procesar el archivo.")
+                st.exception(e)
+                st.stop()
+            st.rerun()
 
     if ACTIVE_FILE.exists() and st.sidebar.button("Borrar archivo persistido"):
         delete_active_file()
@@ -2362,9 +2447,13 @@ if not ACTIVE_FILE.exists():
 # page se define una sola vez al final
 
 try:
-    op_all, co_all, diag_df, sheet_names, nombre_map = load_normalized(str(ACTIVE_FILE), ACTIVE_FILE.stat().st_mtime)
+    if processed_cache_valid():
+        op_all, co_all, diag_df, sheet_names, nombre_map = read_processed_cache(ACTIVE_FILE.stat().st_mtime)
+    else:
+        st.warning("El archivo está cargado, pero todavía no está procesado. Presiona **Procesar archivo activo** en el panel lateral.")
+        st.stop()
 except Exception as e:
-    st.error("No fue posible procesar el Excel. Valida que el archivo no esté dañado y que tenga hojas operativas/comerciales.")
+    st.error("No fue posible abrir la información procesada. Vuelve a procesar el Excel desde el panel lateral.")
     st.exception(e)
     st.stop()
 
