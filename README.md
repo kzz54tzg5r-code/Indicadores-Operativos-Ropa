@@ -1,7 +1,10 @@
-# v9.5 Fix Dev Pzs mensual
+# v9.6 Fix carga AgGrid
 
-Corrección principal:
-- La función que lee Dev Pzs de hojas mensuales ya existía, pero no se estaba anexando al dataframe comercial.
-- Ahora load_normalized une co + monthly_dev_by_date(sheets).
-- La pestaña Por Día ya debe tomar Ecatepec 28/06/2026 desde Junio 26 -> columna Dev Pzs.
-- Se agregó diagnóstico en la leyenda: Dev Pzs mensual detectado.
+El log mostraba:
+warning: streamlit-aggrid==1.1.8 is yanked (bugged)
+
+Cambio:
+- requirements.txt ahora usa streamlit-aggrid==1.2.0.post2.
+- Evita el paquete yanked que puede dejar la app cargando sin error visible.
+
+Sube app.py y requirements.txt a GitHub.
