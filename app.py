@@ -46,6 +46,7 @@ for p in [DATA_DIR, UPLOAD_DIR, CACHE_DIR, CONFIG_DIR, ASSETS_DIR]:
     p.mkdir(parents=True, exist_ok=True)
 
 MX_TZ = ZoneInfo("America/Mexico_City")
+APP_CACHE_VERSION = "v10.2"
 AZUL = "#10245F"
 ROSA = "#EC007C"
 LAVANDA = "#F3F6FB"
@@ -465,6 +466,59 @@ html, body, [data-testid="stAppViewContainer"] {{
     .ps-header-right{{flex-wrap:wrap;}}
     .ps-tabbar{{padding:0 20px;}}
 }}
+
+.week-card-grid{{
+    display:grid;
+    grid-template-columns:repeat(4,minmax(230px,1fr));
+    gap:22px;
+    margin:16px 0 28px 0;
+}}
+.week-card{{
+    background:#F8F9FC;
+    border:1px solid #D9DEE8;
+    border-radius:8px;
+    overflow:hidden;
+    box-shadow:0 5px 14px rgba(16,36,95,.06);
+}}
+.week-card-head{{
+    background:#3E4095;
+    color:white;
+    text-align:center;
+    font-size:20px;
+    font-weight:900;
+    padding:15px 10px;
+}}
+.week-row{{
+    display:grid;
+    grid-template-columns:1fr auto 62px;
+    align-items:center;
+    gap:12px;
+    padding:14px 16px;
+    border-bottom:1px solid #E5E7EB;
+}}
+.week-row span{{
+    color:#666;
+    font-weight:900;
+    font-size:13px;
+}}
+.week-row b{{
+    color:#3E4095;
+    font-size:20px;
+    font-weight:900;
+}}
+.week-row em{{
+    font-style:normal;
+    font-weight:900;
+    font-size:12px;
+    text-align:right;
+}}
+@media(max-width:1200px){{
+    .week-card-grid{{grid-template-columns:repeat(2,minmax(230px,1fr));}}
+}}
+@media(max-width:700px){{
+    .week-card-grid{{grid-template-columns:1fr;}}
+}}
+
 </style>
 """,
         unsafe_allow_html=True,
@@ -548,7 +602,7 @@ def cache_valid():
         return False
     try:
         meta = json.loads(paths["meta"].read_text(encoding="utf-8"))
-        return float(meta.get("mtime", 0)) == float(ACTIVE_FILE.stat().st_mtime)
+        return float(meta.get("mtime", 0)) == float(ACTIVE_FILE.stat().st_mtime) and meta.get("version") == APP_CACHE_VERSION
     except Exception:
         return False
 
@@ -559,7 +613,7 @@ def write_cache(op, co, diag):
     co.to_parquet(paths["co"], index=False)
     diag.to_parquet(paths["diag"], index=False)
     paths["meta"].write_text(
-        json.dumps({"mtime": ACTIVE_FILE.stat().st_mtime, "procesado": datetime.now(MX_TZ).strftime("%Y-%m-%d %H:%M:%S")}, ensure_ascii=False, indent=2),
+        json.dumps({"mtime": ACTIVE_FILE.stat().st_mtime, "version": APP_CACHE_VERSION, "procesado": datetime.now(MX_TZ).strftime("%Y-%m-%d %H:%M:%S")}, ensure_ascii=False, indent=2),
         encoding="utf-8",
     )
 
@@ -694,7 +748,7 @@ def read_monthly_dev(file_path, progress=None):
         for i, row in enumerate(rows_iter, start=1):
             if i <= 10:
                 header_rows.append(list(row))
-            else:
+            if i >= 3:
                 data_rows.append(list(row))
 
         if not header_rows:
@@ -840,28 +894,27 @@ def filter_stores(df, stores=None):
 
 def table_by_store(op, co, start_date, end_date, stores=None):
     op2 = split_operation(op)
-    start = pd.to_datetime(start_date)
-    end = pd.to_datetime(end_date)
+    start = pd.to_datetime(start_date).normalize()
+    end = pd.to_datetime(end_date).normalize()
     stores_list = stores or PROJECT_STORES
 
-    # operación periodo
-    op_p = op2[(op2["Fecha"] >= start) & (op2["Fecha"] <= end)]
+    op_p = op2[(op2["Fecha"] >= start) & (op2["Fecha"] <= end)] if not op2.empty else op2
     op_p = filter_stores(op_p, stores_list)
 
-    # devoluciones mensuales periodo
     co_p = co[(co["Fecha"] >= start) & (co["Fecha"] <= end)] if not co.empty else co
     co_p = filter_stores(co_p, stores_list)
 
-    # pendientes anteriores
-    op_prev = op2[op2["Fecha"] < start]
+    prev_day = start - pd.Timedelta(days=1)
+    op_prev = op2[(op2["Fecha"] >= prev_day) & (op2["Fecha"] <= prev_day)] if not op2.empty else op2
     op_prev = filter_stores(op_prev, stores_list)
-    co_prev = co[co["Fecha"] < start] if not co.empty else co
+
+    co_prev = co[(co["Fecha"] >= prev_day) & (co["Fecha"] <= prev_day)] if not co.empty else co
     co_prev = filter_stores(co_prev, stores_list)
 
     rows = []
     for t in stores_list:
-        dev = co_p.loc[co_p["Tienda"].eq(t), "Dev_Pzs"].sum() if not co_p.empty else 0
-        prev_dev = co_prev.loc[co_prev["Tienda"].eq(t), "Dev_Pzs"].sum() if not co_prev.empty else 0
+        dev = co_p.loc[co_p["Tienda"].eq(t), "Dev_Pzs"].sum() if not co_p.empty and "Dev_Pzs" in co_p else 0
+        prev_dev = co_prev.loc[co_prev["Tienda"].eq(t), "Dev_Pzs"].sum() if not co_prev.empty and "Dev_Pzs" in co_prev else 0
 
         o = op_p[op_p["Tienda"].eq(t)] if not op_p.empty else pd.DataFrame()
         prev = op_prev[op_prev["Tienda"].eq(t)] if not op_prev.empty else pd.DataFrame()
@@ -873,7 +926,10 @@ def table_by_store(op, co, start_date, end_date, stores=None):
         hab = o["Habilitadas"].sum() if not o.empty else 0
         ubic = o["Ubicadas"].sum() if not o.empty else 0
 
-        prev_total = prev_dev + (prev["Muertos"].sum() if not prev.empty else 0) + (prev["Cajas"].sum() if not prev.empty else 0) + (prev["Probador"].sum() if not prev.empty else 0)
+        prev_muertos = prev["Muertos"].sum() if not prev.empty else 0
+        prev_cajas = prev["Cajas"].sum() if not prev.empty else 0
+        prev_prob = prev["Probador"].sum() if not prev.empty else 0
+        prev_total = prev_dev + prev_muertos + prev_cajas + prev_prob
         prev_ubic = prev["Ubicadas"].sum() if not prev.empty else 0
         pend_ant = max(prev_total - prev_ubic, 0)
 
@@ -901,6 +957,7 @@ def table_by_store(op, co, start_date, end_date, stores=None):
             "% Ubic.": pct_ub,
         })
     return pd.DataFrame(rows)
+
 
 
 def summary_from_table(df):
@@ -1145,29 +1202,66 @@ def nav_bar():
     return page
 
 
+def executive_week_cards(op, co):
+    if op.empty:
+        return
+    max_week = int(op["Semana ISO"].max())
+    weeks = list(range(max_week - 3, max_week + 1))
+
+    html = '<div style="margin:18px 0 8px 0;font-size:24px;font-weight:900;color:#3E4095;">📊 Resumen Ejecutivo</div>'
+    html += '<div class="week-card-grid">'
+    prev_ing = None
+    prev_hab = None
+    prev_ub = None
+
+    for w in weeks:
+        dates = op.loc[op["Semana ISO"].eq(w), "Fecha"]
+        if dates.empty:
+            continue
+
+        df = table_by_store(op, co, dates.min(), dates.max(), PROJECT_STORES)
+        ingresos = df["Total"].sum()
+        hab = df["Habilitadas"].sum()
+        ub = df["Ubicadas"].sum()
+        recorridos = len(op[(op["Semana ISO"].eq(w)) & (op["Actividad"].map(norm_text).str.contains("RECORRIDO|RECOLECCION|RECOLECCIÓN", na=False))])
+
+        def delta(cur, prev):
+            if prev is None or prev == 0:
+                return "—", "#6B7280"
+            d = (cur - prev) / prev * 100
+            icon = "▲" if d >= 0 else "▼"
+            color = "#00A651" if d >= 0 else "#EC004F"
+            return f"{icon} {abs(d):.1f}%", color
+
+        d_ing, c_ing = delta(ingresos, prev_ing)
+        d_hab, c_hab = delta(hab, prev_hab)
+        d_ub, c_ub = delta(ub, prev_ub)
+
+        html += f"""
+        <div class="week-card">
+            <div class="week-card-head">Sem {w}</div>
+            <div class="week-row"><span>INGRESOS</span><b>{ingresos:,.0f}</b><em style="color:{c_ing};">{d_ing}</em></div>
+            <div class="week-row"><span>ACONDICIONADO</span><b>{hab:,.0f}</b><em style="color:{c_hab};">{d_hab}</em></div>
+            <div class="week-row"><span>UBICADO</span><b>{ub:,.0f}</b><em style="color:{c_ub};">{d_ub}</em></div>
+            <div class="week-row"><span>RECORRIDOS</span><b>{recorridos:,.0f}</b><em>—</em></div>
+        </div>
+        """
+        prev_ing, prev_hab, prev_ub = ingresos, hab, ub
+
+    html += '</div>'
+    st.markdown(html, unsafe_allow_html=True)
+
+
 def page_resumen(op, co):
     st.markdown("## Dashboard Ejecutivo")
     st.caption("Vista general de indicadores principales.")
     today = pd.to_datetime(op["Fecha"].max()) if not op.empty else pd.Timestamp.today()
     start = today - pd.Timedelta(days=27)
     df = table_by_store(op, co, start, today, PROJECT_STORES)
-    res = summary_from_table(df)
-    kpis(res)
-    st.markdown("### Últimas 4 semanas")
-    if not op.empty:
-        max_week = int(op["Semana ISO"].max())
-        weeks = list(range(max_week - 3, max_week + 1))
-        cards = []
-        for w in weeks:
-            start_w = op.loc[op["Semana ISO"].eq(w), "Fecha"].min()
-            end_w = op.loc[op["Semana ISO"].eq(w), "Fecha"].max()
-            if pd.isna(start_w):
-                continue
-            tdf = table_by_store(op, co, start_w, end_w, PROJECT_STORES)
-            s = summary_from_table(tdf)
-            cards.append({"Semana ISO": w, "Ingresos": s["Ingresos"], "% Habilitado": s["Acondicionado"]/max(s["Ingresos"],1)*100, "% Ubicado": s["Ubicado"]/max(s["Ingresos"],1)*100})
-        panel("Resumen Ejecutivo - Últimas 4 semanas", pd.DataFrame(cards), height=260)
+    kpis(summary_from_table(df))
+    executive_week_cards(op, co)
     combined_chart(df, "Ingreso vs Habilitado vs Ubicado por tienda")
+
 
 
 def page_por_dia(op, co):
@@ -1293,7 +1387,11 @@ def page_diagnostico(op, co, diag):
     st.markdown("## Diagnóstico")
     st.write(f"Operación: {len(op):,} registros")
     st.write(f"Comercial mensual Dev Pzs: {len(co):,} registros | Dev Pzs: {co['Dev_Pzs'].sum() if not co.empty else 0:,.0f}")
-    panel("Diagnóstico de hojas", diag, height=500)
+    panel("Diagnóstico de hojas", diag, height=420)
+    if not co.empty:
+        dev_diag = co.groupby(["Fecha", "Tienda"], as_index=False)["Dev_Pzs"].sum().sort_values(["Fecha","Tienda"])
+        panel("Validación Dev Pzs por fecha y tienda", dev_diag.tail(200), height=520)
+
 
 
 def page_configuracion():

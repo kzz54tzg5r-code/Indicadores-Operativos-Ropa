@@ -1,7 +1,11 @@
-# Indicadores Cambios y Muertos v10.1
+# Indicadores Cambios y Muertos v10.2
 
-Corrección:
-- Se corrigió parse_date para evitar AttributeError cuando una fecha inválida devuelve NaT.
-- El procesamiento de hojas mensuales ahora ignora encabezados que no sean fechas válidas.
+Correcciones:
+- Dashboard Ejecutivo ahora muestra tarjetas de últimas 4 semanas como el boceto.
+- Pendiente anterior corregido: sólo toma lo pendiente por ubicar del día anterior al periodo, no todo el histórico.
+- Base del periodo: ingresos del periodo + pendiente anterior.
+- Parser mensual lee Dev Pzs desde la fila 3 para no perder datos visibles del archivo.
+- Cache versionado v10.2: obliga a reprocesar el Excel para evitar usar datos viejos.
+- Diagnóstico incluye validación Dev Pzs por fecha y tienda.
 
-Sube app.py y requirements.txt a GitHub.
+Después de subir esta versión, presiona "Procesar archivo activo" nuevamente.
