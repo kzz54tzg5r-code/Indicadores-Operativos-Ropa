@@ -46,7 +46,7 @@ for p in [DATA_DIR, UPLOAD_DIR, CACHE_DIR, CONFIG_DIR, ASSETS_DIR]:
     p.mkdir(parents=True, exist_ok=True)
 
 MX_TZ = ZoneInfo("America/Mexico_City")
-APP_CACHE_VERSION = "v10.15"
+APP_CACHE_VERSION = "v10.16"
 AZUL = "#10245F"
 ROSA = "#EC007C"
 LAVANDA = "#F3F6FB"
@@ -714,6 +714,35 @@ def cache_valid():
         return False
 
 
+
+def normalize_commercial_df(co):
+    """Normaliza fecha y tienda comercial antes de usar en reportes."""
+    if co is None or co.empty:
+        return co
+    co = co.copy()
+
+    if "Fecha" in co.columns:
+        co["Fecha"] = pd.to_datetime(co["Fecha"], errors="coerce").dt.normalize()
+        co = co[co["Fecha"].notna()]
+        co["Fecha_txt"] = co["Fecha"].dt.strftime("%Y-%m-%d")
+
+    if "Tienda" in co.columns:
+        co["Tienda"] = co["Tienda"].map(canon_store)
+        co = co[co["Tienda"].astype(str).str.len() > 0]
+
+    for c in ["Dev_Pzs", "Vta_Pzs", "Vta_Imp", "Costo_Dev"]:
+        if c not in co.columns:
+            co[c] = 0
+        co[c] = pd.to_numeric(co[c], errors="coerce").fillna(0)
+
+    group_cols = [c for c in ["Hoja", "Fecha", "Fecha_txt", "Tienda", "ID", "Color"] if c in co.columns]
+    if "Fecha" in group_cols and "Tienda" in group_cols:
+        co = co.groupby(group_cols, as_index=False)[["Dev_Pzs", "Vta_Pzs", "Vta_Imp", "Costo_Dev"]].sum()
+        co["Semana ISO"] = co["Fecha"].dt.isocalendar().week.astype(int)
+        co["Mes"] = co["Fecha"].dt.to_period("M").astype(str)
+
+    return co
+
 def write_cache(op, co, diag):
     paths = cache_paths()
     op.to_parquet(paths["op"], index=False)
@@ -739,6 +768,7 @@ def read_cache(mtime):
     op = pd.read_parquet(paths["op"]) if paths["op"].exists() else pd.DataFrame()
     co = pd.read_parquet(paths["co"]) if paths["co"].exists() else pd.DataFrame()
     diag = pd.read_parquet(paths["diag"]) if paths["diag"].exists() else pd.DataFrame()
+    co = normalize_commercial_df(co)
     return op, co, diag
 
 
@@ -1036,6 +1066,7 @@ def read_monthly_dev(file_path, progress=None):
         samples.insert(0, "Tipo", "Muestra lectura")
         diag = pd.concat([diag, samples], ignore_index=True, sort=False)
 
+    co = normalize_commercial_df(co)
     return co, diag
 
 
@@ -1054,8 +1085,10 @@ def process_excel(file_path):
 
     progress.progress(0.90, text="Guardando cache optimizado...")
     diag = pd.concat([diag_op, diag_co], ignore_index=True)
+    co = normalize_commercial_df(co)
     write_cache(op, co, diag)
     progress.progress(1.0, text="Archivo procesado correctamente.")
+    co = normalize_commercial_df(co)
     return op, co, diag
 
 
@@ -1590,7 +1623,13 @@ def page_diagnostico(op, co, diag):
     st.write(f"Comercial mensual Dev Pzs: {len(co):,} registros agrupados | Dev Pzs total: {co['Dev_Pzs'].sum() if not co.empty else 0:,.0f}")
     panel("Diagnóstico de hojas", diag, height=420)
     if not co.empty:
-        dev_diag = co.groupby(["Fecha_txt", "Tienda"], as_index=False)[["Dev_Pzs", "Vta_Pzs", "Vta_Imp"]].sum().sort_values(["Fecha_txt","Tienda"])
+        _co_diag = normalize_commercial_df(co)
+        dev_diag = (
+            _co_diag.groupby(["Fecha", "Tienda"], as_index=False)[["Dev_Pzs", "Vta_Pzs", "Vta_Imp"]]
+            .sum()
+            .sort_values(["Fecha", "Tienda"])
+        )
+        dev_diag["Fecha"] = pd.to_datetime(dev_diag["Fecha"], errors="coerce").dt.strftime("%Y-%m-%d")
         panel("Validación Comercial por fecha y tienda", dev_diag.tail(300), height=520)
         ecatepec_2806 = dev_diag[(dev_diag["Tienda"].eq("Ecatepec")) & (dev_diag["Fecha"].eq(pd.Timestamp("2026-06-28")))]
         if not ecatepec_2806.empty:

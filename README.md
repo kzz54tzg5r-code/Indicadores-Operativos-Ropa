@@ -1,12 +1,11 @@
-# Indicadores Cambios y Muertos v10.15
+# Indicadores Cambios y Muertos v10.16
 
 Correcciones:
-- Fecha comercial normalizada: evita timestamps como 1781308800000.
-- Homologación aplicada antes de agrupar:
+- Se corrige KeyError: Fecha_txt en Diagnóstico.
+- Se normaliza el comercial antes de guardar cache y antes de usarlo:
   Guadalajara Miravalle / Miravalle => Miravalle
   Guadalajara / Guadalajara Atemajac / Atemajac => Atemajac
-- Reagrupa después de homologar para que Miravalle y Atemajac sumen correctamente.
-- Diagnóstico comercial muestra Fecha_txt YYYY-MM-DD.
+- Se reagrupa después de homologar para que Dev Pzs se refleje en Miravalle/Atemajac.
 
 Después de subir:
 1. Reinicia app.
