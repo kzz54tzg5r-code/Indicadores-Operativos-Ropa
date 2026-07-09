@@ -46,7 +46,7 @@ for p in [DATA_DIR, UPLOAD_DIR, CACHE_DIR, CONFIG_DIR, ASSETS_DIR]:
     p.mkdir(parents=True, exist_ok=True)
 
 MX_TZ = ZoneInfo("America/Mexico_City")
-APP_CACHE_VERSION = "v10.11"
+APP_CACHE_VERSION = "v10.12"
 AZUL = "#10245F"
 ROSA = "#EC007C"
 LAVANDA = "#F3F6FB"
@@ -99,21 +99,20 @@ def canon_store(x):
         return ""
 
     s = norm_text(raw)
-    # Separadores comunes en Excel: Guadalajara/Miravalle, Guadalajara - Miravalle, etc.
     s_clean = re.sub(r"[^A-Z0-9]+", " ", s).strip()
 
-    # Regla oficial:
-    # Cualquier texto que contenga MIRAVALLE se concentra en Miravalle.
-    # Esto cubre: Miravalle, Guadalajara Miravalle, Guadalajara/Miravalle, GDL-Miravalle.
+    # Regla oficial Guadalajara:
+    # - GUADALAJARA MIRAVALLE => Miravalle
+    # - MIRAVALLE => Miravalle
+    # - GUADALAJARA o GUADALAJARA ATEMAJAC => Atemajac
+    # Importante: el orden importa. Primero Miravalle, después Guadalajara/Atemajac.
     if "MIRAVALLE" in s_clean:
         return "Miravalle"
 
-    # Cualquier texto que contenga ATEMAJAC se concentra en Atemajac.
     if "ATEMAJAC" in s_clean:
         return "Atemajac"
 
-    # Guadalajara sola o GDL sola se concentra en Atemajac.
-    if s_clean in ["GUADALAJARA", "GDL"]:
+    if s_clean in ["GUADALAJARA", "GDL", "GUADALAJARA JALISCO"]:
         return "Atemajac"
 
     if "ARCO" in s_clean and "NORTE" in s_clean:
@@ -1519,7 +1518,7 @@ def page_macro(op, co):
 
 def page_diagnostico(op, co, diag):
     st.markdown("## Diagnóstico")
-    st.info("Homologación activa v10.11: cualquier texto con Miravalle se concentra en Miravalle; cualquier texto con Atemajac o Guadalajara/GDL sola se concentra en Atemajac.")
+    st.info("Homologación v10.12: Guadalajara Miravalle/Miravalle => Miravalle; Guadalajara/Guadalajara Atemajac/Atemajac => Atemajac.")
     st.write(f"Operación: {len(op):,} registros")
     st.write(f"Comercial mensual Dev Pzs: {len(co):,} registros agrupados | Dev Pzs total: {co['Dev_Pzs'].sum() if not co.empty else 0:,.0f}")
     panel("Diagnóstico de hojas", diag, height=420)
