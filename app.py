@@ -46,7 +46,7 @@ for p in [DATA_DIR, UPLOAD_DIR, CACHE_DIR, CONFIG_DIR, ASSETS_DIR]:
     p.mkdir(parents=True, exist_ok=True)
 
 MX_TZ = ZoneInfo("America/Mexico_City")
-APP_CACHE_VERSION = "v10.14"
+APP_CACHE_VERSION = "v10.14.1"
 AZUL = "#10245F"
 ROSA = "#EC007C"
 LAVANDA = "#F3F6FB"
@@ -693,6 +693,10 @@ def write_cache(op, co, diag):
     paths = cache_paths()
     op.to_parquet(paths["op"], index=False)
     co.to_parquet(paths["co"], index=False)
+    diag = diag.copy()
+    for _c in diag.columns:
+        if diag[_c].dtype == "object":
+            diag[_c] = diag[_c].astype(str)
     diag.to_parquet(paths["diag"], index=False)
     paths["meta"].write_text(
         json.dumps({"mtime": ACTIVE_FILE.stat().st_mtime, "version": APP_CACHE_VERSION, "procesado": datetime.now(MX_TZ).strftime("%Y-%m-%d %H:%M:%S")}, ensure_ascii=False, indent=2),
