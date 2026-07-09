@@ -46,7 +46,7 @@ for p in [DATA_DIR, UPLOAD_DIR, CACHE_DIR, CONFIG_DIR, ASSETS_DIR]:
     p.mkdir(parents=True, exist_ok=True)
 
 MX_TZ = ZoneInfo("America/Mexico_City")
-APP_CACHE_VERSION = "v10.16"
+APP_CACHE_VERSION = "v10.17"
 AZUL = "#10245F"
 ROSA = "#EC007C"
 LAVANDA = "#F3F6FB"
@@ -184,7 +184,13 @@ def excel_col_name(n):
 
 
 def parse_date(x):
-    """Convierte fechas de Excel a Timestamp normalizado."""
+    """Convierte fechas de Excel/UI a Timestamp normalizado.
+
+    Corrección v10.17:
+    - Si viene como YYYY/MM/DD o YYYY-MM-DD, se interpreta como año-mes-día.
+    - Si viene como DD/MM/YYYY, se interpreta como día-mes-año.
+    - Evita que 2026/06/12 se convierta a 2026/12/06.
+    """
     if x is None:
         return pd.NaT
     try:
@@ -221,6 +227,16 @@ def parse_date(x):
     s = str(x).strip()
     if not s or s in ["-", "nan", "NaT", "None"]:
         return pd.NaT
+
+    # Fecha ISO / año primero: 2026/06/28 o 2026-06-28
+    if re.match(r"^\d{4}[-/]\d{1,2}[-/]\d{1,2}$", s):
+        d = pd.to_datetime(s, errors="coerce", yearfirst=True, dayfirst=False)
+        return d.normalize() if pd.notna(d) else pd.NaT
+
+    # Fecha con día primero: 28/06/2026
+    if re.match(r"^\d{1,2}[-/]\d{1,2}[-/]\d{4}$", s):
+        d = pd.to_datetime(s, errors="coerce", dayfirst=True, yearfirst=False)
+        return d.normalize() if pd.notna(d) else pd.NaT
 
     s_num = re.sub(r"[^0-9.\-]", "", s)
     if re.fullmatch(r"-?\d+(\.\d+)?", s_num or ""):
@@ -715,6 +731,11 @@ def cache_valid():
 
 
 
+
+def normalize_selected_date(x):
+    d = parse_date(x)
+    return d.date() if pd.notna(d) else date.today()
+
 def normalize_commercial_df(co):
     """Normaliza fecha y tienda comercial antes de usar en reportes."""
     if co is None or co.empty:
@@ -722,7 +743,7 @@ def normalize_commercial_df(co):
     co = co.copy()
 
     if "Fecha" in co.columns:
-        co["Fecha"] = pd.to_datetime(co["Fecha"], errors="coerce").dt.normalize()
+        co["Fecha"] = co["Fecha"].apply(parse_date)
         co = co[co["Fecha"].notna()]
         co["Fecha_txt"] = co["Fecha"].dt.strftime("%Y-%m-%d")
 
@@ -1052,7 +1073,7 @@ def read_monthly_dev(file_path, progress=None):
 
     co = pd.DataFrame(all_records)
     if not co.empty:
-        co["Fecha"] = pd.to_datetime(co["Fecha"], errors="coerce").dt.normalize()
+        co["Fecha"] = co["Fecha"].apply(parse_date)
         co["Fecha_txt"] = co["Fecha"].dt.strftime("%Y-%m-%d")
         co["Tienda"] = co["Tienda"].map(canon_store)
         # Reagrupar después de homologar para unir Guadalajara Miravalle -> Miravalle y Guadalajara -> Atemajac.
