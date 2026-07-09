@@ -46,7 +46,7 @@ for p in [DATA_DIR, UPLOAD_DIR, CACHE_DIR, CONFIG_DIR, ASSETS_DIR]:
     p.mkdir(parents=True, exist_ok=True)
 
 MX_TZ = ZoneInfo("America/Mexico_City")
-APP_CACHE_VERSION = "v10.10"
+APP_CACHE_VERSION = "v10.11"
 AZUL = "#10245F"
 ROSA = "#EC007C"
 LAVANDA = "#F3F6FB"
@@ -99,68 +99,74 @@ def canon_store(x):
         return ""
 
     s = norm_text(raw)
+    # Separadores comunes en Excel: Guadalajara/Miravalle, Guadalajara - Miravalle, etc.
+    s_clean = re.sub(r"[^A-Z0-9]+", " ", s).strip()
 
-    # Homologación oficial de tiendas.
-    # Miravalle sólo si viene como Miravalle o Guadalajara Miravalle.
-    if s == "MIRAVALLE" or "GUADALAJARA MIRAVALLE" in s or "GDL MIRAVALLE" in s:
+    # Regla oficial:
+    # Cualquier texto que contenga MIRAVALLE se concentra en Miravalle.
+    # Esto cubre: Miravalle, Guadalajara Miravalle, Guadalajara/Miravalle, GDL-Miravalle.
+    if "MIRAVALLE" in s_clean:
         return "Miravalle"
 
-    # Atemajac concentra Guadalajara / Guadalajara Atemajac.
-    if s == "GUADALAJARA" or s == "GDL" or "GUADALAJARA ATEMAJAC" in s or "GDL ATEMAJAC" in s or s == "ATEMAJAC":
+    # Cualquier texto que contenga ATEMAJAC se concentra en Atemajac.
+    if "ATEMAJAC" in s_clean:
         return "Atemajac"
 
-    if "ARCO" in s and "NORTE" in s:
+    # Guadalajara sola o GDL sola se concentra en Atemajac.
+    if s_clean in ["GUADALAJARA", "GDL"]:
+        return "Atemajac"
+
+    if "ARCO" in s_clean and "NORTE" in s_clean:
         return "Arco Norte"
 
-    if "PUEBLA" in s and "SUR" in s:
+    if "PUEBLA" in s_clean and "SUR" in s_clean:
         return "Puebla Sur"
 
-    if s in ["PUEBLA CENTRO", "PUEBLA CENTRO ROPA"] or s == "PUEBLA":
+    if s_clean in ["PUEBLA CENTRO", "PUEBLA CENTRO ROPA"] or s_clean == "PUEBLA":
         return "Puebla"
 
-    if "ECATEPEC" in s:
+    if "ECATEPEC" in s_clean:
         return "Ecatepec"
 
-    if "VALLEJO" in s:
+    if "VALLEJO" in s_clean:
         return "Vallejo"
 
-    if "IZTAPALAPA" in s:
+    if "IZTAPALAPA" in s_clean:
         return "Iztapalapa"
 
-    if "IXTAPALUCA" in s:
+    if "IXTAPALUCA" in s_clean:
         return "Ixtapaluca"
 
-    if "NAUCALPAN" in s:
+    if "NAUCALPAN" in s_clean:
         return "Naucalpan"
 
-    if "TOLUCA" in s:
+    if "TOLUCA" in s_clean:
         return "Toluca"
 
-    if "QUERETARO" in s or "QUERÉTARO" in raw.upper():
+    if "QUERETARO" in s_clean or "QUERÉTARO" in raw.upper():
         return "Querétaro"
 
-    if "LEON" in s or "LEÓN" in raw.upper():
+    if "LEON" in s_clean or "LEÓN" in raw.upper():
         return "León"
 
-    if "VERACRUZ" in s:
+    if "VERACRUZ" in s_clean:
         return "Veracruz"
 
-    if "AGUASCALIENTES" in s:
+    if "AGUASCALIENTES" in s_clean:
         return "Aguascalientes"
 
-    if "OLIVAR" in s:
+    if "OLIVAR" in s_clean:
         return "Olivar"
 
-    if "SAN LUIS" in s:
+    if "SAN LUIS" in s_clean:
         return "San Luis"
 
-    if s == "CENTRO" or "CENTRO HISTORICO" in s or "CENTRO HISTÓRICO" in raw.upper():
+    if s_clean == "CENTRO" or "CENTRO HISTORICO" in s_clean or "CENTRO HISTÓRICO" in raw.upper():
         return "Centro"
 
-    # Respeta mapa original si existe.
     try:
         for k, v in STORE_MAP.items():
-            if norm_text(k) == s:
+            if norm_text(k) == s or norm_text(k) == s_clean:
                 return v
     except Exception:
         pass
@@ -170,7 +176,7 @@ def canon_store(x):
         "DEV PZS", "VENTA NETA EN", "VENTA NETA", "CATEGORIA", "SUB CATEGORIA",
         "SUB CATEGORÍA", "FAMILIA RLN", "GRUPO RLN", "PRECIO MENUDEO"
     }
-    if s in invalid:
+    if s_clean in invalid or s in invalid:
         return ""
 
     return raw.title()
@@ -1513,7 +1519,7 @@ def page_macro(op, co):
 
 def page_diagnostico(op, co, diag):
     st.markdown("## Diagnóstico")
-    st.info("Homologación activa: Guadalajara y Guadalajara Atemajac se concentran en Atemajac; Guadalajara Miravalle y Miravalle se concentran en Miravalle.")
+    st.info("Homologación activa v10.11: cualquier texto con Miravalle se concentra en Miravalle; cualquier texto con Atemajac o Guadalajara/GDL sola se concentra en Atemajac.")
     st.write(f"Operación: {len(op):,} registros")
     st.write(f"Comercial mensual Dev Pzs: {len(co):,} registros agrupados | Dev Pzs total: {co['Dev_Pzs'].sum() if not co.empty else 0:,.0f}")
     panel("Diagnóstico de hojas", diag, height=420)

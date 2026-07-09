@@ -1,15 +1,13 @@
-# Indicadores Cambios y Muertos v10.10
+# Indicadores Cambios y Muertos v10.11
 
-Homologación de tiendas:
-- Miravalle → Miravalle
-- Guadalajara Miravalle → Miravalle
-- GDL Miravalle → Miravalle
-- Guadalajara → Atemajac
-- Guadalajara Atemajac → Atemajac
-- GDL Atemajac → Atemajac
-- Atemajac → Atemajac
+Corrección:
+- Miravalle ahora se detecta por contenido, no sólo por texto exacto.
+- Reconoce: Miravalle, Guadalajara Miravalle, Guadalajara/Miravalle, GDL-Miravalle, etc.
+- Atemajac reconoce: Atemajac, Guadalajara Atemajac.
+- Guadalajara sola o GDL sola se concentran en Atemajac.
+- Cache versionado v10.11.
 
-También mantiene homologación para Arco Norte, Puebla, Puebla Sur, Ecatepec, Vallejo, Iztapalapa, Ixtapaluca, Naucalpan, Toluca, Querétaro, León, Veracruz, Aguascalientes, Olivar, San Luis y Centro.
-
-Importante:
-Después de subir esta versión, borra archivo persistido y vuelve a procesar el Excel para regenerar el cache v10.10.
+Después de subir:
+1. Borra archivo persistido.
+2. Carga de nuevo el Excel.
+3. Presiona Procesar archivo activo.
