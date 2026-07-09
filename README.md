@@ -1,15 +1,15 @@
-# Indicadores Cambios y Muertos v10.8
+# Indicadores Cambios y Muertos v10.10
 
-Cambio:
-- Se agregaron alias robustos de tiendas.
-- Miravalle ahora reconoce:
-  - Miravalle
-  - Guadalajara Miravalle
-  - GDL Miravalle
-  - Tienda Guadalajara Miravalle
-  - cualquier texto que contenga Miravalle
+Homologación de tiendas:
+- Miravalle → Miravalle
+- Guadalajara Miravalle → Miravalle
+- GDL Miravalle → Miravalle
+- Guadalajara → Atemajac
+- Guadalajara Atemajac → Atemajac
+- GDL Atemajac → Atemajac
+- Atemajac → Atemajac
 
-También se reforzaron alias para Arco Norte, Puebla Sur, Ecatepec, Vallejo, Iztapalapa, Naucalpan, Querétaro, León, Veracruz, Toluca, Aguascalientes, Centro, Olivar, Atemajac e Ixtapaluca.
+También mantiene homologación para Arco Norte, Puebla, Puebla Sur, Ecatepec, Vallejo, Iztapalapa, Ixtapaluca, Naucalpan, Toluca, Querétaro, León, Veracruz, Aguascalientes, Olivar, San Luis y Centro.
 
 Importante:
-Después de subir esta versión, vuelve a procesar el archivo activo para regenerar el cache v10.8.
+Después de subir esta versión, borra archivo persistido y vuelve a procesar el Excel para regenerar el cache v10.10.
