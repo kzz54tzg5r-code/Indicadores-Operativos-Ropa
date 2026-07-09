@@ -46,7 +46,7 @@ for p in [DATA_DIR, UPLOAD_DIR, CACHE_DIR, CONFIG_DIR, ASSETS_DIR]:
     p.mkdir(parents=True, exist_ok=True)
 
 MX_TZ = ZoneInfo("America/Mexico_City")
-APP_CACHE_VERSION = "v10.12"
+APP_CACHE_VERSION = "v10.13"
 AZUL = "#10245F"
 ROSA = "#EC007C"
 LAVANDA = "#F3F6FB"
@@ -101,11 +101,9 @@ def canon_store(x):
     s = norm_text(raw)
     s_clean = re.sub(r"[^A-Z0-9]+", " ", s).strip()
 
-    # Regla oficial Guadalajara:
-    # - GUADALAJARA MIRAVALLE => Miravalle
-    # - MIRAVALLE => Miravalle
-    # - GUADALAJARA o GUADALAJARA ATEMAJAC => Atemajac
-    # Importante: el orden importa. Primero Miravalle, después Guadalajara/Atemajac.
+    # Regla oficial:
+    # GUADALAJARA MIRAVALLE / MIRAVALLE => Miravalle
+    # GUADALAJARA / GUADALAJARA ATEMAJAC / ATEMAJAC => Atemajac
     if "MIRAVALLE" in s_clean:
         return "Miravalle"
 
@@ -117,49 +115,34 @@ def canon_store(x):
 
     if "ARCO" in s_clean and "NORTE" in s_clean:
         return "Arco Norte"
-
     if "PUEBLA" in s_clean and "SUR" in s_clean:
         return "Puebla Sur"
-
     if s_clean in ["PUEBLA CENTRO", "PUEBLA CENTRO ROPA"] or s_clean == "PUEBLA":
         return "Puebla"
-
     if "ECATEPEC" in s_clean:
         return "Ecatepec"
-
     if "VALLEJO" in s_clean:
         return "Vallejo"
-
     if "IZTAPALAPA" in s_clean:
         return "Iztapalapa"
-
     if "IXTAPALUCA" in s_clean:
         return "Ixtapaluca"
-
     if "NAUCALPAN" in s_clean:
         return "Naucalpan"
-
     if "TOLUCA" in s_clean:
         return "Toluca"
-
     if "QUERETARO" in s_clean or "QUERÉTARO" in raw.upper():
         return "Querétaro"
-
     if "LEON" in s_clean or "LEÓN" in raw.upper():
         return "León"
-
     if "VERACRUZ" in s_clean:
         return "Veracruz"
-
     if "AGUASCALIENTES" in s_clean:
         return "Aguascalientes"
-
     if "OLIVAR" in s_clean:
         return "Olivar"
-
     if "SAN LUIS" in s_clean:
         return "San Luis"
-
     if s_clean == "CENTRO" or "CENTRO HISTORICO" in s_clean or "CENTRO HISTÓRICO" in raw.upper():
         return "Centro"
 
@@ -171,7 +154,7 @@ def canon_store(x):
         pass
 
     invalid = {
-        "TIENDA", "DIA", "DÍA", "FECHA", "VENTAS NETA PZS", "VENTAS NETAS",
+        "TIENDA", "TIENDAS", "DIA", "DÍA", "FECHA", "VENTAS NETA PZS", "VENTAS NETAS",
         "DEV PZS", "VENTA NETA EN", "VENTA NETA", "CATEGORIA", "SUB CATEGORIA",
         "SUB CATEGORÍA", "FAMILIA RLN", "GRUPO RLN", "PRECIO MENUDEO"
     }
@@ -844,7 +827,7 @@ def read_monthly_dev(file_path, progress=None):
         tienda_col = None
 
         for ridx, row in enumerate(top_rows):
-            tienda_cols = [i for i, v in enumerate(row) if norm_text(v) == "TIENDA"]
+            tienda_cols = [i for i, v in enumerate(row) if norm_text(v) in ["TIENDA", "TIENDAS"]]
             has_dev = any(("DEV" in norm_text(v) and "PZS" in norm_text(v)) for v in row)
             if tienda_cols and has_dev:
                 header_idx = ridx
@@ -1518,6 +1501,7 @@ def page_macro(op, co):
 
 def page_diagnostico(op, co, diag):
     st.markdown("## Diagnóstico")
+    st.info("Homologación v10.13: acepta encabezado Tienda/Tiendas; Guadalajara Miravalle/Miravalle => Miravalle; Guadalajara/Guadalajara Atemajac/Atemajac => Atemajac.")
     st.info("Homologación v10.12: Guadalajara Miravalle/Miravalle => Miravalle; Guadalajara/Guadalajara Atemajac/Atemajac => Atemajac.")
     st.write(f"Operación: {len(op):,} registros")
     st.write(f"Comercial mensual Dev Pzs: {len(co):,} registros agrupados | Dev Pzs total: {co['Dev_Pzs'].sum() if not co.empty else 0:,.0f}")
