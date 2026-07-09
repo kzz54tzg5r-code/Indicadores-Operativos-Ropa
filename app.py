@@ -13,6 +13,13 @@ from zoneinfo import ZoneInfo
 import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
+from io import BytesIO
+from reportlab.lib.pagesizes import landscape, letter
+from reportlab.lib import colors
+from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.graphics.shapes import Drawing, String, PolyLine
+from reportlab.graphics.charts.barcharts import VerticalBarChart
 import streamlit as st
 from openpyxl import load_workbook
 
@@ -46,7 +53,7 @@ for p in [DATA_DIR, UPLOAD_DIR, CACHE_DIR, CONFIG_DIR, ASSETS_DIR]:
     p.mkdir(parents=True, exist_ok=True)
 
 MX_TZ = ZoneInfo("America/Mexico_City")
-APP_CACHE_VERSION = "v10.19"
+APP_CACHE_VERSION = "v10.20"
 AZUL = "#10245F"
 ROSA = "#EC007C"
 LAVANDA = "#F3F6FB"
@@ -1385,42 +1392,122 @@ def combined_chart(df, title):
     if df is None or df.empty:
         return
     ymax = max(float(pd.to_numeric(df[c], errors="coerce").fillna(0).max()) for c in ["Total", "Habilitadas", "Ubicadas"])
-    ymax = ymax * 1.25 if ymax > 0 else 10
+    ymax = ymax * 1.35 if ymax > 0 else 10
     fig = go.Figure()
     fig.add_trace(go.Scatter(
         x=df["Tienda"], y=df["Total"], mode="lines+markers+text", name="Total ingresos",
         text=df["Total"].map(lambda x: f"{x:,.0f}"), textposition="top center",
-        textfont=dict(color="#111827", size=12, family="Arial Black"),
+        textfont=dict(color="#111827", size=13, family="Arial Black"),
         line=dict(color="#2FA7FF", width=4),
         marker=dict(color="#2FA7FF", size=8)
     ))
     fig.add_trace(go.Bar(
         x=df["Tienda"], y=df["Habilitadas"], name="Pzas Habilitadas", marker_color=AZUL,
         text=df["Habilitadas"].map(lambda x: f"{x:,.0f}"), textposition="outside",
-        textfont=dict(color="#111827", size=12, family="Arial Black")
+        textfont=dict(color="#111827", size=13, family="Arial Black"), cliponaxis=False
     ))
     fig.add_trace(go.Bar(
         x=df["Tienda"], y=df["Ubicadas"], name="Pzas Ubicadas", marker_color=ROSA,
         text=df["Ubicadas"].map(lambda x: f"{x:,.0f}"), textposition="outside",
-        textfont=dict(color="#111827", size=12, family="Arial Black")
+        textfont=dict(color="#111827", size=13, family="Arial Black"), cliponaxis=False
     ))
     fig.update_layout(
-        title=title, barmode="group", height=470, plot_bgcolor="white", paper_bgcolor="white",
+        title=title, barmode="group", height=500, plot_bgcolor="white", paper_bgcolor="white",
         legend=dict(orientation="h", y=1.10, x=1, xanchor="right"),
-        margin=dict(l=10, r=10, t=70, b=100), dragmode=False
+        margin=dict(l=10, r=10, t=80, b=110), dragmode=False,
+        uniformtext_minsize=10, uniformtext_mode="show"
     )
     fig.update_xaxes(tickangle=-45, showgrid=False, fixedrange=True)
     fig.update_yaxes(showgrid=True, gridcolor="#E5E7EB", fixedrange=True, range=[0, ymax])
     st.plotly_chart(fig, width="stretch", config={"displayModeBar": False, "scrollZoom": False, "doubleClick": False})
 
 
-def download_pdf_button(label="Descargar PDF"):
-    st.button(label, help="PDF en preparación para la siguiente versión modular.")
+def build_pdf_report(title, subtitle, kpi_values, df):
+    buffer = BytesIO()
+    doc = SimpleDocTemplate(buffer, pagesize=landscape(letter), rightMargin=18, leftMargin=18, topMargin=18, bottomMargin=14)
+    styles = getSampleStyleSheet()
+    story = []
+    story.append(Paragraph(title, ParagraphStyle("title_ps", parent=styles["Title"], fontSize=17, leading=20, textColor=colors.HexColor("#1D1259"), spaceAfter=2)))
+    story.append(Paragraph(subtitle, ParagraphStyle("sub_ps", parent=styles["Normal"], fontSize=8, leading=10, textColor=colors.HexColor("#5B6476"), spaceAfter=8)))
+
+    card_style = ParagraphStyle("card_ps", parent=styles["Normal"], fontSize=7, leading=10, textColor=colors.HexColor("#1D1259"))
+    cards = [
+        ("Piezas<br/>Ingresadas", fmt_num(kpi_values.get("Ingresos", 0)), "Dev + muertos + cajas + probador"),
+        ("Piezas<br/>Acondicionadas", fmt_num(kpi_values.get("Acondicionado", 0)), "Acondicionado"),
+        ("Piezas<br/>Ubicadas", fmt_num(kpi_values.get("Ubicado", 0)), "Ubicado"),
+        ("Pendientes<br/>por Ubicar", fmt_num(kpi_values.get("Pendiente", 0)), "Ingreso + pendiente ant. - ubicado"),
+        ("% Procesado", fmt_pct(kpi_values.get("% Procesado", 0)), "Ubicado / base"),
+    ]
+    row = []
+    for label, val, note in cards:
+        row.append(Paragraph(f"<b>{label}</b><br/><font color='#EC007A' size='15'><b>{val}</b></font><br/><font color='#4B5563' size='6'>{note}</font>", card_style))
+    cards_tbl = Table([row], colWidths=[146,146,146,146,146], rowHeights=[52])
+    cards_tbl.setStyle(TableStyle([
+        ("BACKGROUND", (0,0), (-1,-1), colors.white), ("BOX", (0,0), (-1,-1), .35, colors.HexColor("#DDE4F0")),
+        ("INNERGRID", (0,0), (-1,-1), 8, colors.HexColor("#F4F7FB")), ("VALIGN", (0,0), (-1,-1), "MIDDLE"),
+        ("LEFTPADDING", (0,0), (-1,-1), 10), ("RIGHTPADDING", (0,0), (-1,-1), 8),
+    ]))
+    story.append(cards_tbl); story.append(Spacer(1,8))
+    story.append(Paragraph("<b>Tabla por tienda - Por Dia</b>", ParagraphStyle("h2", parent=styles["Normal"], fontSize=10, textColor=colors.HexColor("#1D1259"), spaceAfter=5)))
+
+    cols = ["Tienda","Dev pzs","Muertos","Cajas","Probador","Pend. Ant.","Total","Recolectadas","Habilitadas","Pend. Hab.","% Acond.","Ubicadas","Pend. Ub.","% Ubic."]
+    pdf_df = df[[c for c in cols if c in df.columns]].copy()
+    for c in pdf_df.columns:
+        if c == "Tienda": continue
+        if "%" in c:
+            pdf_df[c] = pd.to_numeric(pdf_df[c], errors="coerce").fillna(0).map(lambda x: f"{x:.1f}%")
+        else:
+            pdf_df[c] = pd.to_numeric(pdf_df[c], errors="coerce").fillna(0).map(lambda x: f"{x:,.0f}")
+    data = [list(pdf_df.columns)] + pdf_df.astype(str).values.tolist()
+    col_widths = [70,45,45,43,46,52,48,60,58,55,52,50,54,48]
+    tbl = Table(data, colWidths=col_widths, repeatRows=1)
+    tbl.setStyle(TableStyle([
+        ("BACKGROUND", (0,0), (-1,0), colors.HexColor(AZUL)), ("TEXTCOLOR", (0,0), (-1,0), colors.white),
+        ("FONTNAME", (0,0), (-1,0), "Helvetica-Bold"), ("FONTSIZE", (0,0), (-1,0), 6.2),
+        ("FONTSIZE", (0,1), (-1,-1), 6.1), ("ALIGN", (1,1), (-1,-1), "RIGHT"),
+        ("ALIGN", (0,0), (-1,0), "CENTER"), ("GRID", (0,0), (-1,-1), .25, colors.HexColor("#DDE4F0")),
+        ("ROWBACKGROUNDS", (0,1), (-1,-1), [colors.white, colors.HexColor("#F7F9FC")]),
+        ("TOPPADDING", (0,0), (-1,-1), 3), ("BOTTOMPADDING", (0,0), (-1,-1), 3),
+    ]))
+    story.append(tbl); story.append(Spacer(1,8))
+    story.append(Paragraph("<b>Ingreso vs Habilitado vs Ubicado por tienda</b>", ParagraphStyle("h3", parent=styles["Normal"], fontSize=9, textColor=colors.HexColor("#1D1259"), spaceAfter=3)))
+
+    drawing = Drawing(740, 205)
+    tiendas = list(df["Tienda"])
+    hab = [float(x) for x in pd.to_numeric(df["Habilitadas"], errors="coerce").fillna(0)]
+    ubic = [float(x) for x in pd.to_numeric(df["Ubicadas"], errors="coerce").fillna(0)]
+    total = [float(x) for x in pd.to_numeric(df["Total"], errors="coerce").fillna(0)]
+    maxv = max(hab + ubic + total + [10]) * 1.35
+    bc = VerticalBarChart(); bc.x=45; bc.y=35; bc.height=130; bc.width=650
+    bc.data=[hab, ubic]; bc.categoryAxis.categoryNames=tiendas; bc.categoryAxis.labels.angle=35; bc.categoryAxis.labels.fontSize=6
+    bc.valueAxis.valueMin=0; bc.valueAxis.valueMax=maxv; bc.valueAxis.labels.fontSize=6
+    bc.bars[0].fillColor=colors.HexColor(AZUL); bc.bars[1].fillColor=colors.HexColor(ROSA)
+    drawing.add(bc)
+    n=max(1,len(tiendas)); group_w=650/n
+    for i,(h,u) in enumerate(zip(hab,ubic)):
+        for j,val in enumerate([h,u]):
+            x=45+i*group_w+group_w*(0.34+j*0.17); y=35+(val/maxv)*130+8
+            drawing.add(String(x-8,y,f"{val:,.0f}",fontSize=6.2,fillColor=colors.black,fontName="Helvetica-Bold"))
+    pts=[]
+    for i,val in enumerate(total):
+        x=45+i*group_w+group_w*.50; y=35+(val/maxv)*130; pts.append((x,y))
+    if len(pts)>=2: drawing.add(PolyLine(pts, strokeColor=colors.HexColor("#2FA7FF"), strokeWidth=2))
+    for (x,y),val in zip(pts,total):
+        drawing.add(String(x-10,y+9,f"{val:,.0f}",fontSize=6.5,fillColor=colors.black,fontName="Helvetica-Bold"))
+    story.append(drawing)
+    doc.build(story)
+    buffer.seek(0)
+    return buffer.getvalue()
 
 
-# ============================================================
-# SIDEBAR / LOGIN
-# ============================================================
+def download_pdf_button(label="Descargar PDF", title="Reporte", subtitle="", kpi_values=None, df=None, key=None):
+    if kpi_values is not None and df is not None:
+        pdf = build_pdf_report(title, subtitle, kpi_values, df)
+        st.download_button(label, data=pdf, file_name=f"{title.lower().replace(' ', '_').replace('|','_')}.pdf", mime="application/pdf", key=key or f"pdf_{title}")
+    else:
+        st.button(label, help="PDF disponible en pestañas con indicadores.")
+
+
 def login_sidebar():
     st.sidebar.markdown("## 🔐 Acceso")
     if "user" in st.session_state:
@@ -1608,8 +1695,9 @@ def page_por_dia(op, co):
     dev_sum = co_dia["Dev_Pzs"].sum() if co_dia is not None and not co_dia.empty and "Dev_Pzs" in co_dia.columns else 0
     st.caption(f"Registros detectados: operación {op_count:,} | Dev Pzs mensual {dev_sum:,.0f}")
 
-    kpis(summary_from_table(df))
-    download_pdf_button()
+    resumen = summary_from_table(df)
+    kpis(resumen)
+    download_pdf_button("Descargar PDF", "Por Dia", f"Fecha: {pd.to_datetime(d_ts).strftime('%Y-%m-%d')}", resumen, df, key="pdf_por_dia")
     panel("Tabla por tienda - Por Día", df, height=360)
     combined_chart(df, "Ingreso vs Habilitado vs Ubicado por tienda")
 
