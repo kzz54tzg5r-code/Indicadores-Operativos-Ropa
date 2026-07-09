@@ -46,7 +46,7 @@ for p in [DATA_DIR, UPLOAD_DIR, CACHE_DIR, CONFIG_DIR, ASSETS_DIR]:
     p.mkdir(parents=True, exist_ok=True)
 
 MX_TZ = ZoneInfo("America/Mexico_City")
-APP_CACHE_VERSION = "v10.17"
+APP_CACHE_VERSION = "v10.18"
 AZUL = "#10245F"
 ROSA = "#EC007C"
 LAVANDA = "#F3F6FB"
@@ -1143,46 +1143,74 @@ def filter_stores(df, stores=None):
     return df[df["Tienda"].isin(stores)]
 
 
+
+def normalize_operation_df(op):
+    """Normaliza fechas/tiendas operativas antes de reportar."""
+    if op is None or op.empty:
+        return op
+    op = op.copy()
+
+    # Recalcular fecha desde columnas originales si están disponibles.
+    for cand in ["Fecha s", "Fecha_s", "Fecha original", "Fecha Original"]:
+        if cand in op.columns:
+            parsed = op[cand].apply(parse_date)
+            if parsed.notna().sum() >= max(1, len(op) * 0.4):
+                op["Fecha"] = parsed
+                break
+
+    if "Fecha" in op.columns:
+        op["Fecha"] = op["Fecha"].apply(parse_date)
+        op = op[op["Fecha"].notna()]
+        op["Semana ISO"] = op["Fecha"].dt.isocalendar().week.astype(int)
+        op["Mes"] = op["Fecha"].dt.to_period("M").astype(str)
+
+    if "Tienda" in op.columns:
+        op["Tienda"] = op["Tienda"].map(canon_store)
+
+    return op
+
 def table_by_store(op, co, start_date, end_date, stores=None):
+    op = normalize_operation_df(op)
+    co = normalize_commercial_df(co)
+
     op2 = split_operation(op)
-    start = pd.to_datetime(start_date).normalize()
-    end = pd.to_datetime(end_date).normalize()
+    start = parse_date(start_date)
+    end = parse_date(end_date)
     stores_list = stores or PROJECT_STORES
 
-    op_p = op2[(op2["Fecha"] >= start) & (op2["Fecha"] <= end)] if not op2.empty else op2
+    op_p = op2[(op2["Fecha"] >= start) & (op2["Fecha"] <= end)] if op2 is not None and not op2.empty else pd.DataFrame()
     op_p = filter_stores(op_p, stores_list)
 
-    co_p = co[(co["Fecha"] >= start) & (co["Fecha"] <= end)] if not co.empty else co
+    co_p = co[(co["Fecha"] >= start) & (co["Fecha"] <= end)] if co is not None and not co.empty else pd.DataFrame()
     co_p = filter_stores(co_p, stores_list)
 
-    # Pendiente anterior: sólo día anterior al inicio del periodo.
     prev_day = start - pd.Timedelta(days=1)
-    op_prev = op2[(op2["Fecha"] >= prev_day) & (op2["Fecha"] <= prev_day)] if not op2.empty else op2
+    op_prev = op2[(op2["Fecha"] >= prev_day) & (op2["Fecha"] <= prev_day)] if op2 is not None and not op2.empty else pd.DataFrame()
     op_prev = filter_stores(op_prev, stores_list)
 
-    co_prev = co[(co["Fecha"] >= prev_day) & (co["Fecha"] <= prev_day)] if not co.empty else co
+    co_prev = co[(co["Fecha"] >= prev_day) & (co["Fecha"] <= prev_day)] if co is not None and not co.empty else pd.DataFrame()
     co_prev = filter_stores(co_prev, stores_list)
 
     rows = []
     for t in stores_list:
-        dev = co_p.loc[co_p["Tienda"].eq(t), "Dev_Pzs"].sum() if not co_p.empty and "Dev_Pzs" in co_p else 0
-        prev_dev = co_prev.loc[co_prev["Tienda"].eq(t), "Dev_Pzs"].sum() if not co_prev.empty and "Dev_Pzs" in co_prev else 0
+        dev = pd.to_numeric(co_p.loc[co_p["Tienda"].eq(t), "Dev_Pzs"], errors="coerce").fillna(0).sum() if not co_p.empty and "Dev_Pzs" in co_p.columns else 0
+        prev_dev = pd.to_numeric(co_prev.loc[co_prev["Tienda"].eq(t), "Dev_Pzs"], errors="coerce").fillna(0).sum() if not co_prev.empty and "Dev_Pzs" in co_prev.columns else 0
 
         o = op_p[op_p["Tienda"].eq(t)] if not op_p.empty else pd.DataFrame()
         prev = op_prev[op_prev["Tienda"].eq(t)] if not op_prev.empty else pd.DataFrame()
 
-        muertos = o["Muertos"].sum() if not o.empty else 0
-        cajas = o["Cajas"].sum() if not o.empty else 0
-        prob = o["Probador"].sum() if not o.empty else 0
-        reco = o["Recolectadas"].sum() if not o.empty else 0
-        hab = o["Habilitadas"].sum() if not o.empty else 0
-        ubic = o["Ubicadas"].sum() if not o.empty else 0
+        muertos = o["Muertos"].sum() if not o.empty and "Muertos" in o.columns else 0
+        cajas = o["Cajas"].sum() if not o.empty and "Cajas" in o.columns else 0
+        prob = o["Probador"].sum() if not o.empty and "Probador" in o.columns else 0
+        reco = o["Recolectadas"].sum() if not o.empty and "Recolectadas" in o.columns else 0
+        hab = o["Habilitadas"].sum() if not o.empty and "Habilitadas" in o.columns else 0
+        ubic = o["Ubicadas"].sum() if not o.empty and "Ubicadas" in o.columns else 0
 
-        prev_muertos = prev["Muertos"].sum() if not prev.empty else 0
-        prev_cajas = prev["Cajas"].sum() if not prev.empty else 0
-        prev_prob = prev["Probador"].sum() if not prev.empty else 0
+        prev_muertos = prev["Muertos"].sum() if not prev.empty and "Muertos" in prev.columns else 0
+        prev_cajas = prev["Cajas"].sum() if not prev.empty and "Cajas" in prev.columns else 0
+        prev_prob = prev["Probador"].sum() if not prev.empty and "Probador" in prev.columns else 0
         prev_total_ing = prev_dev + prev_muertos + prev_cajas + prev_prob
-        prev_ubic = prev["Ubicadas"].sum() if not prev.empty else 0
+        prev_ubic = prev["Ubicadas"].sum() if not prev.empty and "Ubicadas" in prev.columns else 0
         pend_ant = max(prev_total_ing - prev_ubic, 0)
 
         ingresos_dia = dev + muertos + cajas + prob
@@ -1212,15 +1240,14 @@ def table_by_store(op, co, start_date, end_date, stores=None):
     return pd.DataFrame(rows)
 
 
-
 def summary_from_table(df):
     if df.empty:
         return {"Ingresos":0,"Acondicionado":0,"Ubicado":0,"Pendiente":0,"% Procesado":0}
-    ingresos = df["Total"].sum()
-    hab = df["Habilitadas"].sum()
-    ubic = df["Ubicadas"].sum()
-    pend = df["Pend. Ub."].sum()
-    pct = ubic / (ingresos + df["Pend. Ant."].sum()) * 100 if (ingresos + df["Pend. Ant."].sum()) else 0
+    ingresos = pd.to_numeric(df["Total"], errors="coerce").fillna(0).sum()
+    hab = pd.to_numeric(df["Habilitadas"], errors="coerce").fillna(0).sum()
+    ubic = pd.to_numeric(df["Ubicadas"], errors="coerce").fillna(0).sum()
+    pend = pd.to_numeric(df["Pend. Ub."], errors="coerce").fillna(0).sum()
+    pct = ubic / ingresos * 100 if ingresos else 0
     return {"Ingresos": ingresos, "Acondicionado": hab, "Ubicado": ubic, "Pendiente": pend, "% Procesado": pct}
 
 
@@ -1455,10 +1482,12 @@ def nav_bar():
 
 
 def executive_week_cards(op, co):
-    if op.empty:
+    op = normalize_operation_df(op)
+    co = normalize_commercial_df(co)
+    if op is None or op.empty or "Semana ISO" not in op.columns:
         return
-    max_week = int(op["Semana ISO"].max())
-    weeks = list(range(max_week - 3, max_week + 1))
+
+    weeks = sorted(pd.Series(op["Semana ISO"]).dropna().astype(int).unique().tolist())[-4:]
 
     html = '<div style="margin:18px 0 8px 0;font-size:24px;font-weight:900;color:#3E4095;">📊 Resumen Ejecutivo</div>'
     html += '<div class="week-card-grid">'
@@ -1467,7 +1496,7 @@ def executive_week_cards(op, co):
     prev_ub = None
 
     for w in weeks:
-        dates = op.loc[op["Semana ISO"].eq(w), "Fecha"]
+        dates = op.loc[op["Semana ISO"].astype(int).eq(int(w)), "Fecha"]
         if dates.empty:
             continue
 
@@ -1475,7 +1504,7 @@ def executive_week_cards(op, co):
         ingresos = df["Total"].sum()
         hab = df["Habilitadas"].sum()
         ub = df["Ubicadas"].sum()
-        recorridos = len(op[(op["Semana ISO"].eq(w)) & (op["Actividad"].map(norm_text).str.contains("RECORRIDO|RECOLECCION|RECOLECCIÓN", na=False))])
+        recorridos = len(op[(op["Semana ISO"].astype(int).eq(int(w))) & (op["Actividad"].map(norm_text).str.contains("RECORRIDO|RECOLECCION|RECOLECCIÓN", na=False))]) if "Actividad" in op.columns else 0
 
         def delta(cur, prev):
             if prev is None or prev == 0:
@@ -1504,26 +1533,42 @@ def executive_week_cards(op, co):
     st.markdown(html, unsafe_allow_html=True)
 
 
-
 def page_resumen(op, co):
+    op = normalize_operation_df(op)
+    co = normalize_commercial_df(co)
     st.markdown("## Dashboard Ejecutivo")
     st.caption("Vista general de indicadores principales.")
-    today = pd.to_datetime(op["Fecha"].max()) if not op.empty else pd.Timestamp.today()
-    start = today - pd.Timedelta(days=27)
+    if op is None or op.empty:
+        st.info("Sin información operativa.")
+        return
+    weeks = sorted(pd.Series(op["Semana ISO"]).dropna().astype(int).unique().tolist())[-4:]
+    if weeks:
+        mask = op["Semana ISO"].astype(int).isin(weeks)
+        start = op.loc[mask, "Fecha"].min()
+        today = op.loc[mask, "Fecha"].max()
+    else:
+        today = pd.to_datetime(op["Fecha"].max())
+        start = today - pd.Timedelta(days=27)
     df = table_by_store(op, co, start, today, PROJECT_STORES)
     kpis(summary_from_table(df))
     executive_week_cards(op, co)
     combined_chart(df, "Ingreso vs Habilitado vs Ubicado por tienda")
 
 
-
 def page_por_dia(op, co):
+    op = normalize_operation_df(op)
+    co = normalize_commercial_df(co)
     st.markdown("## Por Día")
     st.caption("Ingresos, pendientes y avance por tienda.")
-    default_date = pd.to_datetime(op["Fecha"].max()).date() if not op.empty else date.today()
+    default_date = pd.to_datetime(op["Fecha"].max()).date() if op is not None and not op.empty else date.today()
     d = st.date_input("Fecha", value=default_date, key="dia_fecha")
-    df = table_by_store(op, co, d, d, PROJECT_STORES)
-    st.caption(f"Registros detectados: operación {len(op[op['Fecha'].eq(pd.to_datetime(d))]) if not op.empty else 0:,} | Dev Pzs mensual {co.loc[co['Fecha'].eq(pd.to_datetime(d)), 'Dev_Pzs'].sum() if not co.empty else 0:,.0f}")
+    d_ts = parse_date(d)
+    df = table_by_store(op, co, d_ts, d_ts, PROJECT_STORES)
+
+    op_count = len(op[pd.to_datetime(op["Fecha"], errors="coerce").dt.normalize().eq(d_ts)]) if op is not None and not op.empty else 0
+    dev_sum = co.loc[pd.to_datetime(co["Fecha"], errors="coerce").dt.normalize().eq(d_ts), "Dev_Pzs"].sum() if co is not None and not co.empty and "Dev_Pzs" in co.columns else 0
+    st.caption(f"Registros detectados: operación {op_count:,} | Dev Pzs mensual {dev_sum:,.0f}")
+
     kpis(summary_from_table(df))
     download_pdf_button()
     panel("Tabla por tienda - Por Día", df, height=360)

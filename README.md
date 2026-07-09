@@ -1,15 +1,14 @@
-# Indicadores Cambios y Muertos v10.17
+# Indicadores Cambios y Muertos v10.18
 
-Corrección:
-- Evita invertir mes/día en filtros de Por Día.
-- YYYY/MM/DD se interpreta como año-mes-día.
-- DD/MM/YYYY se interpreta como día-mes-año.
-- Reforzada comparación de fechas entre Operación y Comercial.
-- Reforzada normalización de fecha comercial usando parse_date.
+Correcciones:
+- Normaliza fechas operativas para evitar semanas 49 por fechas invertidas.
+- Por Día usa comparación de fechas normalizada.
+- Dev pzs se toma directo de comercial ya homologado por Fecha + Tienda.
+- Dashboard vuelve a mostrar últimas 4 semanas reales detectadas en la base.
+- % Procesado ya no duplica Pend. Ant. porque Total ya incluye el pendiente anterior.
 
 Después de subir:
-1. Reinicia app.
+1. Reinicia la app.
 2. Borra archivo persistido.
-3. Carga nuevamente Excel.
+3. Carga nuevamente el Excel.
 4. Procesar archivo activo.
-5. Verifica Por Día con 2026/06/28.
