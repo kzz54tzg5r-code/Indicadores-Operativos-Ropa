@@ -1,13 +1,15 @@
-# Indicadores Cambios y Muertos v10.7
+# Indicadores Cambios y Muertos v10.8
 
-Corrección:
-- Lector comercial reconstruido por bloques de fecha.
-- Cada fecha lee Ventas Neta Pzs, Dev Pzs y Venta Neta $.
-- Se genera tabla normalizada: Fecha | Tienda | Dev_Pzs | Vta_Pzs | Vta_Imp.
-- Cache versionado v10.7.
+Cambio:
+- Se agregaron alias robustos de tiendas.
+- Miravalle ahora reconoce:
+  - Miravalle
+  - Guadalajara Miravalle
+  - GDL Miravalle
+  - Tienda Guadalajara Miravalle
+  - cualquier texto que contenga Miravalle
 
-Después de subir:
-1. Reinicia la app.
-2. Borra archivo persistido.
-3. Carga nuevamente el Excel.
-4. Presiona Procesar archivo activo.
+También se reforzaron alias para Arco Norte, Puebla Sur, Ecatepec, Vallejo, Iztapalapa, Naucalpan, Querétaro, León, Veracruz, Toluca, Aguascalientes, Centro, Olivar, Atemajac e Ixtapaluca.
+
+Importante:
+Después de subir esta versión, vuelve a procesar el archivo activo para regenerar el cache v10.8.

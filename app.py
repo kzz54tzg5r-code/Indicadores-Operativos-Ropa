@@ -46,7 +46,7 @@ for p in [DATA_DIR, UPLOAD_DIR, CACHE_DIR, CONFIG_DIR, ASSETS_DIR]:
     p.mkdir(parents=True, exist_ok=True)
 
 MX_TZ = ZoneInfo("America/Mexico_City")
-APP_CACHE_VERSION = "v10.7"
+APP_CACHE_VERSION = "v10.8"
 AZUL = "#10245F"
 ROSA = "#EC007C"
 LAVANDA = "#F3F6FB"
@@ -94,43 +94,71 @@ STORE_MAP = {
 def canon_store(x):
     if pd.isna(x):
         return ""
-    s_raw = str(x).strip()
-    if not s_raw:
+    raw = str(x).strip()
+    if not raw:
         return ""
-    s = norm_text(s_raw)
 
-    aliases = {
-        "ARCO NORTE": "Arco Norte",
-        "ECATEPEC": "Ecatepec",
-        "MIRAVALLE": "Miravalle",
-        "PUEBLA SUR": "Puebla Sur",
-        "VALLEJO": "Vallejo",
-        "PUEBLA": "Puebla",
-        "IZTAPALAPA": "Iztapalapa",
-        "TOLUCA": "Toluca",
-        "CENTRO": "Centro",
-        "QUERETARO": "Querétaro",
-        "LEON": "León",
-        "NAUCALPAN": "Naucalpan",
-        "OLIVAR": "Olivar",
-        "AGUASCALIENTES": "Aguascalientes",
-        "GUADALAJARA": "Guadalajara",
-        "VERACRUZ": "Veracruz",
-        "SAN LUIS": "San Luis",
-        "IXTAPALUCA": "Ixtapaluca",
+    s = norm_text(raw)
+
+    # Alias robustos. Se evalúan primero por contenido para no perder variantes.
+    if "MIRAVALLE" in s:
+        return "Miravalle"
+    if "GUADALAJARA" in s and "MIRAVALLE" in s:
+        return "Miravalle"
+    if "ARCO" in s and "NORTE" in s:
+        return "Arco Norte"
+    if "PUEBLA" in s and "SUR" in s:
+        return "Puebla Sur"
+    if s in ["PUEBLA CENTRO", "PUEBLA CENTRO ROPA"]:
+        return "Puebla"
+    if "ECATEPEC" in s:
+        return "Ecatepec"
+    if "VALLEJO" in s:
+        return "Vallejo"
+    if "IZTAPALAPA" in s:
+        return "Iztapalapa"
+    if "IXTAPALUCA" in s:
+        return "Ixtapaluca"
+    if "NAUCALPAN" in s:
+        return "Naucalpan"
+    if "TOLUCA" in s:
+        return "Toluca"
+    if "QUERETARO" in s or "QUERÉTARO" in raw.upper():
+        return "Querétaro"
+    if "LEON" in s or "LEÓN" in raw.upper():
+        return "León"
+    if "VERACRUZ" in s:
+        return "Veracruz"
+    if "AGUASCALIENTES" in s:
+        return "Aguascalientes"
+    if "OLIVAR" in s:
+        return "Olivar"
+    if "ATEMAJAC" in s:
+        return "Atemajac"
+    if "SAN LUIS" in s:
+        return "San Luis"
+    if s == "CENTRO" or "CENTRO HISTORICO" in s or "CENTRO HISTÓRICO" in raw.upper():
+        return "Centro"
+    if s == "PUEBLA":
+        return "Puebla"
+
+    # Mapa original si existe en el archivo
+    try:
+        for k, v in STORE_MAP.items():
+            if norm_text(k) == s:
+                return v
+    except Exception:
+        pass
+
+    # Evitar devolver encabezados o textos que no son tienda.
+    invalid = {
+        "TIENDA", "DIA", "DÍA", "FECHA", "VENTAS NETA PZS", "DEV PZS",
+        "VENTA NETA EN", "VENTA NETA", "CATEGORIA", "SUB CATEGORIA"
     }
+    if s in invalid:
+        return ""
 
-    if s in aliases:
-        return aliases[s]
-
-    for k, v in STORE_MAP.items():
-        if norm_text(k) == s:
-            return v
-
-    # Cuando viene texto limpio no mapeado, conservar formato título.
-    if s not in ["TIENDA", "DIA", ""]:
-        return s_raw.title()
-    return ""
+    return raw.title()
 
 
 
@@ -1468,6 +1496,7 @@ def page_macro(op, co):
 
 def page_diagnostico(op, co, diag):
     st.markdown("## Diagnóstico")
+    st.info("Alias activo: Miravalle también reconoce Guadalajara Miravalle, GDL Miravalle y variantes con Miravalle.")
     st.write(f"Operación: {len(op):,} registros")
     st.write(f"Comercial mensual Dev Pzs: {len(co):,} registros agrupados | Dev Pzs total: {co['Dev_Pzs'].sum() if not co.empty else 0:,.0f}")
     panel("Diagnóstico de hojas", diag, height=420)
