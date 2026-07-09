@@ -1,11 +1,11 @@
-# Indicadores Cambios y Muertos v10.18
+# Indicadores Cambios y Muertos v10.19
 
 Correcciones:
-- Normaliza fechas operativas para evitar semanas 49 por fechas invertidas.
-- Por Día usa comparación de fechas normalizada.
-- Dev pzs se toma directo de comercial ya homologado por Fecha + Tienda.
-- Dashboard vuelve a mostrar últimas 4 semanas reales detectadas en la base.
-- % Procesado ya no duplica Pend. Ant. porque Total ya incluye el pendiente anterior.
+- Dev pzs en Por Día ahora filtra por Fecha_txt YYYY-MM-DD, igual que Diagnóstico.
+- Si hay fecha invertida por selección, intenta rescate día/mes.
+- Fecha por defecto de Por Día toma la última fecha comercial disponible para que Dev pzs no arranque en 0.
+- Gráfico: barras habilitadas usan el mismo azul de la tabla y la línea queda en azul claro.
+- Operación se normaliza antes de guardar y al leer cache.
 
 Después de subir:
 1. Reinicia la app.

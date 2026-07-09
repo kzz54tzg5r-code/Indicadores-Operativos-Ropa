@@ -46,7 +46,7 @@ for p in [DATA_DIR, UPLOAD_DIR, CACHE_DIR, CONFIG_DIR, ASSETS_DIR]:
     p.mkdir(parents=True, exist_ok=True)
 
 MX_TZ = ZoneInfo("America/Mexico_City")
-APP_CACHE_VERSION = "v10.18"
+APP_CACHE_VERSION = "v10.19"
 AZUL = "#10245F"
 ROSA = "#EC007C"
 LAVANDA = "#F3F6FB"
@@ -789,6 +789,7 @@ def read_cache(mtime):
     op = pd.read_parquet(paths["op"]) if paths["op"].exists() else pd.DataFrame()
     co = pd.read_parquet(paths["co"]) if paths["co"].exists() else pd.DataFrame()
     diag = pd.read_parquet(paths["diag"]) if paths["diag"].exists() else pd.DataFrame()
+    op = normalize_operation_df(op)
     co = normalize_commercial_df(co)
     return op, co, diag
 
@@ -1106,9 +1107,11 @@ def process_excel(file_path):
 
     progress.progress(0.90, text="Guardando cache optimizado...")
     diag = pd.concat([diag_op, diag_co], ignore_index=True)
+    op = normalize_operation_df(op)
     co = normalize_commercial_df(co)
     write_cache(op, co, diag)
     progress.progress(1.0, text="Archivo procesado correctamente.")
+    op = normalize_operation_df(op)
     co = normalize_commercial_df(co)
     return op, co, diag
 
@@ -1169,6 +1172,35 @@ def normalize_operation_df(op):
 
     return op
 
+
+def filter_commercial_by_date(co, start, end, stores_list):
+    if co is None or co.empty:
+        return pd.DataFrame()
+    co = normalize_commercial_df(co)
+    co = filter_stores(co, stores_list)
+    if co.empty:
+        return co
+
+    start_txt = pd.to_datetime(start).strftime("%Y-%m-%d")
+    end_txt = pd.to_datetime(end).strftime("%Y-%m-%d")
+
+    if "Fecha_txt" not in co.columns:
+        co["Fecha_txt"] = pd.to_datetime(co["Fecha"], errors="coerce").dt.strftime("%Y-%m-%d")
+
+    out = co[(co["Fecha_txt"] >= start_txt) & (co["Fecha_txt"] <= end_txt)].copy()
+
+    # Rescate: si no encontró Dev y es un solo día, intenta fecha con día/mes invertido.
+    if out.empty and start_txt == end_txt:
+        try:
+            d = pd.to_datetime(start)
+            alt = pd.Timestamp(year=d.year, month=d.day, day=d.month)
+            alt_txt = alt.strftime("%Y-%m-%d")
+            out = co[co["Fecha_txt"].eq(alt_txt)].copy()
+        except Exception:
+            pass
+
+    return out
+
 def table_by_store(op, co, start_date, end_date, stores=None):
     op = normalize_operation_df(op)
     co = normalize_commercial_df(co)
@@ -1181,15 +1213,13 @@ def table_by_store(op, co, start_date, end_date, stores=None):
     op_p = op2[(op2["Fecha"] >= start) & (op2["Fecha"] <= end)] if op2 is not None and not op2.empty else pd.DataFrame()
     op_p = filter_stores(op_p, stores_list)
 
-    co_p = co[(co["Fecha"] >= start) & (co["Fecha"] <= end)] if co is not None and not co.empty else pd.DataFrame()
-    co_p = filter_stores(co_p, stores_list)
+    co_p = filter_commercial_by_date(co, start, end, stores_list)
 
     prev_day = start - pd.Timedelta(days=1)
     op_prev = op2[(op2["Fecha"] >= prev_day) & (op2["Fecha"] <= prev_day)] if op2 is not None and not op2.empty else pd.DataFrame()
     op_prev = filter_stores(op_prev, stores_list)
 
-    co_prev = co[(co["Fecha"] >= prev_day) & (co["Fecha"] <= prev_day)] if co is not None and not co.empty else pd.DataFrame()
-    co_prev = filter_stores(co_prev, stores_list)
+    co_prev = filter_commercial_by_date(co, prev_day, prev_day, stores_list)
 
     rows = []
     for t in stores_list:
@@ -1355,16 +1385,17 @@ def combined_chart(df, title):
     if df is None or df.empty:
         return
     ymax = max(float(pd.to_numeric(df[c], errors="coerce").fillna(0).max()) for c in ["Total", "Habilitadas", "Ubicadas"])
-    ymax = ymax * 1.18 if ymax > 0 else 10
+    ymax = ymax * 1.25 if ymax > 0 else 10
     fig = go.Figure()
     fig.add_trace(go.Scatter(
         x=df["Tienda"], y=df["Total"], mode="lines+markers+text", name="Total ingresos",
         text=df["Total"].map(lambda x: f"{x:,.0f}"), textposition="top center",
         textfont=dict(color="#111827", size=12, family="Arial Black"),
-        line=dict(color="#1D3F8F", width=3)
+        line=dict(color="#2FA7FF", width=4),
+        marker=dict(color="#2FA7FF", size=8)
     ))
     fig.add_trace(go.Bar(
-        x=df["Tienda"], y=df["Habilitadas"], name="Pzas Habilitadas", marker_color="#4C00C9",
+        x=df["Tienda"], y=df["Habilitadas"], name="Pzas Habilitadas", marker_color=AZUL,
         text=df["Habilitadas"].map(lambda x: f"{x:,.0f}"), textposition="outside",
         textfont=dict(color="#111827", size=12, family="Arial Black")
     ))
@@ -1560,13 +1591,21 @@ def page_por_dia(op, co):
     co = normalize_commercial_df(co)
     st.markdown("## Por Día")
     st.caption("Ingresos, pendientes y avance por tienda.")
-    default_date = pd.to_datetime(op["Fecha"].max()).date() if op is not None and not op.empty else date.today()
+
+    if co is not None and not co.empty and "Fecha" in co.columns:
+        default_date = pd.to_datetime(co["Fecha"].max()).date()
+    elif op is not None and not op.empty:
+        default_date = pd.to_datetime(op["Fecha"].max()).date()
+    else:
+        default_date = date.today()
+
     d = st.date_input("Fecha", value=default_date, key="dia_fecha")
     d_ts = parse_date(d)
     df = table_by_store(op, co, d_ts, d_ts, PROJECT_STORES)
 
     op_count = len(op[pd.to_datetime(op["Fecha"], errors="coerce").dt.normalize().eq(d_ts)]) if op is not None and not op.empty else 0
-    dev_sum = co.loc[pd.to_datetime(co["Fecha"], errors="coerce").dt.normalize().eq(d_ts), "Dev_Pzs"].sum() if co is not None and not co.empty and "Dev_Pzs" in co.columns else 0
+    co_dia = filter_commercial_by_date(co, d_ts, d_ts, PROJECT_STORES)
+    dev_sum = co_dia["Dev_Pzs"].sum() if co_dia is not None and not co_dia.empty and "Dev_Pzs" in co_dia.columns else 0
     st.caption(f"Registros detectados: operación {op_count:,} | Dev Pzs mensual {dev_sum:,.0f}")
 
     kpis(summary_from_table(df))
