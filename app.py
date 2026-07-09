@@ -46,7 +46,7 @@ for p in [DATA_DIR, UPLOAD_DIR, CACHE_DIR, CONFIG_DIR, ASSETS_DIR]:
     p.mkdir(parents=True, exist_ok=True)
 
 MX_TZ = ZoneInfo("America/Mexico_City")
-APP_CACHE_VERSION = "v10.14.1"
+APP_CACHE_VERSION = "v10.15"
 AZUL = "#10245F"
 ROSA = "#EC007C"
 LAVANDA = "#F3F6FB"
@@ -101,15 +101,10 @@ def canon_store(x):
     s = norm_text(raw)
     s_clean = re.sub(r"[^A-Z0-9]+", " ", s).strip()
 
-    # Regla oficial:
-    # GUADALAJARA MIRAVALLE / MIRAVALLE => Miravalle
-    # GUADALAJARA / GUADALAJARA ATEMAJAC / ATEMAJAC => Atemajac
     if "MIRAVALLE" in s_clean:
         return "Miravalle"
-
     if "ATEMAJAC" in s_clean:
         return "Atemajac"
-
     if s_clean in ["GUADALAJARA", "GDL", "GUADALAJARA JALISCO"]:
         return "Atemajac"
 
@@ -189,33 +184,63 @@ def excel_col_name(n):
 
 
 def parse_date(x):
-    if pd.isna(x):
+    """Convierte fechas de Excel a Timestamp normalizado."""
+    if x is None:
         return pd.NaT
-
-    def _finish(d):
-        if pd.isna(d):
+    try:
+        if pd.isna(x):
             return pd.NaT
-        return pd.to_datetime(d).normalize()
+    except Exception:
+        pass
 
-    if isinstance(x, (datetime, date)):
-        return _finish(x)
+    if isinstance(x, (pd.Timestamp, datetime, date)):
+        try:
+            return pd.to_datetime(x).normalize()
+        except Exception:
+            return pd.NaT
 
-    if isinstance(x, (int, float)) and 20000 < float(x) < 60000:
-        d = pd.to_datetime(x, unit="D", origin="1899-12-30", errors="coerce")
-        return _finish(d)
+    if isinstance(x, (int, float, np.integer, np.floating)):
+        val = float(x)
+        if not np.isfinite(val):
+            return pd.NaT
+        try:
+            if val > 10**14:
+                return pd.to_datetime(int(val), unit="ns", errors="coerce").normalize()
+            if val > 10**11:
+                return pd.to_datetime(int(val), unit="ms", errors="coerce").normalize()
+            if val > 10**9:
+                return pd.to_datetime(int(val), unit="s", errors="coerce").normalize()
+        except Exception:
+            pass
+        if 20000 <= val <= 60000:
+            try:
+                return (pd.Timestamp("1899-12-30") + pd.to_timedelta(val, unit="D")).normalize()
+            except Exception:
+                pass
 
     s = str(x).strip()
-    if not s or s.lower() in ["nan", "none", "-"]:
+    if not s or s in ["-", "nan", "NaT", "None"]:
         return pd.NaT
 
-    # ISO con hora: 2026-04-20 17:48:26
-    if re.match(r"^\d{4}-\d{2}-\d{2}", s):
-        d = pd.to_datetime(s, errors="coerce", dayfirst=False)
-        return _finish(d)
+    s_num = re.sub(r"[^0-9.\-]", "", s)
+    if re.fullmatch(r"-?\d+(\.\d+)?", s_num or ""):
+        try:
+            val = float(s_num)
+            if val > 10**14:
+                return pd.to_datetime(int(val), unit="ns", errors="coerce").normalize()
+            if val > 10**11:
+                return pd.to_datetime(int(val), unit="ms", errors="coerce").normalize()
+            if val > 10**9:
+                return pd.to_datetime(int(val), unit="s", errors="coerce").normalize()
+            if 20000 <= val <= 60000:
+                return (pd.Timestamp("1899-12-30") + pd.to_timedelta(val, unit="D")).normalize()
+        except Exception:
+            pass
 
-    # dd/mm/yyyy o textos de Excel en español.
     d = pd.to_datetime(s, errors="coerce", dayfirst=True)
-    return _finish(d)
+    if pd.isna(d):
+        d = pd.to_datetime(s, errors="coerce", dayfirst=False)
+    return d.normalize() if pd.notna(d) else pd.NaT
 
 
 
@@ -697,6 +722,10 @@ def write_cache(op, co, diag):
     for _c in diag.columns:
         if diag[_c].dtype == "object":
             diag[_c] = diag[_c].astype(str)
+    diag = diag.copy()
+    for _c in diag.columns:
+        if diag[_c].dtype == "object":
+            diag[_c] = diag[_c].astype(str)
     diag.to_parquet(paths["diag"], index=False)
     paths["meta"].write_text(
         json.dumps({"mtime": ACTIVE_FILE.stat().st_mtime, "version": APP_CACHE_VERSION, "procesado": datetime.now(MX_TZ).strftime("%Y-%m-%d %H:%M:%S")}, ensure_ascii=False, indent=2),
@@ -806,16 +835,7 @@ def read_plantilla(file_path):
 
 
 def read_monthly_dev(file_path, progress=None):
-    """
-    Lector comercial mensual v10.14 con diagnóstico técnico.
-
-    Lee hojas mensuales por bloques:
-    Fecha superior + encabezados: Ventas Neta Pzs / Dev Pzs / Venta Neta $
-    Además genera diagnóstico con:
-    - columnas detectadas por fecha,
-    - columna Tienda/Tiendas,
-    - muestras de filas donde haya Dev Pzs.
-    """
+    """Lector comercial por bloques con fecha normalizada y tienda homologada antes de agrupar."""
     wb = load_workbook(file_path, read_only=True, data_only=True)
     monthly_sheets = [
         s for s in wb.sheetnames
@@ -830,7 +850,7 @@ def read_monthly_dev(file_path, progress=None):
 
     for idx_sheet, sheet_name in enumerate(monthly_sheets, start=1):
         if progress:
-            progress.progress(min(idx_sheet / total_sheets, 0.95), text=f"Diagnóstico comercial: {sheet_name}")
+            progress.progress(min(idx_sheet / total_sheets, 0.95), text=f"Leyendo comercial: {sheet_name}")
 
         ws = wb[sheet_name]
         rows = list(ws.iter_rows(values_only=True))
@@ -843,7 +863,6 @@ def read_monthly_dev(file_path, progress=None):
 
         header_idx = None
         tienda_col = None
-
         for ridx, row in enumerate(top_rows):
             tienda_cols = [i for i, v in enumerate(row) if norm_text(v) in ["TIENDA", "TIENDAS"]]
             has_dev = any(("DEV" in norm_text(v) and "PZS" in norm_text(v)) for v in row)
@@ -853,19 +872,12 @@ def read_monthly_dev(file_path, progress=None):
                 break
 
         if header_idx is None or tienda_col is None:
-            diag_rows.append({
-                "Tipo": "Resumen",
-                "Hoja": sheet_name,
-                "Estado": "No encontró Tienda/Tiendas + Dev Pzs",
-                "Registros": 0,
-                "Dev Pzs": 0
-            })
+            diag_rows.append({"Tipo": "Resumen", "Hoja": sheet_name, "Estado": "No encontró Tienda/Tiendas + Dev Pzs", "Registros": 0, "Dev Pzs": 0})
             continue
 
         header_row = list(rows[header_idx]) + [None] * (max_cols - len(rows[header_idx]))
         date_row = list(rows[header_idx - 1]) + [None] * (max_cols - len(rows[header_idx - 1])) if header_idx > 0 else [None] * max_cols
 
-        # Forward-fill de fecha hacia columnas del bloque.
         date_by_col = {}
         current_date = pd.NaT
         for c in range(max_cols):
@@ -880,6 +892,7 @@ def read_monthly_dev(file_path, progress=None):
             fecha = date_by_col.get(c, pd.NaT)
             if pd.isna(fecha):
                 continue
+            fecha = pd.to_datetime(fecha).normalize()
 
             if "DEV" in hnorm and "PZS" in hnorm:
                 blocks.setdefault(fecha, {})["dev_col"] = c
@@ -892,31 +905,22 @@ def read_monthly_dev(file_path, progress=None):
 
         if not blocks:
             diag_rows.append({
-                "Tipo": "Resumen",
-                "Hoja": sheet_name,
-                "Estado": "No encontró bloques comerciales",
-                "Fila encabezado": header_idx + 1,
-                "Col Tienda": excel_col_name(tienda_col),
-                "Registros": 0,
-                "Dev Pzs": 0
+                "Tipo": "Resumen", "Hoja": sheet_name, "Estado": "No encontró bloques comerciales",
+                "Fila encabezado": header_idx + 1, "Col Tienda": excel_col_name(tienda_col) if "excel_col_name" in globals() else tienda_col + 1,
+                "Registros": 0, "Dev Pzs": 0
             })
             continue
 
-        # Diagnóstico de columnas detectadas por fecha.
         for fecha, cols in sorted(blocks.items(), key=lambda x: x[0]):
             diag_rows.append({
                 "Tipo": "Columnas detectadas",
                 "Hoja": sheet_name,
-                "Fecha": pd.to_datetime(fecha).strftime("%Y/%m/%d"),
-                "Fila fecha": header_idx,
+                "Fecha": pd.to_datetime(fecha).strftime("%Y-%m-%d"),
                 "Fila encabezado": header_idx + 1,
-                "Col Tienda": excel_col_name(tienda_col),
-                "Col Ventas Pzs": excel_col_name(cols["vta_pzs_col"]) if "vta_pzs_col" in cols else "",
-                "Header Ventas Pzs": header_row[cols["vta_pzs_col"]] if "vta_pzs_col" in cols else "",
-                "Col Dev Pzs": excel_col_name(cols["dev_col"]) if "dev_col" in cols else "",
-                "Header Dev Pzs": header_row[cols["dev_col"]] if "dev_col" in cols else "",
-                "Col Venta $": excel_col_name(cols["vta_imp_col"]) if "vta_imp_col" in cols else "",
-                "Header Venta $": header_row[cols["vta_imp_col"]] if "vta_imp_col" in cols else "",
+                "Col Tienda": excel_col_name(tienda_col) if "excel_col_name" in globals() else tienda_col + 1,
+                "Col Ventas Pzs": excel_col_name(cols["vta_pzs_col"]) if "vta_pzs_col" in cols and "excel_col_name" in globals() else cols.get("vta_pzs_col", ""),
+                "Col Dev Pzs": excel_col_name(cols["dev_col"]) if "dev_col" in cols and "excel_col_name" in globals() else cols.get("dev_col", ""),
+                "Col Venta $": excel_col_name(cols["vta_imp_col"]) if "vta_imp_col" in cols and "excel_col_name" in globals() else cols.get("vta_imp_col", ""),
             })
 
         acc = {}
@@ -925,8 +929,6 @@ def read_monthly_dev(file_path, progress=None):
         sheet_vta_imp = 0.0
         lecturas = 0
         tiendas = set()
-
-        # Contador para no explotar el diagnóstico
         samples_per_sheet = 0
 
         for excel_row_num, raw in enumerate(rows[header_idx + 1:], start=header_idx + 2):
@@ -941,6 +943,8 @@ def read_monthly_dev(file_path, progress=None):
             tiendas.add(tienda)
 
             for fecha, cols in blocks.items():
+                fecha_norm = pd.to_datetime(fecha).normalize()
+
                 dev_raw = row[cols["dev_col"]] if "dev_col" in cols and cols["dev_col"] < len(row) else None
                 vta_raw = row[cols["vta_pzs_col"]] if "vta_pzs_col" in cols and cols["vta_pzs_col"] < len(row) else None
                 imp_raw = row[cols["vta_imp_col"]] if "vta_imp_col" in cols and cols["vta_imp_col"] < len(row) else None
@@ -952,7 +956,7 @@ def read_monthly_dev(file_path, progress=None):
                 if dev == 0 and vta_pzs == 0 and vta_imp == 0:
                     continue
 
-                key = (sheet_name, fecha, tienda)
+                key = (sheet_name, fecha_norm, tienda)
                 if key not in acc:
                     acc[key] = {"Dev_Pzs": 0.0, "Vta_Pzs": 0.0, "Vta_Imp": 0.0}
                 acc[key]["Dev_Pzs"] += dev
@@ -964,33 +968,31 @@ def read_monthly_dev(file_path, progress=None):
                 sheet_vta_imp += vta_imp
                 lecturas += 1
 
-                # Guardar muestras relevantes: Miravalle/Atemajac/Guadalajara o Dev diferente de cero.
-                if samples_per_sheet < 350 and (
-                    dev != 0
-                    or "MIRAVALLE" in norm_text(raw_tienda)
-                    or "GUADALAJARA" in norm_text(raw_tienda)
-                    or "ATEMAJAC" in norm_text(raw_tienda)
-                ):
+                raw_norm = norm_text(raw_tienda)
+                if samples_per_sheet < 350 and (dev != 0 or "MIRAVALLE" in raw_norm or "GUADALAJARA" in raw_norm or "ATEMAJAC" in raw_norm):
                     sample_rows.append({
                         "Hoja": sheet_name,
                         "Fila Excel": excel_row_num,
-                        "Fecha": pd.to_datetime(fecha).strftime("%Y/%m/%d"),
-                        "Tienda cruda": raw_tienda,
+                        "Fecha": fecha_norm.strftime("%Y-%m-%d"),
+                        "Tienda cruda": str(raw_tienda),
                         "Tienda homologada": tienda,
-                        "Col Dev": excel_col_name(cols["dev_col"]) if "dev_col" in cols else "",
-                        "Dev crudo": dev_raw,
+                        "Col Dev": excel_col_name(cols["dev_col"]) if "dev_col" in cols and "excel_col_name" in globals() else cols.get("dev_col", ""),
+                        "Dev crudo": str(dev_raw),
                         "Dev num": dev,
-                        "Ventas crudo": vta_raw,
+                        "Ventas crudo": str(vta_raw),
                         "Ventas num": vta_pzs,
-                        "Venta $ crudo": imp_raw,
+                        "Venta $ crudo": str(imp_raw),
                         "Venta $ num": vta_imp,
                     })
                     samples_per_sheet += 1
 
         for (hoja, fecha, tienda), vals in acc.items():
+            fecha = pd.to_datetime(fecha).normalize()
+            tienda = canon_store(tienda)
             all_records.append({
                 "Hoja": hoja,
                 "Fecha": fecha,
+                "Fecha_txt": fecha.strftime("%Y-%m-%d"),
                 "Tienda": tienda,
                 "Dev_Pzs": vals["Dev_Pzs"],
                 "Vta_Pzs": vals["Vta_Pzs"],
@@ -1006,7 +1008,7 @@ def read_monthly_dev(file_path, progress=None):
             "Estado": "OK",
             "Fila encabezado": header_idx + 1,
             "Fila fechas": header_idx,
-            "Col Tienda": excel_col_name(tienda_col),
+            "Col Tienda": excel_col_name(tienda_col) if "excel_col_name" in globals() else tienda_col + 1,
             "Fechas detectadas": len(blocks),
             "Registros agrupados": len(acc),
             "Lecturas con valor": lecturas,
@@ -1020,18 +1022,19 @@ def read_monthly_dev(file_path, progress=None):
 
     co = pd.DataFrame(all_records)
     if not co.empty:
-        co["Fecha"] = pd.to_datetime(co["Fecha"])
+        co["Fecha"] = pd.to_datetime(co["Fecha"], errors="coerce").dt.normalize()
+        co["Fecha_txt"] = co["Fecha"].dt.strftime("%Y-%m-%d")
         co["Tienda"] = co["Tienda"].map(canon_store)
+        # Reagrupar después de homologar para unir Guadalajara Miravalle -> Miravalle y Guadalajara -> Atemajac.
+        co = co.groupby(["Hoja", "Fecha", "Fecha_txt", "Tienda", "ID", "Color"], as_index=False)[["Dev_Pzs", "Vta_Pzs", "Vta_Imp", "Costo_Dev"]].sum()
         co["Semana ISO"] = co["Fecha"].dt.isocalendar().week.astype(int)
         co["Mes"] = co["Fecha"].dt.to_period("M").astype(str)
 
     diag = pd.DataFrame(diag_rows)
     samples = pd.DataFrame(sample_rows)
     if not samples.empty:
-        # Guardar muestras dentro del diagnóstico con Tipo diferenciable.
-        sample_as_diag = samples.copy()
-        sample_as_diag.insert(0, "Tipo", "Muestra lectura")
-        diag = pd.concat([diag, sample_as_diag], ignore_index=True, sort=False)
+        samples.insert(0, "Tipo", "Muestra lectura")
+        diag = pd.concat([diag, samples], ignore_index=True, sort=False)
 
     return co, diag
 
@@ -1587,7 +1590,7 @@ def page_diagnostico(op, co, diag):
     st.write(f"Comercial mensual Dev Pzs: {len(co):,} registros agrupados | Dev Pzs total: {co['Dev_Pzs'].sum() if not co.empty else 0:,.0f}")
     panel("Diagnóstico de hojas", diag, height=420)
     if not co.empty:
-        dev_diag = co.groupby(["Fecha", "Tienda"], as_index=False)[["Dev_Pzs", "Vta_Pzs", "Vta_Imp"]].sum().sort_values(["Fecha","Tienda"])
+        dev_diag = co.groupby(["Fecha_txt", "Tienda"], as_index=False)[["Dev_Pzs", "Vta_Pzs", "Vta_Imp"]].sum().sort_values(["Fecha_txt","Tienda"])
         panel("Validación Comercial por fecha y tienda", dev_diag.tail(300), height=520)
         ecatepec_2806 = dev_diag[(dev_diag["Tienda"].eq("Ecatepec")) & (dev_diag["Fecha"].eq(pd.Timestamp("2026-06-28")))]
         if not ecatepec_2806.empty:
