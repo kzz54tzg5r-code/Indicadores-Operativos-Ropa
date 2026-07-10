@@ -53,7 +53,7 @@ for p in [DATA_DIR, UPLOAD_DIR, CACHE_DIR, CONFIG_DIR, ASSETS_DIR]:
     p.mkdir(parents=True, exist_ok=True)
 
 MX_TZ = ZoneInfo("America/Mexico_City")
-APP_CACHE_VERSION = "v10.24"
+APP_CACHE_VERSION = "v10.25"
 AZUL = "#10245F"
 ROSA = "#EC007C"
 LAVANDA = "#F3F6FB"
@@ -2112,18 +2112,30 @@ def reliable_operation(op, co):
 
 
 def available_iso_weeks(op, co):
+    """Devuelve pares (año ISO, semana ISO) válidos y ordenados."""
     op = reliable_operation(op, co)
-    if op is None or op.empty:
+    if op is None or op.empty or "Fecha" not in op.columns:
         return []
+
+    fechas = pd.to_datetime(op["Fecha"], errors="coerce")
+    valid = fechas.notna()
+    if not valid.any():
+        return []
+
+    iso = fechas[valid].dt.isocalendar()
     pairs = (
-        op.assign(
-            _iso_year=pd.to_datetime(op["Fecha"]).dt.isocalendar().year.astype(int),
-            _iso_week=pd.to_datetime(op["Fecha"]).dt.isocalendar().week.astype(int),
-        )[["_iso_year", "_iso_week"]]
+        pd.DataFrame({
+            "iso_year": iso["year"].astype(int).to_numpy(),
+            "iso_week": iso["week"].astype(int).to_numpy(),
+        })
         .drop_duplicates()
-        .sort_values(["_iso_year", "_iso_week"])
+        .sort_values(["iso_year", "iso_week"])
     )
-    return [(int(r._iso_year), int(r._iso_week)) for r in pairs.itertuples(index=False)]
+
+    # name=None evita que pandas cambie nombres de columnas con guion bajo
+    # al convertirlas en namedtuples.
+    return [(int(year), int(week)) for year, week in pairs.itertuples(index=False, name=None)]
+
 
 def last_four_iso_week_ranges(op, co=None):
     """Cuatro semanas ISO consecutivas terminando en la última fecha real cargada."""

@@ -1,17 +1,14 @@
-# Indicadores Cambios y Muertos v10.24
+# Indicadores Cambios y Muertos v10.25
 
 Corrección:
-- Se escaparon correctamente las llaves del CSS dentro del f-string de `apply_styles()`.
-- Se elimina el error:
-  `NameError: position: relative !important;`
+- Se corrigió `available_iso_weeks()`.
+- Pandas cambiaba los nombres `_iso_year` y `_iso_week` al usar `itertuples()`.
+- Ahora se usan columnas sin guion bajo y `itertuples(name=None)`.
 
-Mantiene:
-- Semanas válidas hasta la última fecha real cargada.
-- PDF en las pestañas de indicadores.
-- Barra azul de extremo a extremo.
-- Pestaña activa en blanco intenso y línea rosa.
+Error corregido:
+`AttributeError` en `r._iso_year`.
 
 Para actualizar:
 1. Sustituye los archivos del repositorio.
-2. Reinicia la aplicación desde Streamlit Cloud.
+2. Reinicia la aplicación en Streamlit Cloud.
 3. No es necesario reprocesar el Excel.
