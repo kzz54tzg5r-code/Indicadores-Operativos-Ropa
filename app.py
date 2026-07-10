@@ -53,7 +53,7 @@ for p in [DATA_DIR, UPLOAD_DIR, CACHE_DIR, CONFIG_DIR, ASSETS_DIR]:
     p.mkdir(parents=True, exist_ok=True)
 
 MX_TZ = ZoneInfo("America/Mexico_City")
-APP_CACHE_VERSION = "v10.23"
+APP_CACHE_VERSION = "v10.24"
 AZUL = "#10245F"
 ROSA = "#EC007C"
 LAVANDA = "#F3F6FB"
@@ -651,7 +651,7 @@ html, body, [data-testid="stAppViewContainer"] {{
 
 
 /* Navegación corporativa de extremo a extremo */
-.ps-tabbar {
+.ps-tabbar {{
     position: relative !important;
     left: 50% !important;
     right: 50% !important;
@@ -664,38 +664,38 @@ html, body, [data-testid="stAppViewContainer"] {{
     border-top: 5px solid var(--rosa) !important;
     padding: 0 24px !important;
     overflow-x: auto !important;
-}
-.ps-tabbar [role="radiogroup"] {
+}}
+.ps-tabbar [role="radiogroup"] {{
     width: max-content !important;
     min-width: 100% !important;
     justify-content: flex-start !important;
     background: var(--azul) !important;
-}
-.ps-tabbar label {
+}}
+.ps-tabbar label {{
     background: var(--azul) !important;
     color: rgba(255,255,255,.72) !important;
     border: 0 !important;
     border-radius: 0 !important;
     min-height: 58px !important;
     padding: 0 22px !important;
-}
+}}
 .ps-tabbar label p,
-.ps-tabbar label span {
+.ps-tabbar label span {{
     color: rgba(255,255,255,.72) !important;
     font-weight: 800 !important;
-}
-.ps-tabbar label:has(input:checked) {
+}}
+.ps-tabbar label:has(input:checked) {{
     background: #142E73 !important;
     box-shadow: inset 0 -5px 0 var(--rosa) !important;
-}
+}}
 .ps-tabbar label:has(input:checked) p,
-.ps-tabbar label:has(input:checked) span {
+.ps-tabbar label:has(input:checked) span {{
     color: #FFFFFF !important;
     font-weight: 900 !important;
-}
-.ps-tabbar input[type="radio"] {
+}}
+.ps-tabbar input[type="radio"] {{
     accent-color: #FFFFFF !important;
-}
+}}
 
 </style>
 """,

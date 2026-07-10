@@ -1,13 +1,17 @@
-# Indicadores Cambios y Muertos v10.23
+# Indicadores Cambios y Muertos v10.24
 
-Correcciones:
-- Se descartan semanas creadas por fechas invertidas después de la última fecha comercial real.
-- Si el archivo llega al 28/06/2026, la última semana válida es la semana ISO 26.
-- Reporte Semanal muestra año + semana para evitar mezclar años.
-- PDF habilitado en Reporte Semanal, Mensual, Conversión, Recuperación Económica, Productividad, Recorridos y Ranking.
-- Barra de pestañas azul de extremo a extremo.
-- Texto blanco tenue en pestañas inactivas y blanco intenso en la pestaña activa.
+Corrección:
+- Se escaparon correctamente las llaves del CSS dentro del f-string de `apply_styles()`.
+- Se elimina el error:
+  `NameError: position: relative !important;`
 
-Después de subir:
-1. Reinicia la app.
-2. No necesitas volver a procesar el Excel.
+Mantiene:
+- Semanas válidas hasta la última fecha real cargada.
+- PDF en las pestañas de indicadores.
+- Barra azul de extremo a extremo.
+- Pestaña activa en blanco intenso y línea rosa.
+
+Para actualizar:
+1. Sustituye los archivos del repositorio.
+2. Reinicia la aplicación desde Streamlit Cloud.
+3. No es necesario reprocesar el Excel.
