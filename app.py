@@ -16,9 +16,9 @@ import plotly.graph_objects as go
 from io import BytesIO
 from reportlab.lib.pagesizes import landscape, letter
 from reportlab.lib import colors
-from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, Image as RLImage, KeepTogether
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-from reportlab.graphics.shapes import Drawing, String, PolyLine
+from reportlab.graphics.shapes import Drawing, String, PolyLine, Circle, Rect, Line
 from reportlab.graphics.charts.barcharts import VerticalBarChart
 import streamlit as st
 from openpyxl import load_workbook
@@ -53,7 +53,7 @@ for p in [DATA_DIR, UPLOAD_DIR, CACHE_DIR, CONFIG_DIR, ASSETS_DIR]:
     p.mkdir(parents=True, exist_ok=True)
 
 MX_TZ = ZoneInfo("America/Mexico_City")
-APP_CACHE_VERSION = "v10.20"
+APP_CACHE_VERSION = "v10.21"
 AZUL = "#10245F"
 ROSA = "#EC007C"
 LAVANDA = "#F3F6FB"
@@ -1326,7 +1326,27 @@ def aggrid_table(df, height=360, editable=False, key=None):
         gb.configure_column("Tienda", pinned="left", minWidth=145)
     for col in show.columns:
         if col != "Tienda":
-            gb.configure_column(col, type=["rightAligned"], minWidth=105)
+            if col == "% Ubic.":
+                gb.configure_column(
+                    col,
+                    type=["rightAligned"],
+                    minWidth=105,
+                    cellStyle=JsCode("""
+                        function(params) {
+                            const v = parseFloat(String(params.value).replace('%','').replace(',',''));
+                            if (isNaN(v)) return {};
+                            if (v < 75) {
+                                return {'color':'#D71920','fontWeight':'900'};
+                            }
+                            if (v >= 90) {
+                                return {'color':'#008A3B','fontWeight':'900'};
+                            }
+                            return {'color':'#111827','fontWeight':'700'};
+                        }
+                    """)
+                )
+            else:
+                gb.configure_column(col, type=["rightAligned"], minWidth=105)
     opts = gb.build()
     opts["rowHeight"] = 34
     opts["headerHeight"] = 38
@@ -1391,114 +1411,356 @@ def kpis(res):
 def combined_chart(df, title):
     if df is None or df.empty:
         return
-    ymax = max(float(pd.to_numeric(df[c], errors="coerce").fillna(0).max()) for c in ["Total", "Habilitadas", "Ubicadas"])
-    ymax = ymax * 1.35 if ymax > 0 else 10
+
+    chart_df = df.copy()
+    for c in ["Total", "Habilitadas", "Ubicadas"]:
+        chart_df[c] = pd.to_numeric(chart_df[c], errors="coerce").fillna(0)
+
+    raw_max = max(float(chart_df[c].max()) for c in ["Total", "Habilitadas", "Ubicadas"])
+    ymax = raw_max * 1.42 if raw_max > 0 else 10
+    leader_gap = max(ymax * 0.075, 30)
+
     fig = go.Figure()
+
+    # Línea primero; sus etiquetas se agregan como anotaciones con líder punteado.
     fig.add_trace(go.Scatter(
-        x=df["Tienda"], y=df["Total"], mode="lines+markers+text", name="Total ingresos",
-        text=df["Total"].map(lambda x: f"{x:,.0f}"), textposition="top center",
+        x=chart_df["Tienda"],
+        y=chart_df["Total"],
+        mode="lines+markers",
+        name="Total ingresos",
+        line=dict(color="#43A5FF", width=4),
+        marker=dict(color="#43A5FF", size=9),
+        hovertemplate="<b>%{x}</b><br>Total ingresos: %{y:,.0f}<extra></extra>",
+    ))
+
+    fig.add_trace(go.Bar(
+        x=chart_df["Tienda"],
+        y=chart_df["Habilitadas"],
+        name="Pzas Habilitadas",
+        marker_color=AZUL,
+        text=chart_df["Habilitadas"].map(lambda x: f"{x:,.0f}"),
+        textposition="outside",
         textfont=dict(color="#111827", size=13, family="Arial Black"),
-        line=dict(color="#2FA7FF", width=4),
-        marker=dict(color="#2FA7FF", size=8)
+        cliponaxis=False,
+        hovertemplate="<b>%{x}</b><br>Habilitadas: %{y:,.0f}<extra></extra>",
     ))
+
     fig.add_trace(go.Bar(
-        x=df["Tienda"], y=df["Habilitadas"], name="Pzas Habilitadas", marker_color=AZUL,
-        text=df["Habilitadas"].map(lambda x: f"{x:,.0f}"), textposition="outside",
-        textfont=dict(color="#111827", size=13, family="Arial Black"), cliponaxis=False
+        x=chart_df["Tienda"],
+        y=chart_df["Ubicadas"],
+        name="Pzas Ubicadas",
+        marker_color=ROSA,
+        text=chart_df["Ubicadas"].map(lambda x: f"{x:,.0f}"),
+        textposition="outside",
+        textfont=dict(color="#111827", size=13, family="Arial Black"),
+        cliponaxis=False,
+        hovertemplate="<b>%{x}</b><br>Ubicadas: %{y:,.0f}<extra></extra>",
     ))
-    fig.add_trace(go.Bar(
-        x=df["Tienda"], y=df["Ubicadas"], name="Pzas Ubicadas", marker_color=ROSA,
-        text=df["Ubicadas"].map(lambda x: f"{x:,.0f}"), textposition="outside",
-        textfont=dict(color="#111827", size=13, family="Arial Black"), cliponaxis=False
-    ))
+
+    # Líder vertical punteado + número de referencia para cada punto de la línea.
+    for tienda, total in zip(chart_df["Tienda"], chart_df["Total"]):
+        label_y = min(float(total) + leader_gap, ymax * 0.94)
+        fig.add_shape(
+            type="line",
+            x0=tienda, x1=tienda,
+            y0=float(total) + max(ymax * 0.012, 5),
+            y1=label_y - max(ymax * 0.018, 8),
+            line=dict(color="#43A5FF", width=2, dash="dot"),
+            layer="above",
+        )
+        fig.add_annotation(
+            x=tienda,
+            y=label_y,
+            text=f"<b>{float(total):,.0f}</b>",
+            showarrow=False,
+            font=dict(color="#111827", size=13, family="Arial Black"),
+            bgcolor="rgba(255,255,255,0.92)",
+            borderpad=2,
+        )
+
     fig.update_layout(
-        title=title, barmode="group", height=500, plot_bgcolor="white", paper_bgcolor="white",
+        title=title,
+        barmode="group",
+        height=520,
+        plot_bgcolor="white",
+        paper_bgcolor="white",
         legend=dict(orientation="h", y=1.10, x=1, xanchor="right"),
-        margin=dict(l=10, r=10, t=80, b=110), dragmode=False,
-        uniformtext_minsize=10, uniformtext_mode="show"
+        margin=dict(l=14, r=14, t=85, b=115),
+        dragmode=False,
+        uniformtext_minsize=10,
+        uniformtext_mode="show",
     )
     fig.update_xaxes(tickangle=-45, showgrid=False, fixedrange=True)
-    fig.update_yaxes(showgrid=True, gridcolor="#E5E7EB", fixedrange=True, range=[0, ymax])
-    st.plotly_chart(fig, width="stretch", config={"displayModeBar": False, "scrollZoom": False, "doubleClick": False})
+    fig.update_yaxes(
+        showgrid=True,
+        gridcolor="#E5E7EB",
+        fixedrange=True,
+        range=[0, ymax],
+        tickformat=",d",
+    )
+    st.plotly_chart(
+        fig,
+        width="stretch",
+        config={
+            "displayModeBar": False,
+            "scrollZoom": False,
+            "doubleClick": False,
+            "responsive": True,
+        },
+    )
+
+
+def _pdf_icon(symbol, color_hex):
+    d = Drawing(34, 34)
+    d.add(Circle(17, 17, 16, fillColor=colors.HexColor(color_hex), strokeColor=None))
+    d.add(String(
+        17, 12, symbol,
+        textAnchor="middle",
+        fontName="Helvetica-Bold",
+        fontSize=16,
+        fillColor=colors.white,
+    ))
+    return d
+
+
+def _pdf_kpi_card(symbol, title, value, note, color_hex, styles):
+    icon = _pdf_icon(symbol, color_hex)
+    text = Paragraph(
+        f"<b>{title}</b><br/>"
+        f"<font color='{ROSA}' size='14'><b>{value}</b></font><br/>"
+        f"<font color='#4B5563' size='5.7'>{note}</font>",
+        ParagraphStyle(
+            f"kpi_{re.sub(r'[^A-Za-z0-9]', '', title)}",
+            parent=styles["Normal"],
+            fontName="Helvetica",
+            fontSize=6.8,
+            leading=8.4,
+            textColor=colors.HexColor("#15102E"),
+        ),
+    )
+    inner = Table([[icon, text]], colWidths=[38, 100], rowHeights=[48])
+    inner.setStyle(TableStyle([
+        ("VALIGN", (0,0), (-1,-1), "MIDDLE"),
+        ("LEFTPADDING", (0,0), (0,0), 1),
+        ("RIGHTPADDING", (0,0), (0,0), 4),
+        ("LEFTPADDING", (1,0), (1,0), 3),
+        ("RIGHTPADDING", (1,0), (1,0), 3),
+        ("TOPPADDING", (0,0), (-1,-1), 2),
+        ("BOTTOMPADDING", (0,0), (-1,-1), 2),
+    ]))
+    outer = Table([[inner]], colWidths=[142], rowHeights=[56])
+    outer.setStyle(TableStyle([
+        ("BACKGROUND", (0,0), (-1,-1), colors.white),
+        ("BOX", (0,0), (-1,-1), 0.5, colors.HexColor("#D9E1EE")),
+        ("LEFTPADDING", (0,0), (-1,-1), 5),
+        ("RIGHTPADDING", (0,0), (-1,-1), 5),
+        ("TOPPADDING", (0,0), (-1,-1), 4),
+        ("BOTTOMPADDING", (0,0), (-1,-1), 4),
+        ("VALIGN", (0,0), (-1,-1), "MIDDLE"),
+    ]))
+    return outer
+
+
+def _pdf_chart(df):
+    """Gráfico manual para controlar barras, etiquetas y líderes."""
+    drawing = Drawing(742, 208)
+    x0, y0 = 48, 34
+    width, height = 655, 132
+
+    tiendas = list(df["Tienda"].astype(str))
+    hab = pd.to_numeric(df["Habilitadas"], errors="coerce").fillna(0).astype(float).tolist()
+    ubic = pd.to_numeric(df["Ubicadas"], errors="coerce").fillna(0).astype(float).tolist()
+    total = pd.to_numeric(df["Total"], errors="coerce").fillna(0).astype(float).tolist()
+
+    maxv = max(hab + ubic + total + [10.0])
+    ymax = maxv * 1.48
+
+    # Ejes y retícula.
+    drawing.add(Line(x0, y0, x0 + width, y0, strokeColor=colors.HexColor("#AEB8C8"), strokeWidth=0.7))
+    for i in range(6):
+        val = ymax * i / 5
+        y = y0 + height * i / 5
+        drawing.add(Line(x0, y, x0 + width, y, strokeColor=colors.HexColor("#E6EAF0"), strokeWidth=0.5))
+        drawing.add(String(x0 - 8, y - 2, f"{val:,.0f}", textAnchor="end", fontSize=5.5, fillColor=colors.HexColor("#586174")))
+
+    n = max(1, len(tiendas))
+    group_w = width / n
+    bar_w = min(24, group_w * 0.27)
+
+    line_points = []
+    for i, tienda in enumerate(tiendas):
+        center = x0 + group_w * (i + 0.5)
+        x_h = center - bar_w - 1.5
+        x_u = center + 1.5
+
+        h_h = height * hab[i] / ymax
+        h_u = height * ubic[i] / ymax
+
+        drawing.add(Rect(x_h, y0, bar_w, h_h, fillColor=colors.HexColor(AZUL), strokeColor=None))
+        drawing.add(Rect(x_u, y0, bar_w, h_u, fillColor=colors.HexColor(ROSA), strokeColor=None))
+
+        # Etiquetas centradas por encima de cada barra.
+        drawing.add(String(
+            x_h + bar_w / 2, y0 + h_h + 5,
+            f"{hab[i]:,.0f}",
+            textAnchor="middle", fontName="Helvetica-Bold", fontSize=6.3, fillColor=colors.black,
+        ))
+        drawing.add(String(
+            x_u + bar_w / 2, y0 + h_u + 5,
+            f"{ubic[i]:,.0f}",
+            textAnchor="middle", fontName="Helvetica-Bold", fontSize=6.3, fillColor=colors.black,
+        ))
+
+        point_y = y0 + height * total[i] / ymax
+        line_points.append((center, point_y))
+
+        # Líder punteado y etiqueta de la línea.
+        label_y = min(point_y + 23, y0 + height + 25)
+        leader = Line(center, point_y + 3, center, label_y - 7, strokeColor=colors.HexColor("#43A5FF"), strokeWidth=1.1)
+        leader.strokeDashArray = [2, 2]
+        drawing.add(leader)
+        drawing.add(String(
+            center, label_y,
+            f"{total[i]:,.0f}",
+            textAnchor="middle", fontName="Helvetica-Bold", fontSize=6.5, fillColor=colors.black,
+        ))
+
+        drawing.add(String(
+            center + 2, y0 - 13,
+            tienda,
+            textAnchor="end", fontSize=5.7, fillColor=colors.HexColor("#4B5563"),
+            angle=35,
+        ))
+
+    if len(line_points) >= 2:
+        drawing.add(PolyLine(line_points, strokeColor=colors.HexColor("#43A5FF"), strokeWidth=2.2))
+    for x, y in line_points:
+        drawing.add(Circle(x, y, 2.5, fillColor=colors.HexColor("#43A5FF"), strokeColor=None))
+
+    # Leyenda.
+    legend_y = 194
+    drawing.add(Line(500, legend_y, 518, legend_y, strokeColor=colors.HexColor("#43A5FF"), strokeWidth=2.2))
+    drawing.add(String(522, legend_y - 2, "Total ingresos", fontSize=5.8, fillColor=colors.HexColor("#313847")))
+    drawing.add(Rect(588, legend_y - 4, 8, 8, fillColor=colors.HexColor(AZUL), strokeColor=None))
+    drawing.add(String(600, legend_y - 2, "Pzas Habilitadas", fontSize=5.8, fillColor=colors.HexColor("#313847")))
+    drawing.add(Rect(675, legend_y - 4, 8, 8, fillColor=colors.HexColor(ROSA), strokeColor=None))
+    drawing.add(String(687, legend_y - 2, "Pzas Ubicadas", fontSize=5.8, fillColor=colors.HexColor("#313847")))
+
+    return drawing
 
 
 def build_pdf_report(title, subtitle, kpi_values, df):
     buffer = BytesIO()
-    doc = SimpleDocTemplate(buffer, pagesize=landscape(letter), rightMargin=18, leftMargin=18, topMargin=18, bottomMargin=14)
+    doc = SimpleDocTemplate(
+        buffer,
+        pagesize=landscape(letter),
+        rightMargin=18,
+        leftMargin=18,
+        topMargin=14,
+        bottomMargin=12,
+    )
     styles = getSampleStyleSheet()
     story = []
-    story.append(Paragraph(title, ParagraphStyle("title_ps", parent=styles["Title"], fontSize=17, leading=20, textColor=colors.HexColor("#1D1259"), spaceAfter=2)))
-    story.append(Paragraph(subtitle, ParagraphStyle("sub_ps", parent=styles["Normal"], fontSize=8, leading=10, textColor=colors.HexColor("#5B6476"), spaceAfter=8)))
 
-    card_style = ParagraphStyle("card_ps", parent=styles["Normal"], fontSize=7, leading=10, textColor=colors.HexColor("#1D1259"))
+    # Encabezado con logo Price Shoes.
+    logo_path = ASSETS_DIR / "price_shoes_logo.png"
+    logo = RLImage(str(logo_path), width=58, height=34) if logo_path.exists() else Paragraph("<b>Price Shoes</b>", styles["Normal"])
+    title_block = Paragraph(
+        f"<font color='#1D1259' size='17'><b>{title}</b></font><br/>"
+        f"<font color='#5B6476' size='8'>{subtitle}</font>",
+        ParagraphStyle("pdf_header", parent=styles["Normal"], leading=18),
+    )
+    header = Table([[logo, title_block]], colWidths=[72, 650], rowHeights=[40])
+    header.setStyle(TableStyle([
+        ("VALIGN", (0,0), (-1,-1), "MIDDLE"),
+        ("LEFTPADDING", (0,0), (-1,-1), 0),
+        ("RIGHTPADDING", (0,0), (-1,-1), 6),
+        ("BOTTOMPADDING", (0,0), (-1,-1), 2),
+    ]))
+    story.append(header)
+
+    pink_line = Table([[""]], colWidths=[744], rowHeights=[3])
+    pink_line.setStyle(TableStyle([("BACKGROUND", (0,0), (-1,-1), colors.HexColor(ROSA))]))
+    story.append(pink_line)
+    story.append(Spacer(1, 7))
+
     cards = [
-        ("Piezas<br/>Ingresadas", fmt_num(kpi_values.get("Ingresos", 0)), "Dev + muertos + cajas + probador"),
-        ("Piezas<br/>Acondicionadas", fmt_num(kpi_values.get("Acondicionado", 0)), "Acondicionado"),
-        ("Piezas<br/>Ubicadas", fmt_num(kpi_values.get("Ubicado", 0)), "Ubicado"),
-        ("Pendientes<br/>por Ubicar", fmt_num(kpi_values.get("Pendiente", 0)), "Ingreso + pendiente ant. - ubicado"),
-        ("% Procesado", fmt_pct(kpi_values.get("% Procesado", 0)), "Ubicado / base"),
+        _pdf_kpi_card("↻", "Piezas<br/>Ingresadas", fmt_num(kpi_values.get("Ingresos", 0)), "Dev + muertos + cajas + probador", ROSA, styles),
+        _pdf_kpi_card("✓", "Piezas<br/>Acondicionadas", fmt_num(kpi_values.get("Acondicionado", 0)), "Acondicionado", "#5B00D6", styles),
+        _pdf_kpi_card("⊕", "Piezas<br/>Ubicadas", fmt_num(kpi_values.get("Ubicado", 0)), "Ubicado", "#F59E0B", styles),
+        _pdf_kpi_card("⌛", "Pendientes<br/>por Ubicar", fmt_num(kpi_values.get("Pendiente", 0)), "Ingreso + pendiente ant. - ubicado", "#05B957", styles),
+        _pdf_kpi_card("%", "% Procesado", fmt_pct(kpi_values.get("% Procesado", 0)), "Ubicado / base", "#5B00D6", styles),
     ]
-    row = []
-    for label, val, note in cards:
-        row.append(Paragraph(f"<b>{label}</b><br/><font color='#EC007A' size='15'><b>{val}</b></font><br/><font color='#4B5563' size='6'>{note}</font>", card_style))
-    cards_tbl = Table([row], colWidths=[146,146,146,146,146], rowHeights=[52])
-    cards_tbl.setStyle(TableStyle([
-        ("BACKGROUND", (0,0), (-1,-1), colors.white), ("BOX", (0,0), (-1,-1), .35, colors.HexColor("#DDE4F0")),
-        ("INNERGRID", (0,0), (-1,-1), 8, colors.HexColor("#F4F7FB")), ("VALIGN", (0,0), (-1,-1), "MIDDLE"),
-        ("LEFTPADDING", (0,0), (-1,-1), 10), ("RIGHTPADDING", (0,0), (-1,-1), 8),
+    cards_row = Table([cards], colWidths=[146,146,146,146,146], rowHeights=[58])
+    cards_row.setStyle(TableStyle([
+        ("VALIGN", (0,0), (-1,-1), "MIDDLE"),
+        ("LEFTPADDING", (0,0), (-1,-1), 2),
+        ("RIGHTPADDING", (0,0), (-1,-1), 2),
+        ("TOPPADDING", (0,0), (-1,-1), 0),
+        ("BOTTOMPADDING", (0,0), (-1,-1), 0),
     ]))
-    story.append(cards_tbl); story.append(Spacer(1,8))
-    story.append(Paragraph("<b>Tabla por tienda - Por Dia</b>", ParagraphStyle("h2", parent=styles["Normal"], fontSize=10, textColor=colors.HexColor("#1D1259"), spaceAfter=5)))
+    story.append(cards_row)
+    story.append(Spacer(1, 8))
 
-    cols = ["Tienda","Dev pzs","Muertos","Cajas","Probador","Pend. Ant.","Total","Recolectadas","Habilitadas","Pend. Hab.","% Acond.","Ubicadas","Pend. Ub.","% Ubic."]
-    pdf_df = df[[c for c in cols if c in df.columns]].copy()
-    for c in pdf_df.columns:
-        if c == "Tienda": continue
-        if "%" in c:
-            pdf_df[c] = pd.to_numeric(pdf_df[c], errors="coerce").fillna(0).map(lambda x: f"{x:.1f}%")
-        else:
-            pdf_df[c] = pd.to_numeric(pdf_df[c], errors="coerce").fillna(0).map(lambda x: f"{x:,.0f}")
+    story.append(Paragraph(
+        "<b>Tabla por tienda - Por Día</b>",
+        ParagraphStyle("pdf_h2", parent=styles["Normal"], fontSize=10, textColor=colors.HexColor("#1D1259"), spaceAfter=5),
+    ))
+
+    columns = ["Tienda","Dev pzs","Muertos","Cajas","Probador","Pend. Ant.","Total","Recolectadas","Habilitadas","Pend. Hab.","% Acond.","Ubicadas","Pend. Ub.","% Ubic."]
+    pdf_df = df[[c for c in columns if c in df.columns]].copy()
+
+    raw_pct_ubic = pd.to_numeric(pdf_df["% Ubic."], errors="coerce").fillna(0).tolist() if "% Ubic." in pdf_df.columns else []
+    for col in pdf_df.columns:
+        if col == "Tienda":
+            continue
+        values = pd.to_numeric(pdf_df[col], errors="coerce").fillna(0)
+        pdf_df[col] = values.map(lambda x: f"{x:.1f}%" if "%" in col else f"{x:,.0f}")
+
     data = [list(pdf_df.columns)] + pdf_df.astype(str).values.tolist()
-    col_widths = [70,45,45,43,46,52,48,60,58,55,52,50,54,48]
-    tbl = Table(data, colWidths=col_widths, repeatRows=1)
-    tbl.setStyle(TableStyle([
-        ("BACKGROUND", (0,0), (-1,0), colors.HexColor(AZUL)), ("TEXTCOLOR", (0,0), (-1,0), colors.white),
-        ("FONTNAME", (0,0), (-1,0), "Helvetica-Bold"), ("FONTSIZE", (0,0), (-1,0), 6.2),
-        ("FONTSIZE", (0,1), (-1,-1), 6.1), ("ALIGN", (1,1), (-1,-1), "RIGHT"),
-        ("ALIGN", (0,0), (-1,0), "CENTER"), ("GRID", (0,0), (-1,-1), .25, colors.HexColor("#DDE4F0")),
+    widths = [70,45,45,43,46,52,48,60,58,55,52,50,54,48]
+    table = Table(data, colWidths=widths, repeatRows=1)
+    table_style = [
+        ("BACKGROUND", (0,0), (-1,0), colors.HexColor(AZUL)),
+        ("TEXTCOLOR", (0,0), (-1,0), colors.white),
+        ("FONTNAME", (0,0), (-1,0), "Helvetica-Bold"),
+        ("FONTSIZE", (0,0), (-1,0), 6.1),
+        ("FONTSIZE", (0,1), (-1,-1), 6.0),
+        ("ALIGN", (1,1), (-1,-1), "RIGHT"),
+        ("ALIGN", (0,0), (-1,0), "CENTER"),
+        ("GRID", (0,0), (-1,-1), 0.25, colors.HexColor("#DDE4F0")),
         ("ROWBACKGROUNDS", (0,1), (-1,-1), [colors.white, colors.HexColor("#F7F9FC")]),
-        ("TOPPADDING", (0,0), (-1,-1), 3), ("BOTTOMPADDING", (0,0), (-1,-1), 3),
-    ]))
-    story.append(tbl); story.append(Spacer(1,8))
-    story.append(Paragraph("<b>Ingreso vs Habilitado vs Ubicado por tienda</b>", ParagraphStyle("h3", parent=styles["Normal"], fontSize=9, textColor=colors.HexColor("#1D1259"), spaceAfter=3)))
+        ("TOPPADDING", (0,0), (-1,-1), 3),
+        ("BOTTOMPADDING", (0,0), (-1,-1), 3),
+    ]
 
-    drawing = Drawing(740, 205)
-    tiendas = list(df["Tienda"])
-    hab = [float(x) for x in pd.to_numeric(df["Habilitadas"], errors="coerce").fillna(0)]
-    ubic = [float(x) for x in pd.to_numeric(df["Ubicadas"], errors="coerce").fillna(0)]
-    total = [float(x) for x in pd.to_numeric(df["Total"], errors="coerce").fillna(0)]
-    maxv = max(hab + ubic + total + [10]) * 1.35
-    bc = VerticalBarChart(); bc.x=45; bc.y=35; bc.height=130; bc.width=650
-    bc.data=[hab, ubic]; bc.categoryAxis.categoryNames=tiendas; bc.categoryAxis.labels.angle=35; bc.categoryAxis.labels.fontSize=6
-    bc.valueAxis.valueMin=0; bc.valueAxis.valueMax=maxv; bc.valueAxis.labels.fontSize=6
-    bc.bars[0].fillColor=colors.HexColor(AZUL); bc.bars[1].fillColor=colors.HexColor(ROSA)
-    drawing.add(bc)
-    n=max(1,len(tiendas)); group_w=650/n
-    for i,(h,u) in enumerate(zip(hab,ubic)):
-        for j,val in enumerate([h,u]):
-            x=45+i*group_w+group_w*(0.34+j*0.17); y=35+(val/maxv)*130+8
-            drawing.add(String(x-8,y,f"{val:,.0f}",fontSize=6.2,fillColor=colors.black,fontName="Helvetica-Bold"))
-    pts=[]
-    for i,val in enumerate(total):
-        x=45+i*group_w+group_w*.50; y=35+(val/maxv)*130; pts.append((x,y))
-    if len(pts)>=2: drawing.add(PolyLine(pts, strokeColor=colors.HexColor("#2FA7FF"), strokeWidth=2))
-    for (x,y),val in zip(pts,total):
-        drawing.add(String(x-10,y+9,f"{val:,.0f}",fontSize=6.5,fillColor=colors.black,fontName="Helvetica-Bold"))
-    story.append(drawing)
+    # Semáforo en porcentaje de ubicación.
+    if "% Ubic." in pdf_df.columns:
+        pct_col = list(pdf_df.columns).index("% Ubic.")
+        for row_idx, pct in enumerate(raw_pct_ubic, start=1):
+            if pct < 75:
+                color = colors.HexColor("#D71920")
+            elif pct >= 90:
+                color = colors.HexColor("#008A3B")
+            else:
+                color = colors.HexColor("#111827")
+            table_style.extend([
+                ("TEXTCOLOR", (pct_col, row_idx), (pct_col, row_idx), color),
+                ("FONTNAME", (pct_col, row_idx), (pct_col, row_idx), "Helvetica-Bold"),
+            ])
+
+    table.setStyle(TableStyle(table_style))
+    story.append(table)
+    story.append(Spacer(1, 7))
+    story.append(Paragraph(
+        "<b>Ingreso vs Habilitado vs Ubicado por tienda</b>",
+        ParagraphStyle("pdf_h3", parent=styles["Normal"], fontSize=9, textColor=colors.HexColor("#1D1259"), spaceAfter=2),
+    ))
+    story.append(_pdf_chart(df))
+
     doc.build(story)
     buffer.seek(0)
     return buffer.getvalue()
-
 
 def download_pdf_button(label="Descargar PDF", title="Reporte", subtitle="", kpi_values=None, df=None, key=None):
     if kpi_values is not None and df is not None:
@@ -1599,13 +1861,38 @@ def nav_bar():
     return page
 
 
+
+def last_four_iso_week_ranges(op):
+    """Devuelve las cuatro semanas ISO consecutivas que terminan en la última fecha real."""
+    op = normalize_operation_df(op)
+    if op is None or op.empty or "Fecha" not in op.columns:
+        return []
+
+    latest = pd.to_datetime(op["Fecha"], errors="coerce").dropna().max()
+    if pd.isna(latest):
+        return []
+
+    latest = latest.normalize()
+    current_monday = latest - pd.Timedelta(days=int(latest.weekday()))
+    ranges = []
+    for offset in [3, 2, 1, 0]:
+        monday = current_monday - pd.Timedelta(weeks=offset)
+        sunday = monday + pd.Timedelta(days=6)
+        iso = monday.isocalendar()
+        ranges.append({
+            "iso_year": int(iso.year),
+            "iso_week": int(iso.week),
+            "start": monday,
+            "end": sunday,
+        })
+    return ranges
+
 def executive_week_cards(op, co):
     op = normalize_operation_df(op)
     co = normalize_commercial_df(co)
-    if op is None or op.empty or "Semana ISO" not in op.columns:
+    week_ranges = last_four_iso_week_ranges(op)
+    if not week_ranges:
         return
-
-    weeks = sorted(pd.Series(op["Semana ISO"]).dropna().astype(int).unique().tolist())[-4:]
 
     html = '<div style="margin:18px 0 8px 0;font-size:24px;font-weight:900;color:#3E4095;">📊 Resumen Ejecutivo</div>'
     html += '<div class="week-card-grid">'
@@ -1613,16 +1900,26 @@ def executive_week_cards(op, co):
     prev_hab = None
     prev_ub = None
 
-    for w in weeks:
-        dates = op.loc[op["Semana ISO"].astype(int).eq(int(w)), "Fecha"]
-        if dates.empty:
-            continue
+    for wr in week_ranges:
+        df = table_by_store(op, co, wr["start"], wr["end"], PROJECT_STORES)
+        ingresos = float(pd.to_numeric(df["Total"], errors="coerce").fillna(0).sum())
+        hab = float(pd.to_numeric(df["Habilitadas"], errors="coerce").fillna(0).sum())
+        ub = float(pd.to_numeric(df["Ubicadas"], errors="coerce").fillna(0).sum())
 
-        df = table_by_store(op, co, dates.min(), dates.max(), PROJECT_STORES)
-        ingresos = df["Total"].sum()
-        hab = df["Habilitadas"].sum()
-        ub = df["Ubicadas"].sum()
-        recorridos = len(op[(op["Semana ISO"].astype(int).eq(int(w))) & (op["Actividad"].map(norm_text).str.contains("RECORRIDO|RECOLECCION|RECOLECCIÓN", na=False))]) if "Actividad" in op.columns else 0
+        week_mask = (
+            (pd.to_datetime(op["Fecha"], errors="coerce") >= wr["start"])
+            & (pd.to_datetime(op["Fecha"], errors="coerce") <= wr["end"])
+        )
+        if "Actividad" in op.columns:
+            actividad = op["Actividad"].map(norm_text)
+            recorridos = int(
+                (
+                    week_mask
+                    & actividad.str.contains(r"\bRECORRIDO(S)?\b", regex=True, na=False)
+                ).sum()
+            )
+        else:
+            recorridos = 0
 
         def delta(cur, prev):
             if prev is None or prev == 0:
@@ -1638,7 +1935,7 @@ def executive_week_cards(op, co):
 
         html += (
             f'<div class="week-card">'
-            f'<div class="week-card-head">Sem {w}</div>'
+            f'<div class="week-card-head">Sem {wr["iso_week"]}</div>'
             f'<div class="week-row"><span>INGRESOS</span><b>{ingresos:,.0f}</b><em style="color:{c_ing};">{d_ing}</em></div>'
             f'<div class="week-row"><span>ACONDICIONADO</span><b>{hab:,.0f}</b><em style="color:{c_hab};">{d_hab}</em></div>'
             f'<div class="week-row"><span>UBICADO</span><b>{ub:,.0f}</b><em style="color:{c_ub};">{d_ub}</em></div>'
@@ -1656,18 +1953,16 @@ def page_resumen(op, co):
     co = normalize_commercial_df(co)
     st.markdown("## Dashboard Ejecutivo")
     st.caption("Vista general de indicadores principales.")
-    if op is None or op.empty:
+
+    week_ranges = last_four_iso_week_ranges(op)
+    if not week_ranges:
         st.info("Sin información operativa.")
         return
-    weeks = sorted(pd.Series(op["Semana ISO"]).dropna().astype(int).unique().tolist())[-4:]
-    if weeks:
-        mask = op["Semana ISO"].astype(int).isin(weeks)
-        start = op.loc[mask, "Fecha"].min()
-        today = op.loc[mask, "Fecha"].max()
-    else:
-        today = pd.to_datetime(op["Fecha"].max())
-        start = today - pd.Timedelta(days=27)
-    df = table_by_store(op, co, start, today, PROJECT_STORES)
+
+    start = week_ranges[0]["start"]
+    end = week_ranges[-1]["end"]
+    df = table_by_store(op, co, start, end, PROJECT_STORES)
+
     kpis(summary_from_table(df))
     executive_week_cards(op, co)
     combined_chart(df, "Ingreso vs Habilitado vs Ubicado por tienda")
