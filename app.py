@@ -53,7 +53,7 @@ for p in [DATA_DIR, UPLOAD_DIR, CACHE_DIR, CONFIG_DIR, ASSETS_DIR]:
     p.mkdir(parents=True, exist_ok=True)
 
 MX_TZ = ZoneInfo("America/Mexico_City")
-APP_CACHE_VERSION = "v10.22"
+APP_CACHE_VERSION = "v10.23"
 AZUL = "#10245F"
 ROSA = "#EC007C"
 LAVANDA = "#F3F6FB"
@@ -648,6 +648,54 @@ html, body, [data-testid="stAppViewContainer"] {{
 @media(max-width:700px){{
     .week-card-grid{{grid-template-columns:1fr;}}
 }}
+
+
+/* Navegación corporativa de extremo a extremo */
+.ps-tabbar {
+    position: relative !important;
+    left: 50% !important;
+    right: 50% !important;
+    margin-left: -50vw !important;
+    margin-right: -50vw !important;
+    width: 100vw !important;
+    max-width: 100vw !important;
+    box-sizing: border-box !important;
+    background: var(--azul) !important;
+    border-top: 5px solid var(--rosa) !important;
+    padding: 0 24px !important;
+    overflow-x: auto !important;
+}
+.ps-tabbar [role="radiogroup"] {
+    width: max-content !important;
+    min-width: 100% !important;
+    justify-content: flex-start !important;
+    background: var(--azul) !important;
+}
+.ps-tabbar label {
+    background: var(--azul) !important;
+    color: rgba(255,255,255,.72) !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    min-height: 58px !important;
+    padding: 0 22px !important;
+}
+.ps-tabbar label p,
+.ps-tabbar label span {
+    color: rgba(255,255,255,.72) !important;
+    font-weight: 800 !important;
+}
+.ps-tabbar label:has(input:checked) {
+    background: #142E73 !important;
+    box-shadow: inset 0 -5px 0 var(--rosa) !important;
+}
+.ps-tabbar label:has(input:checked) p,
+.ps-tabbar label:has(input:checked) span {
+    color: #FFFFFF !important;
+    font-weight: 900 !important;
+}
+.ps-tabbar input[type="radio"] {
+    accent-color: #FFFFFF !important;
+}
 
 </style>
 """,
@@ -1834,6 +1882,102 @@ def download_pdf_button(label="Descargar PDF", title="Reporte", subtitle="", kpi
         st.button(label, help="PDF disponible en pestañas con indicadores.")
 
 
+
+def build_generic_table_pdf(title, subtitle, df, kpi_values=None):
+    buffer = BytesIO()
+    doc = SimpleDocTemplate(
+        buffer,
+        pagesize=landscape(letter),
+        rightMargin=18, leftMargin=18, topMargin=14, bottomMargin=14,
+    )
+    styles = getSampleStyleSheet()
+    story = []
+
+    logo_path = ASSETS_DIR / "price_shoes_logo.png"
+    logo = RLImage(str(logo_path), width=58, height=34) if logo_path.exists() else Paragraph("<b>Price Shoes</b>", styles["Normal"])
+    header_text = Paragraph(
+        f"<font color='#1D1259' size='17'><b>{title}</b></font><br/>"
+        f"<font color='#5B6476' size='8'>{subtitle}</font>",
+        ParagraphStyle("generic_header", parent=styles["Normal"], leading=18),
+    )
+    header = Table([[logo, header_text]], colWidths=[72, 650], rowHeights=[40])
+    header.setStyle(TableStyle([
+        ("VALIGN",(0,0),(-1,-1),"MIDDLE"),
+        ("LEFTPADDING",(0,0),(-1,-1),0),
+        ("RIGHTPADDING",(0,0),(-1,-1),6),
+    ]))
+    story.append(header)
+
+    line = Table([[""]], colWidths=[744], rowHeights=[3])
+    line.setStyle(TableStyle([("BACKGROUND",(0,0),(-1,-1),colors.HexColor(ROSA))]))
+    story.append(line)
+    story.append(Spacer(1,8))
+
+    if kpi_values:
+        cards = [
+            _pdf_kpi_card("↻", "Piezas Ingresadas", fmt_num(kpi_values.get("Ingresos", 0)), "Dev + muertos + cajas + probador", ROSA, styles),
+            _pdf_kpi_card("✓", "Piezas Acondicionadas", fmt_num(kpi_values.get("Acondicionado", 0)), "Acondicionado", "#5B00D6", styles),
+            _pdf_kpi_card("⊕", "Piezas Ubicadas", fmt_num(kpi_values.get("Ubicado", 0)), "Ubicado", "#F59E0B", styles),
+            _pdf_kpi_card("⌛", "Pendientes por Ubicar", fmt_num(kpi_values.get("Pendiente", 0)), "Ingreso + pendiente ant. - ubicado", "#05B957", styles),
+            _pdf_kpi_card("%", "% Procesado", fmt_pct(kpi_values.get("% Procesado", 0)), "Ubicado / base", "#5B00D6", styles),
+        ]
+        row = Table([cards], colWidths=[148]*5, rowHeights=[68])
+        row.setStyle(TableStyle([
+            ("VALIGN",(0,0),(-1,-1),"MIDDLE"),
+            ("LEFTPADDING",(0,0),(-1,-1),2),
+            ("RIGHTPADDING",(0,0),(-1,-1),2),
+        ]))
+        story.append(row)
+        story.append(Spacer(1,8))
+
+    if df is None or df.empty:
+        story.append(Paragraph("Sin información para el periodo seleccionado.", styles["Normal"]))
+    else:
+        out = df.copy()
+        for col in out.columns:
+            if pd.api.types.is_numeric_dtype(out[col]):
+                if "%" in str(col):
+                    out[col] = pd.to_numeric(out[col], errors="coerce").fillna(0).map(lambda x: f"{x:.1f}%")
+                elif "$" in str(col) or "Importe" in str(col) or "Recuperación" in str(col):
+                    out[col] = pd.to_numeric(out[col], errors="coerce").fillna(0).map(lambda x: f"${x:,.0f}")
+                else:
+                    out[col] = pd.to_numeric(out[col], errors="coerce").fillna(0).map(lambda x: f"{x:,.0f}")
+        max_cols = max(1, len(out.columns))
+        widths = [730/max_cols] * max_cols
+        data = [list(out.columns)] + out.astype(str).values.tolist()
+        table = Table(data, colWidths=widths, repeatRows=1)
+        table.setStyle(TableStyle([
+            ("BACKGROUND",(0,0),(-1,0),colors.HexColor(AZUL)),
+            ("TEXTCOLOR",(0,0),(-1,0),colors.white),
+            ("FONTNAME",(0,0),(-1,0),"Helvetica-Bold"),
+            ("FONTSIZE",(0,0),(-1,0),6.4),
+            ("FONTSIZE",(0,1),(-1,-1),6.0),
+            ("GRID",(0,0),(-1,-1),0.25,colors.HexColor("#DDE4F0")),
+            ("ROWBACKGROUNDS",(0,1),(-1,-1),[colors.white,colors.HexColor("#F7F9FC")]),
+            ("ALIGN",(1,1),(-1,-1),"RIGHT"),
+            ("TOPPADDING",(0,0),(-1,-1),3),
+            ("BOTTOMPADDING",(0,0),(-1,-1),3),
+        ]))
+        story.append(table)
+
+    doc.build(story)
+    buffer.seek(0)
+    return buffer.getvalue()
+
+
+def generic_pdf_button(title, subtitle, df, kpi_values=None, file_name=None, key=None):
+    pdf = build_generic_table_pdf(title, subtitle, df, kpi_values)
+    if not file_name:
+        clean = re.sub(r"[^A-Za-z0-9ÁÉÍÓÚáéíóúÑñ]+", "_", title).strip("_")
+        file_name = f"{clean}.pdf"
+    st.download_button(
+        "Descargar PDF",
+        data=pdf,
+        file_name=file_name,
+        mime="application/pdf",
+        key=key or f"pdf_generic_{re.sub(r'[^A-Za-z0-9]', '', title)}",
+    )
+
 def login_sidebar():
     st.sidebar.markdown("## 🔐 Acceso")
     if "user" in st.session_state:
@@ -1926,17 +2070,68 @@ def nav_bar():
 
 
 
-def last_four_iso_week_ranges(op):
-    """Devuelve las cuatro semanas ISO consecutivas que terminan en la última fecha real."""
+
+def reliable_data_horizon(op, co):
+    """Devuelve fecha mínima y máxima confiables del archivo.
+
+    Las hojas comerciales mensuales tienen las fechas reales en sus encabezados.
+    Se usan como límite para descartar fechas operativas invertidas, por ejemplo
+    diciembre generado accidentalmente a partir de 12/06.
+    """
     op = normalize_operation_df(op)
-    if op is None or op.empty or "Fecha" not in op.columns:
+    co = normalize_commercial_df(co)
+
+    co_dates = pd.to_datetime(co["Fecha"], errors="coerce").dropna() if co is not None and not co.empty and "Fecha" in co.columns else pd.Series(dtype="datetime64[ns]")
+    op_dates = pd.to_datetime(op["Fecha"], errors="coerce").dropna() if op is not None and not op.empty and "Fecha" in op.columns else pd.Series(dtype="datetime64[ns]")
+
+    if not co_dates.empty:
+        max_date = co_dates.max().normalize()
+        min_date = co_dates.min().normalize()
+    elif not op_dates.empty:
+        max_date = op_dates.max().normalize()
+        min_date = op_dates.min().normalize()
+    else:
+        today = pd.Timestamp.today().normalize()
+        return today, today
+
+    return min_date, max_date
+
+
+def reliable_operation(op, co):
+    op = normalize_operation_df(op)
+    if op is None or op.empty:
+        return op
+    min_date, max_date = reliable_data_horizon(op, co)
+    dates = pd.to_datetime(op["Fecha"], errors="coerce")
+    out = op[(dates >= min_date) & (dates <= max_date)].copy()
+    if "Fecha" in out.columns:
+        out["Semana ISO"] = pd.to_datetime(out["Fecha"]).dt.isocalendar().week.astype(int)
+        out["Año ISO"] = pd.to_datetime(out["Fecha"]).dt.isocalendar().year.astype(int)
+        out["Mes"] = pd.to_datetime(out["Fecha"]).dt.to_period("M").astype(str)
+    return out
+
+
+def available_iso_weeks(op, co):
+    op = reliable_operation(op, co)
+    if op is None or op.empty:
+        return []
+    pairs = (
+        op.assign(
+            _iso_year=pd.to_datetime(op["Fecha"]).dt.isocalendar().year.astype(int),
+            _iso_week=pd.to_datetime(op["Fecha"]).dt.isocalendar().week.astype(int),
+        )[["_iso_year", "_iso_week"]]
+        .drop_duplicates()
+        .sort_values(["_iso_year", "_iso_week"])
+    )
+    return [(int(r._iso_year), int(r._iso_week)) for r in pairs.itertuples(index=False)]
+
+def last_four_iso_week_ranges(op, co=None):
+    """Cuatro semanas ISO consecutivas terminando en la última fecha real cargada."""
+    op = reliable_operation(op, co)
+    if op is None or op.empty:
         return []
 
-    latest = pd.to_datetime(op["Fecha"], errors="coerce").dropna().max()
-    if pd.isna(latest):
-        return []
-
-    latest = latest.normalize()
+    _, latest = reliable_data_horizon(op, co)
     current_monday = latest - pd.Timedelta(days=int(latest.weekday()))
     ranges = []
     for offset in [3, 2, 1, 0]:
@@ -1951,10 +2146,11 @@ def last_four_iso_week_ranges(op):
         })
     return ranges
 
+
 def executive_week_cards(op, co):
-    op = normalize_operation_df(op)
+    op = reliable_operation(op, co)
     co = normalize_commercial_df(co)
-    week_ranges = last_four_iso_week_ranges(op)
+    week_ranges = last_four_iso_week_ranges(op, co)
     if not week_ranges:
         return
 
@@ -2013,12 +2209,12 @@ def executive_week_cards(op, co):
 
 
 def page_resumen(op, co):
-    op = normalize_operation_df(op)
+    op = reliable_operation(op, co)
     co = normalize_commercial_df(co)
     st.markdown("## Dashboard Ejecutivo")
     st.caption("Vista general de indicadores principales.")
 
-    week_ranges = last_four_iso_week_ranges(op)
+    week_ranges = last_four_iso_week_ranges(op, co)
     if not week_ranges:
         st.info("Sin información operativa.")
         return
@@ -2062,33 +2258,68 @@ def page_por_dia(op, co):
 
 
 def page_semanal(op, co):
+    op = reliable_operation(op, co)
     st.markdown("## Reporte Semanal")
-    weeks = sorted(op["Semana ISO"].dropna().unique().tolist()) if not op.empty else [datetime.now().isocalendar().week]
-    tiendas = st.multiselect("Tiendas", PROJECT_STORES, default=PROJECT_STORES)
-    w = st.selectbox("Semana ISO", weeks, index=len(weeks)-1)
-    dates = op.loc[op["Semana ISO"].eq(w), "Fecha"] if not op.empty else pd.Series(dtype="datetime64[ns]")
-    if dates.empty:
+    tiendas = st.multiselect("Tiendas", PROJECT_STORES, default=PROJECT_STORES, key="sem_tiendas")
+
+    week_pairs = available_iso_weeks(op, co)
+    if not week_pairs:
+        st.info("Sin semanas válidas detectadas.")
+        return
+
+    labels = [f"{year}-Sem {week:02d}" for year, week in week_pairs]
+    selected_label = st.selectbox("Semana ISO", labels, index=len(labels)-1, key="sem_iso")
+    year, week = week_pairs[labels.index(selected_label)]
+
+    dates = pd.to_datetime(op["Fecha"], errors="coerce")
+    iso = dates.dt.isocalendar()
+    mask = (iso.year.astype(int) == year) & (iso.week.astype(int) == week)
+    week_dates = dates[mask]
+    if week_dates.empty:
         st.info("Sin fechas para la semana seleccionada.")
         return
-    df = table_by_store(op, co, dates.min(), dates.max(), tiendas)
-    kpis(summary_from_table(df))
-    download_pdf_button()
-    panel(f"Tabla por tienda - Semana {w}", df, height=360)
-    combined_chart(df, f"Ingreso vs Habilitado vs Ubicado - Semana {w}")
+
+    start, end = week_dates.min().normalize(), week_dates.max().normalize()
+    df = table_by_store(op, co, start, end, tiendas)
+    resumen = summary_from_table(df)
+    kpis(resumen)
+
+    generic_pdf_button(
+        f"Reporte Semanal - Semana {week}",
+        f"Periodo: {start.strftime('%d-%m-%Y')} al {end.strftime('%d-%m-%Y')}",
+        df,
+        resumen,
+        file_name=f"Reporte_Semanal_Semana_{week:02d}_{year}.pdf",
+        key=f"pdf_sem_{year}_{week}",
+    )
+    panel(f"Tabla por tienda - Semana {week}", df, height=360)
+    combined_chart(df, f"Ingreso vs Habilitado vs Ubicado - Semana {week}")
 
 
 def page_mensual(op, co):
+    op = reliable_operation(op, co)
     st.markdown("## Reporte Mensual")
-    meses = sorted(op["Mes"].dropna().unique().tolist()) if not op.empty else []
     tiendas = st.multiselect("Tiendas", PROJECT_STORES, default=PROJECT_STORES, key="mes_tiendas")
+    meses = sorted(op["Mes"].dropna().unique().tolist()) if op is not None and not op.empty else []
     if not meses:
         st.info("Sin meses detectados.")
         return
-    m = st.selectbox("Mes", meses, index=len(meses)-1)
-    dates = op.loc[op["Mes"].eq(m), "Fecha"]
-    df = table_by_store(op, co, dates.min(), dates.max(), tiendas)
-    kpis(summary_from_table(df))
-    download_pdf_button()
+    m = st.selectbox("Mes", meses, index=len(meses)-1, key="mes_select")
+    dates = pd.to_datetime(op.loc[op["Mes"].eq(m), "Fecha"], errors="coerce").dropna()
+    if dates.empty:
+        st.info("Sin fechas para el mes seleccionado.")
+        return
+    start, end = dates.min().normalize(), dates.max().normalize()
+    df = table_by_store(op, co, start, end, tiendas)
+    resumen = summary_from_table(df)
+    kpis(resumen)
+    generic_pdf_button(
+        f"Reporte Mensual - {m}",
+        f"Periodo: {start.strftime('%d-%m-%Y')} al {end.strftime('%d-%m-%Y')}",
+        df, resumen,
+        file_name=f"Reporte_Mensual_{m}.pdf",
+        key=f"pdf_mes_{m}",
+    )
     panel(f"Tabla por tienda - Mes {m}", df, height=360)
     combined_chart(df, f"Ingreso vs Habilitado vs Ubicado - Mes {m}")
 
@@ -2105,6 +2336,7 @@ def page_conversion(op, co):
     df["Pend. Conv."] = df["Dev_Pzs"] - df["Vta_Pzs"]
     df["% Conv."] = np.where(df["Dev_Pzs"]>0, df["Vta_Pzs"]/df["Dev_Pzs"]*100, 0)
     df = df.rename(columns={"Dev_Pzs":"Dev Pzs", "Vta_Pzs":"Conv. Pzs", "Vta_Imp":"Conv. $"})
+    generic_pdf_button("Conversión Semanal Dev a Venta", f"Semanas: {w}", df, file_name="Reporte_Conversion.pdf", key="pdf_conversion")
     panel("Detalle Conversión", df, height=420)
 
 
@@ -2117,6 +2349,7 @@ def page_recuperacion(op, co):
     w = st.multiselect("Semana ISO", weeks, default=weeks[-1:], key="rec_sem")
     df = co[co["Semana ISO"].isin(w)].groupby(["Semana ISO","Tienda"], as_index=False).agg({"Vta_Imp":"sum","Dev_Pzs":"sum"})
     df = df.rename(columns={"Vta_Imp":"Recuperación $", "Dev_Pzs":"Dev Pzs"})
+    generic_pdf_button("Recuperación Económica", f"Semanas: {w}", df, file_name="Reporte_Recuperacion_Economica.pdf", key="pdf_recuperacion")
     panel("Recuperación Económica", df, height=420)
 
 
@@ -2137,7 +2370,9 @@ def page_productividad(op, co):
     name_col = "Nombre Real" if "Nombre Real" in o.columns else "Nombre"
     df = o.groupby(["Tienda", name_col], as_index=False).agg({"Piezas":"sum", "Habilitadas":"sum", "Ubicadas":"sum", "Recolectadas":"sum"})
     df = df.rename(columns={name_col:"Colaborador"})
-    panel("Productividad por colaborador", df.sort_values("Piezas", ascending=False), height=500)
+    df_pdf = df.sort_values("Piezas", ascending=False)
+    generic_pdf_button("Productividad por colaborador", f"Periodo: {start} al {end}", df_pdf, file_name="Reporte_Productividad.pdf", key="pdf_productividad")
+    panel("Productividad por colaborador", df_pdf, height=500)
 
 
 def page_recorridos(op, co):
@@ -2148,6 +2383,7 @@ def page_recorridos(op, co):
     df = o.groupby(["Semana ISO","Tienda"], as_index=False).size().rename(columns={"size":"Recorridos"})
     df["Meta"] = 47
     df["% Cumplimiento"] = df["Recorridos"] / 47 * 100
+    generic_pdf_button("Recorridos", "Detalle por semana y tienda", df, file_name="Reporte_Recorridos.pdf", key="pdf_recorridos")
     panel("Recorridos por semana", df, height=420)
 
 
@@ -2159,7 +2395,9 @@ def page_ranking(op, co):
     df = o.groupby("Tienda", as_index=False).agg({"Piezas":"sum", "Habilitadas":"sum", "Ubicadas":"sum"})
     df["Score"] = (df["Habilitadas"] + df["Ubicadas"]) / df["Piezas"].replace(0, np.nan) * 100
     df["Score"] = df["Score"].fillna(0)
-    panel("Ranking de tiendas", df.sort_values("Score", ascending=False), height=420)
+    df_rank = df.sort_values("Score", ascending=False)
+    generic_pdf_button("Ranking de tiendas", "Clasificación por score", df_rank, file_name="Reporte_Ranking.pdf", key="pdf_ranking")
+    panel("Ranking de tiendas", df_rank, height=420)
 
 
 def page_macro(op, co):

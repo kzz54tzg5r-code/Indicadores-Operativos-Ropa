@@ -1,13 +1,13 @@
-# Indicadores Cambios y Muertos v10.22
+# Indicadores Cambios y Muertos v10.23
 
 Correcciones:
-- Las tarjetas del PDF se distribuyen en tres renglones internos: título, valor y descripción.
-- Se aumentó la altura de las tarjetas para evitar información encimada.
-- El PDF Por Día se descarga con el nombre:
-  Reporte_Por_Dia_DD-MM-YYYY.pdf
-  Ejemplo: Reporte_Por_Dia_28-06-2026.pdf
+- Se descartan semanas creadas por fechas invertidas después de la última fecha comercial real.
+- Si el archivo llega al 28/06/2026, la última semana válida es la semana ISO 26.
+- Reporte Semanal muestra año + semana para evitar mezclar años.
+- PDF habilitado en Reporte Semanal, Mensual, Conversión, Recuperación Económica, Productividad, Recorridos y Ranking.
+- Barra de pestañas azul de extremo a extremo.
+- Texto blanco tenue en pestañas inactivas y blanco intenso en la pestaña activa.
 
-Al actualizar:
-1. Sustituye los archivos del repositorio.
-2. Reinicia la app.
-3. No es necesario reprocesar el Excel.
+Después de subir:
+1. Reinicia la app.
+2. No necesitas volver a procesar el Excel.
