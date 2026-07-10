@@ -1,25 +1,30 @@
-# Indicadores Cambios y Muertos v10.27
+# Indicadores Cambios y Muertos v10.28
 
-Corrección principal:
-- La aplicación ya no limita la operación a la última fecha de las hojas comerciales.
-- Se conserva la información de `Resultados productividad 2` desde el 29/06/2026.
-- Los registros del 09/07/2026 ahora alimentan:
-  - Recolectadas
-  - Habilitadas
-  - Ubicadas
-  - Muertos
-  - Cajas
-  - Probador
-  - Indicadores diarios, semanales y mensuales
+Corrección de Resultados productividad 2:
 
-Causa del error:
-La versión anterior tomaba el 28/06/2026 como fecha máxima porque era la última
-fecha comercial. Por eso los registros operativos de julio se filtraban y aparecían
-como cero.
+- La hoja nueva puede venir sin encabezados.
+- Se reconoce el formato mostrado:
+  - B: Fecha
+  - C: Tienda
+  - D: Tabla
+  - E: Nómina / colaborador
+  - F: Actividad Realizada
+  - G: Motivo
+  - H: Número de piezas
+  - I: Hora Inicio
+  - J: Hora Fin
+- Se detecta automáticamente la columna de fecha y se aplica el mapeo relativo.
+- `Ubicado` alimenta Piezas Ubicadas.
+- `Acondicionado` alimenta Piezas Acondicionadas.
+- `Recolección de muertos` alimenta Recolectadas.
+- Muertos conserva la regla estricta:
+  Actividad = Recolección de muertos y Motivo = Muertos.
+- `Ingreso` también se considera dentro de Recolectadas para la nueva fuente.
 
-Para actualizar:
+Actualización:
 1. Sustituye los archivos del repositorio.
 2. Reinicia Streamlit.
 3. Borra el archivo persistido.
-4. Carga nuevamente el Excel con `Resultados productividad 2`.
-5. Procesa nuevamente el archivo.
+4. Carga nuevamente el Excel.
+5. Presiona Procesar archivo.
+6. Revisa Diagnóstico: debe indicar `Modo lectura: sin encabezados`.
