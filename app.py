@@ -53,7 +53,7 @@ for p in [DATA_DIR, UPLOAD_DIR, CACHE_DIR, CONFIG_DIR, ASSETS_DIR]:
     p.mkdir(parents=True, exist_ok=True)
 
 MX_TZ = ZoneInfo("America/Mexico_City")
-APP_CACHE_VERSION = "v10.29"
+APP_CACHE_VERSION = "v10.30"
 AZUL = "#10245F"
 ROSA = "#EC007C"
 LAVANDA = "#F3F6FB"
@@ -885,201 +885,181 @@ def apply_nombre_map(op, plantilla):
 
 
 def read_operation_sheet(file_path):
-    """Lee las dos hojas operativas detectando la fila real de encabezados.
+    """Lee y une las dos hojas operativas sin eliminar el histórico.
 
-    Soporta exactamente estos encabezados de la hoja nueva:
+    Fuentes:
+    - Resultados productividad
+    - Resultados productividad 2
+
+    La segunda hoja reconoce:
     Occurrence, Fecha, Ubicación, Tabla, Nómina, Actividad Realizada,
-    Ingreso al area de acondicionado, Número de piezas, Hora Inicio, Hora Fin.
+    Ingreso al area de acondicionado, Número de piezas, Hora Inicio y Hora Fin.
     """
     try:
-        wb = load_workbook(file_path, read_only=True, data_only=True)
-        sheet_names = wb.sheetnames
+        xls = pd.ExcelFile(file_path, engine="openpyxl")
+        sheet_names = list(xls.sheet_names)
     except Exception as exc:
         return pd.DataFrame(), pd.DataFrame([{
             "Hoja": "Libro",
+            "Tipo": "Error",
             "Estado": f"No fue posible abrir el archivo: {exc}",
         }])
 
-    norm_to_real = {norm_text(s): s for s in sheet_names}
-    requested = []
+    normalized = {norm_text(s): s for s in sheet_names}
+    sources = []
 
-    if "RESULTADOS PRODUCTIVIDAD" in norm_to_real:
-        requested.append(("histórica", norm_to_real["RESULTADOS PRODUCTIVIDAD"]))
+    for wanted, tipo in [
+        ("RESULTADOS PRODUCTIVIDAD", "Histórica"),
+        ("RESULTADOS PRODUCTIVIDAD 2", "Nueva"),
+    ]:
+        real = normalized.get(wanted)
+        if real:
+            sources.append((tipo, real))
 
-    second_sheet = None
-    for alias in ["RESULTADOS PRODUCTIVIDAD 2", "RESULTADOS POR CHECKLIST"]:
-        if alias in norm_to_real:
-            second_sheet = norm_to_real[alias]
-            break
-    if second_sheet:
-        requested.append(("nueva", second_sheet))
+    # Alias permitido para pruebas o archivos previos.
+    if not any(tipo == "Nueva" for tipo, _ in sources):
+        alias = normalized.get("RESULTADOS POR CHECKLIST")
+        if alias:
+            sources.append(("Nueva", alias))
 
-    if not requested:
-        for sheet in sheet_names:
-            ns = norm_text(sheet)
-            if "RESULTADOS" in ns and ("PRODUCT" in ns or "CHECKLIST" in ns):
-                requested.append(("histórica" if not requested else "nueva", sheet))
-
-    if not requested:
+    if not sources:
         return pd.DataFrame(), pd.DataFrame([{
-            "Hoja": "Resultados productividad / Resultados productividad 2",
-            "Estado": "No se encontraron hojas operativas",
+            "Hoja": "Resultados productividad",
+            "Tipo": "Operación",
+            "Estado": "No se encontraron las hojas operativas",
         }])
 
     frames = []
-    diag_rows = []
+    diag = []
 
-    aliases = {
-        "occurrence": ["OCCURRENCE", "OCURRENCE", "OCURRENCIA", "FOLIO"],
-        "fecha": ["FECHA", "FECHA S", "FECHA CAPTURA", "DIA", "DÍA"],
-        "tienda": ["TIENDA", "UBICACION", "UBICACIÓN", "SUCURSAL"],
-        "tabla": ["TABLA"],
-        "nombre": ["NOMBRE", "USUARIO", "COLABORADOR", "NOMINA", "NÓMINA"],
-        "actividad": ["ACTIVIDAD REALIZADA", "ACTIVIDAD"],
-        "motivo": [
-            "MOTIVO DE INGRESO", "MOTIVO",
-            "INGRESO AL AREA DE ACONDICIONADO",
-            "INGRESO AL ÁREA DE ACONDICIONADO",
-        ],
-        "piezas": [
-            "NUMERO DE PIEZAS", "NÚMERO DE PIEZAS",
-            "PIEZAS", "CANTIDAD",
-        ],
-        "hora_inicio": ["HORA INICIO"],
-        "hora_fin": ["HORA FIN"],
-    }
-
-    for sheet_type, sheet in requested:
-        ws = wb[sheet]
-
-        header_row = None
-        header_map = {}
-
-        # Buscar la fila real de encabezados en las primeras 25 filas.
-        for r_idx, row in enumerate(ws.iter_rows(min_row=1, max_row=min(ws.max_row, 25), values_only=True), start=1):
-            normalized = [norm_text(v) if v is not None else "" for v in row]
-            current = {}
-            for key, options in aliases.items():
-                for idx, value in enumerate(normalized):
-                    if value in [norm_text(x) for x in options]:
-                        current[key] = idx
-                        break
-
-            # Se consideran suficientes las columnas esenciales.
-            if all(k in current for k in ["fecha", "tienda", "actividad", "motivo", "piezas"]):
-                header_row = r_idx
-                header_map = current
-                break
-
-        if header_row is None:
-            diag_rows.append({
+    for tipo, sheet in sources:
+        try:
+            df = pd.read_excel(
+                file_path,
+                sheet_name=sheet,
+                engine="openpyxl",
+                header=0,
+            )
+        except Exception as exc:
+            diag.append({
                 "Hoja": sheet,
-                "Tipo": sheet_type,
-                "Estado": "No se encontró una fila de encabezados válida",
+                "Tipo": tipo,
+                "Estado": f"Error de lectura: {exc}",
             })
             continue
 
-        records = []
-        for row in ws.iter_rows(min_row=header_row + 1, values_only=True):
-            fecha_raw = row[header_map["fecha"]] if header_map["fecha"] < len(row) else None
-            tienda_raw = row[header_map["tienda"]] if header_map["tienda"] < len(row) else None
-            actividad_raw = row[header_map["actividad"]] if header_map["actividad"] < len(row) else None
-            motivo_raw = row[header_map["motivo"]] if header_map["motivo"] < len(row) else None
-            piezas_raw = row[header_map["piezas"]] if header_map["piezas"] < len(row) else None
+        # Limpiar encabezados invisibles o espacios.
+        df.columns = [str(c).strip() for c in df.columns]
 
-            fecha = parse_date(fecha_raw)
-            if pd.isna(fecha):
-                continue
+        c_occ = find_col(df.columns, ["Occurrence", "Ocurrence", "Ocurrencia", "Folio"])
+        c_fecha = find_col(df.columns, ["Fecha", "Fecha s", "Fecha captura"])
+        c_tienda = find_col(df.columns, ["Tienda", "Ubicación", "Ubicacion", "Sucursal"])
+        c_tabla = find_col(df.columns, ["Tabla"])
+        c_nombre = find_col(df.columns, ["Nombre", "Nómina", "Nomina", "Colaborador", "Usuario"])
+        c_actividad = find_col(df.columns, ["Actividad Realizada", "Actividad"])
+        c_motivo = find_col(df.columns, [
+            "Motivo de ingreso",
+            "Ingreso al area de acondicionado",
+            "Ingreso al área de acondicionado",
+            "Motivo",
+        ])
+        c_piezas = find_col(df.columns, [
+            "Número de piezas", "Numero de piezas",
+            "Número de Piezas", "Numero de Piezas",
+            "Piezas", "Cantidad",
+        ])
 
-            tienda = canon_store(tienda_raw)
-            if not str(tienda).strip():
-                continue
+        missing = []
+        for label, col in [
+            ("Fecha", c_fecha),
+            ("Tienda/Ubicación", c_tienda),
+            ("Actividad", c_actividad),
+            ("Motivo", c_motivo),
+            ("Número de piezas", c_piezas),
+        ]:
+            if col is None:
+                missing.append(label)
 
-            piezas = safe_num(piezas_raw)
-            if not np.isfinite(piezas):
-                piezas = 0
-
-            # La nueva hoja inicia oficialmente el 29/06/2026.
-            if sheet_type == "nueva" and fecha < pd.Timestamp("2026-06-29"):
-                continue
-            # Evita duplicidad con la hoja nueva.
-            if sheet_type == "histórica" and second_sheet and fecha > pd.Timestamp("2026-06-28"):
-                continue
-
-            records.append({
-                "Occurrence": (
-                    str(row[header_map["occurrence"]]).strip()
-                    if "occurrence" in header_map and header_map["occurrence"] < len(row) and row[header_map["occurrence"]] is not None
-                    else ""
-                ),
-                "Fecha": fecha,
-                "Tienda": tienda,
-                "Actividad": str(actividad_raw or "").strip(),
-                "Motivo": str(motivo_raw or "").strip(),
-                "Piezas": piezas,
-                "Nombre": (
-                    str(row[header_map["nombre"]] or "").strip()
-                    if "nombre" in header_map and header_map["nombre"] < len(row)
-                    else ""
-                ),
-                "Tabla": (
-                    str(row[header_map["tabla"]] or "").strip()
-                    if "tabla" in header_map and header_map["tabla"] < len(row)
-                    else ""
-                ),
-                "Hoja origen": sheet,
-            })
-
-        op = pd.DataFrame(records)
-        if op.empty:
-            diag_rows.append({
+        if missing:
+            diag.append({
                 "Hoja": sheet,
-                "Tipo": sheet_type,
-                "Estado": "Encabezados detectados, pero no quedaron filas válidas",
-                "Fila encabezado": header_row,
-                "Columnas detectadas": str(header_map),
+                "Tipo": tipo,
+                "Estado": "Faltan columnas: " + ", ".join(missing),
+                "Encabezados encontrados": " | ".join(df.columns.astype(str).tolist()),
             })
             continue
 
+        op = pd.DataFrame({
+            "Occurrence": df[c_occ].astype(str).str.strip() if c_occ else "",
+            "Fecha": df[c_fecha].map(parse_date),
+            "Tienda": df[c_tienda].map(canon_store),
+            "Tabla": df[c_tabla].astype(str).str.strip() if c_tabla else "",
+            "Nombre": df[c_nombre].astype(str).str.strip() if c_nombre else "",
+            "Actividad": df[c_actividad].astype(str).str.strip(),
+            "Motivo": df[c_motivo].astype(str).str.strip(),
+            "Piezas": df[c_piezas].map(safe_num),
+            "Hoja origen": sheet,
+            "Prioridad fuente": 2 if tipo == "Nueva" else 1,
+        })
+
+        op = op.dropna(subset=["Fecha"])
+        op = op[op["Tienda"].astype(str).str.strip().ne("")]
+        op = op[op["Actividad"].map(norm_text).ne("")]
+        op = op[pd.to_numeric(op["Piezas"], errors="coerce").fillna(0).ge(0)]
+
+        # No recortar la hoja histórica: se conserva todo lo anterior.
+        # Tampoco se recorta la hoja nueva; la deduplicación decide qué registro conservar.
         op["Semana ISO"] = op["Fecha"].dt.isocalendar().week.astype(int)
         op["Año ISO"] = op["Fecha"].dt.isocalendar().year.astype(int)
         op["Mes"] = op["Fecha"].dt.to_period("M").astype(str)
 
         frames.append(op)
-        diag_rows.append({
+        diag.append({
             "Hoja": sheet,
-            "Tipo": sheet_type,
+            "Tipo": tipo,
             "Estado": "OK",
-            "Fila encabezado": header_row,
-            "Filas": len(op),
-            "Fecha mínima": op["Fecha"].min().strftime("%Y-%m-%d"),
-            "Fecha máxima": op["Fecha"].max().strftime("%Y-%m-%d"),
-            "Columnas detectadas": str(header_map),
-            "Actividades": ", ".join(sorted(op["Actividad"].map(norm_text).unique())[:15]),
-            "Tiendas": ", ".join(sorted(op["Tienda"].unique())[:20]),
+            "Filas leídas": len(df),
+            "Filas válidas": len(op),
+            "Fecha mínima": op["Fecha"].min().strftime("%Y-%m-%d") if not op.empty else "",
+            "Fecha máxima": op["Fecha"].max().strftime("%Y-%m-%d") if not op.empty else "",
+            "Actividad": c_actividad,
+            "Motivo": c_motivo,
+            "Piezas": c_piezas,
+            "Tienda": c_tienda,
         })
 
-    try:
-        wb.close()
-    except Exception:
-        pass
-
     if not frames:
-        return pd.DataFrame(), pd.DataFrame(diag_rows)
+        return pd.DataFrame(), pd.DataFrame(diag)
 
     result = pd.concat(frames, ignore_index=True)
 
+    # La nueva hoja tiene prioridad únicamente cuando el registro realmente se repite.
+    result = result.sort_values("Prioridad fuente")
     dedupe_cols = [
-        c for c in [
-            "Occurrence", "Fecha", "Tienda", "Actividad",
-            "Motivo", "Piezas", "Nombre",
-        ] if c in result.columns
+        "Occurrence", "Fecha", "Tienda", "Actividad", "Motivo", "Piezas", "Nombre"
     ]
-    if dedupe_cols:
-        result = result.drop_duplicates(subset=dedupe_cols, keep="last")
+    dedupe_cols = [c for c in dedupe_cols if c in result.columns]
+    result = result.drop_duplicates(subset=dedupe_cols, keep="last")
+    result = result.drop(columns=["Prioridad fuente"], errors="ignore")
 
     result = normalize_operation_df(result)
-    return result, pd.DataFrame(diag_rows)
+
+    # Resumen total para que el diagnóstico confirme la unión.
+    diag.insert(0, {
+        "Hoja": "TOTAL OPERACIÓN",
+        "Tipo": "Consolidado",
+        "Estado": "OK",
+        "Filas leídas": "",
+        "Filas válidas": len(result),
+        "Fecha mínima": result["Fecha"].min().strftime("%Y-%m-%d") if not result.empty else "",
+        "Fecha máxima": result["Fecha"].max().strftime("%Y-%m-%d") if not result.empty else "",
+        "Actividad": "",
+        "Motivo": "",
+        "Piezas": f"{pd.to_numeric(result['Piezas'], errors='coerce').fillna(0).sum():,.0f}",
+        "Tienda": f"{result['Tienda'].nunique()} tiendas",
+    })
+
+    return result, pd.DataFrame(diag)
 
 
 def read_plantilla(file_path):
@@ -2489,20 +2469,40 @@ def page_resumen(op, co):
     op = reliable_operation(op, co)
     co = normalize_commercial_df(co)
     st.markdown("## Dashboard Ejecutivo")
-    st.caption("Vista general de indicadores principales.")
+    st.caption("Vista general acumulada de indicadores principales.")
 
-    week_ranges = last_four_iso_week_ranges(op, co)
-    if not week_ranges:
+    if op is None or op.empty:
         st.info("Sin información operativa.")
         return
 
-    start = week_ranges[0]["start"]
-    end = week_ranges[-1]["end"]
+    op_dates = pd.to_datetime(op["Fecha"], errors="coerce").dropna()
+    co_dates = (
+        pd.to_datetime(co["Fecha"], errors="coerce").dropna()
+        if co is not None and not co.empty and "Fecha" in co.columns
+        else pd.Series(dtype="datetime64[ns]")
+    )
+
+    all_dates = pd.concat(
+        [s for s in [op_dates, co_dates] if not s.empty],
+        ignore_index=True,
+    )
+    if all_dates.empty:
+        st.info("Sin fechas válidas.")
+        return
+
+    # Las tarjetas superiores son acumuladas desde el primer registro hasta el último.
+    start = all_dates.min().normalize()
+    end = all_dates.max().normalize()
     df = table_by_store(op, co, start, end, PROJECT_STORES)
 
     kpis(summary_from_table(df))
+    st.caption(
+        f"Acumulado del {start.strftime('%d/%m/%Y')} al {end.strftime('%d/%m/%Y')}."
+    )
+
+    # Las tarjetas inferiores conservan el análisis de las últimas cuatro semanas.
     executive_week_cards(op, co)
-    combined_chart(df, "Ingreso vs Habilitado vs Ubicado por tienda")
+    combined_chart(df, "Ingreso vs Habilitado vs Ubicado por tienda — Acumulado")
 
 
 def page_por_dia(op, co):
@@ -2688,6 +2688,10 @@ def page_diagnostico(op, co, diag):
     st.info("Homologación v10.12: Guadalajara Miravalle/Miravalle => Miravalle; Guadalajara/Guadalajara Atemajac/Atemajac => Atemajac.")
     st.write(f"Operación: {len(op):,} registros")
     st.write(f"Comercial mensual Dev Pzs: {len(co):,} registros agrupados | Dev Pzs total: {co['Dev_Pzs'].sum() if not co.empty else 0:,.0f}")
+    if diag is not None and not diag.empty and "Tipo" in diag.columns:
+        diag_op = diag[diag["Tipo"].astype(str).str.contains("Histórica|Nueva|Consolidado", case=False, na=False)]
+        if not diag_op.empty:
+            panel("Diagnóstico operativo — unión de hojas", diag_op, height=260)
     panel("Diagnóstico de hojas", diag, height=420)
     if not co.empty:
         _co_diag = normalize_commercial_df(co)

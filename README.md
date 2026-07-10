@@ -1,19 +1,23 @@
-# Indicadores Cambios y Muertos v10.29
+# Indicadores Cambios y Muertos v10.30
 
-Corrección:
-- Se sustituyó la lectura de Resultados productividad 2 por lectura directa con openpyxl.
-- Se detecta la fila real de encabezados.
-- Reconoce exactamente:
-  Occurrence, Fecha, Ubicación, Tabla, Nómina, Actividad Realizada,
-  Ingreso al area de acondicionado, Número de piezas, Hora Inicio y Hora Fin.
-- La información del 09/07/2026 debe alimentar Acondicionado, Ubicado, Muertos,
-  Cajas, Probador y Recolectadas.
+Correcciones:
+- Une completa y permanentemente:
+  - Resultados productividad
+  - Resultados productividad 2
+- Ya no elimina el histórico anterior al 29/06/2026.
+- La nueva hoja solo reemplaza registros realmente duplicados.
+- El Dashboard Ejecutivo vuelve a mostrar el acumulado desde la primera hasta la última fecha.
+- Las tarjetas de semanas continúan mostrando las últimas cuatro semanas.
+- Diagnóstico operativo separado para confirmar:
+  - filas históricas;
+  - filas nuevas;
+  - total consolidado;
+  - fecha mínima y máxima.
 
 Actualización obligatoria:
-1. Sustituye los archivos del repositorio.
-2. Reinicia Streamlit.
-3. Borra el archivo persistido.
-4. Carga nuevamente el Excel.
-5. Presiona Procesar archivo.
-6. En Diagnóstico, Resultados productividad 2 debe mostrar Estado = OK,
-   la fila de encabezado y el número de filas leídas.
+1. Sustituir los archivos del repositorio.
+2. Reiniciar Streamlit.
+3. Borrar el archivo persistido.
+4. Cargar nuevamente el Excel.
+5. Procesar archivo.
+6. Revisar Diagnóstico operativo — unión de hojas.
