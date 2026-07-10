@@ -53,7 +53,7 @@ for p in [DATA_DIR, UPLOAD_DIR, CACHE_DIR, CONFIG_DIR, ASSETS_DIR]:
     p.mkdir(parents=True, exist_ok=True)
 
 MX_TZ = ZoneInfo("America/Mexico_City")
-APP_CACHE_VERSION = "v10.28"
+APP_CACHE_VERSION = "v10.29"
 AZUL = "#10245F"
 ROSA = "#EC007C"
 LAVANDA = "#F3F6FB"
@@ -885,52 +885,40 @@ def apply_nombre_map(op, plantilla):
 
 
 def read_operation_sheet(file_path):
-    """Lee y concentra las hojas operativas histórica y nueva.
+    """Lee las dos hojas operativas detectando la fila real de encabezados.
 
-    La hoja `Resultados productividad 2` puede venir:
-    1. Con encabezados normales.
-    2. Sin encabezados, como en el archivo mostrado:
-       B = Fecha
-       C = Tienda
-       D = Tabla
-       E = Nómina / colaborador
-       F = Actividad Realizada
-       G = Motivo de ingreso
-       H = Número de piezas
-       I = Hora Inicio
-       J = Hora Fin
+    Soporta exactamente estos encabezados de la hoja nueva:
+    Occurrence, Fecha, Ubicación, Tabla, Nómina, Actividad Realizada,
+    Ingreso al area de acondicionado, Número de piezas, Hora Inicio, Hora Fin.
     """
     try:
-        xls = pd.ExcelFile(file_path, engine="openpyxl")
-        sheet_names = list(xls.sheet_names)
+        wb = load_workbook(file_path, read_only=True, data_only=True)
+        sheet_names = wb.sheetnames
     except Exception as exc:
         return pd.DataFrame(), pd.DataFrame([{
             "Hoja": "Libro",
             "Estado": f"No fue posible abrir el archivo: {exc}",
         }])
 
-    normalized_names = {norm_text(s): s for s in sheet_names}
-
+    norm_to_real = {norm_text(s): s for s in sheet_names}
     requested = []
-    if "RESULTADOS PRODUCTIVIDAD" in normalized_names:
-        requested.append(("histórica", normalized_names["RESULTADOS PRODUCTIVIDAD"]))
+
+    if "RESULTADOS PRODUCTIVIDAD" in norm_to_real:
+        requested.append(("histórica", norm_to_real["RESULTADOS PRODUCTIVIDAD"]))
 
     second_sheet = None
     for alias in ["RESULTADOS PRODUCTIVIDAD 2", "RESULTADOS POR CHECKLIST"]:
-        if alias in normalized_names:
-            second_sheet = normalized_names[alias]
+        if alias in norm_to_real:
+            second_sheet = norm_to_real[alias]
             break
     if second_sheet:
         requested.append(("nueva", second_sheet))
 
     if not requested:
-        candidates = [
-            s for s in sheet_names
-            if "RESULTADOS" in norm_text(s)
-            and ("PRODUCT" in norm_text(s) or "CHECKLIST" in norm_text(s))
-        ]
-        for idx, sheet in enumerate(candidates[:2]):
-            requested.append(("histórica" if idx == 0 else "nueva", sheet))
+        for sheet in sheet_names:
+            ns = norm_text(sheet)
+            if "RESULTADOS" in ns and ("PRODUCT" in ns or "CHECKLIST" in ns):
+                requested.append(("histórica" if not requested else "nueva", sheet))
 
     if not requested:
         return pd.DataFrame(), pd.DataFrame([{
@@ -941,148 +929,120 @@ def read_operation_sheet(file_path):
     frames = []
     diag_rows = []
 
+    aliases = {
+        "occurrence": ["OCCURRENCE", "OCURRENCE", "OCURRENCIA", "FOLIO"],
+        "fecha": ["FECHA", "FECHA S", "FECHA CAPTURA", "DIA", "DÍA"],
+        "tienda": ["TIENDA", "UBICACION", "UBICACIÓN", "SUCURSAL"],
+        "tabla": ["TABLA"],
+        "nombre": ["NOMBRE", "USUARIO", "COLABORADOR", "NOMINA", "NÓMINA"],
+        "actividad": ["ACTIVIDAD REALIZADA", "ACTIVIDAD"],
+        "motivo": [
+            "MOTIVO DE INGRESO", "MOTIVO",
+            "INGRESO AL AREA DE ACONDICIONADO",
+            "INGRESO AL ÁREA DE ACONDICIONADO",
+        ],
+        "piezas": [
+            "NUMERO DE PIEZAS", "NÚMERO DE PIEZAS",
+            "PIEZAS", "CANTIDAD",
+        ],
+        "hora_inicio": ["HORA INICIO"],
+        "hora_fin": ["HORA FIN"],
+    }
+
     for sheet_type, sheet in requested:
-        try:
-            df = pd.read_excel(file_path, sheet_name=sheet, engine="openpyxl")
-        except Exception as exc:
+        ws = wb[sheet]
+
+        header_row = None
+        header_map = {}
+
+        # Buscar la fila real de encabezados en las primeras 25 filas.
+        for r_idx, row in enumerate(ws.iter_rows(min_row=1, max_row=min(ws.max_row, 25), values_only=True), start=1):
+            normalized = [norm_text(v) if v is not None else "" for v in row]
+            current = {}
+            for key, options in aliases.items():
+                for idx, value in enumerate(normalized):
+                    if value in [norm_text(x) for x in options]:
+                        current[key] = idx
+                        break
+
+            # Se consideran suficientes las columnas esenciales.
+            if all(k in current for k in ["fecha", "tienda", "actividad", "motivo", "piezas"]):
+                header_row = r_idx
+                header_map = current
+                break
+
+        if header_row is None:
             diag_rows.append({
                 "Hoja": sheet,
                 "Tipo": sheet_type,
-                "Estado": f"Error de lectura: {exc}",
+                "Estado": "No se encontró una fila de encabezados válida",
             })
             continue
 
-        c_fecha = find_col(df.columns, ["Fecha", "Fecha s", "Fecha captura", "Día", "Dia"])
-        c_tienda = find_col(df.columns, ["Tienda", "Ubicación", "Ubicacion", "Sucursal"])
-        c_actividad = find_col(df.columns, ["Actividad Realizada", "Actividad"])
-        c_motivo = find_col(df.columns, [
-            "Motivo de ingreso", "Motivo",
-            "Ingreso al area de acondicionado",
-            "Ingreso al área de acondicionado",
-        ])
-        c_piezas = find_col(df.columns, [
-            "Número de piezas", "Numero de piezas",
-            "Número de Piezas", "Numero de Piezas",
-            "Piezas", "Cantidad",
-        ])
-        c_nombre = find_col(df.columns, [
-            "Nombre", "Usuario", "Colaborador", "Nómina", "Nomina",
-        ])
-        c_occ = find_col(df.columns, [
-            "Occurrence", "Ocurrence", "Ocurrencia", "Folio",
-        ])
+        records = []
+        for row in ws.iter_rows(min_row=header_row + 1, values_only=True):
+            fecha_raw = row[header_map["fecha"]] if header_map["fecha"] < len(row) else None
+            tienda_raw = row[header_map["tienda"]] if header_map["tienda"] < len(row) else None
+            actividad_raw = row[header_map["actividad"]] if header_map["actividad"] < len(row) else None
+            motivo_raw = row[header_map["motivo"]] if header_map["motivo"] < len(row) else None
+            piezas_raw = row[header_map["piezas"]] if header_map["piezas"] < len(row) else None
 
-        source_mode = "encabezados"
-
-        # Rescate específico para la nueva hoja sin encabezados.
-        if sheet_type == "nueva" and (not c_fecha or not c_tienda or not c_piezas or not c_actividad):
-            try:
-                raw = pd.read_excel(
-                    file_path,
-                    sheet_name=sheet,
-                    engine="openpyxl",
-                    header=None,
-                )
-            except Exception as exc:
-                diag_rows.append({
-                    "Hoja": sheet,
-                    "Tipo": sheet_type,
-                    "Estado": f"No fue posible leer sin encabezados: {exc}",
-                })
+            fecha = parse_date(fecha_raw)
+            if pd.isna(fecha):
                 continue
 
-            # Elimina filas/columnas completamente vacías, pero conserva la posición relativa.
-            raw = raw.dropna(how="all").reset_index(drop=True)
-
-            # Busca automáticamente la columna de fecha.
-            best_date_col = None
-            best_date_count = 0
-            for col in raw.columns:
-                parsed = raw[col].map(parse_date)
-                valid_count = int(parsed.notna().sum())
-                if valid_count > best_date_count:
-                    best_date_count = valid_count
-                    best_date_col = col
-
-            # En el formato mostrado la fecha está en B, índice 1.
-            if best_date_col is None or best_date_count == 0:
-                best_date_col = 1 if raw.shape[1] > 1 else 0
-
-            # Mapeo posicional relativo a la columna de fecha:
-            # Fecha, Tienda, Tabla, Colaborador, Actividad, Motivo, Piezas, Inicio, Fin.
-            date_col = int(best_date_col)
-            store_col = date_col + 1
-            table_col = date_col + 2
-            name_col = date_col + 3
-            activity_col = date_col + 4
-            motive_col = date_col + 5
-            pieces_col = date_col + 6
-            start_col = date_col + 7
-            end_col = date_col + 8
-
-            required_max = pieces_col
-            if raw.shape[1] <= required_max:
-                diag_rows.append({
-                    "Hoja": sheet,
-                    "Tipo": sheet_type,
-                    "Estado": (
-                        "La hoja nueva no tiene suficientes columnas. "
-                        f"Se detectaron {raw.shape[1]} y se requieren al menos {required_max + 1}."
-                    ),
-                })
+            tienda = canon_store(tienda_raw)
+            if not str(tienda).strip():
                 continue
 
-            op = pd.DataFrame({
-                "Fecha": raw[date_col].map(parse_date),
-                "Tienda": raw[store_col].map(canon_store),
-                "Actividad": raw[activity_col].astype(str).fillna(""),
-                "Motivo": raw[motive_col].astype(str).fillna(""),
-                "Piezas": raw[pieces_col].map(safe_num),
-                "Nombre": raw[name_col].astype(str).fillna(""),
-                "Occurrence": "",
+            piezas = safe_num(piezas_raw)
+            if not np.isfinite(piezas):
+                piezas = 0
+
+            # La nueva hoja inicia oficialmente el 29/06/2026.
+            if sheet_type == "nueva" and fecha < pd.Timestamp("2026-06-29"):
+                continue
+            # Evita duplicidad con la hoja nueva.
+            if sheet_type == "histórica" and second_sheet and fecha > pd.Timestamp("2026-06-28"):
+                continue
+
+            records.append({
+                "Occurrence": (
+                    str(row[header_map["occurrence"]]).strip()
+                    if "occurrence" in header_map and header_map["occurrence"] < len(row) and row[header_map["occurrence"]] is not None
+                    else ""
+                ),
+                "Fecha": fecha,
+                "Tienda": tienda,
+                "Actividad": str(actividad_raw or "").strip(),
+                "Motivo": str(motivo_raw or "").strip(),
+                "Piezas": piezas,
+                "Nombre": (
+                    str(row[header_map["nombre"]] or "").strip()
+                    if "nombre" in header_map and header_map["nombre"] < len(row)
+                    else ""
+                ),
+                "Tabla": (
+                    str(row[header_map["tabla"]] or "").strip()
+                    if "tabla" in header_map and header_map["tabla"] < len(row)
+                    else ""
+                ),
                 "Hoja origen": sheet,
             })
 
-            source_mode = (
-                f"sin encabezados: Fecha={excel_col_name(date_col)}, "
-                f"Tienda={excel_col_name(store_col)}, "
-                f"Actividad={excel_col_name(activity_col)}, "
-                f"Motivo={excel_col_name(motive_col)}, "
-                f"Piezas={excel_col_name(pieces_col)}"
-            )
-        else:
-            if not c_fecha or not c_tienda or not c_piezas:
-                diag_rows.append({
-                    "Hoja": sheet,
-                    "Tipo": sheet_type,
-                    "Estado": "Faltan columnas Fecha/Tienda/Piezas",
-                    "Fecha": str(c_fecha),
-                    "Tienda": str(c_tienda),
-                    "Piezas": str(c_piezas),
-                })
-                continue
-
-            op = pd.DataFrame()
-            op["Fecha"] = df[c_fecha].map(parse_date)
-            op["Tienda"] = df[c_tienda].map(canon_store)
-            op["Actividad"] = df[c_actividad].astype(str).fillna("") if c_actividad else ""
-            op["Motivo"] = df[c_motivo].astype(str).fillna("") if c_motivo else ""
-            op["Piezas"] = df[c_piezas].map(safe_num)
-            op["Nombre"] = df[c_nombre].astype(str).fillna("") if c_nombre else ""
-            op["Occurrence"] = df[c_occ].astype(str).fillna("") if c_occ else ""
-            op["Hoja origen"] = sheet
-
-        op = op.dropna(subset=["Fecha"])
-        op = op[op["Tienda"].astype(str).str.strip() != ""]
-        op = op[pd.to_numeric(op["Piezas"], errors="coerce").fillna(0) >= 0]
-
-        if sheet_type == "nueva":
-            op = op[op["Fecha"] >= pd.Timestamp("2026-06-29")]
-
-        if sheet_type == "histórica" and second_sheet:
-            op = op[op["Fecha"] <= pd.Timestamp("2026-06-28")]
+        op = pd.DataFrame(records)
+        if op.empty:
+            diag_rows.append({
+                "Hoja": sheet,
+                "Tipo": sheet_type,
+                "Estado": "Encabezados detectados, pero no quedaron filas válidas",
+                "Fila encabezado": header_row,
+                "Columnas detectadas": str(header_map),
+            })
+            continue
 
         op["Semana ISO"] = op["Fecha"].dt.isocalendar().week.astype(int)
+        op["Año ISO"] = op["Fecha"].dt.isocalendar().year.astype(int)
         op["Mes"] = op["Fecha"].dt.to_period("M").astype(str)
 
         frames.append(op)
@@ -1090,17 +1050,19 @@ def read_operation_sheet(file_path):
             "Hoja": sheet,
             "Tipo": sheet_type,
             "Estado": "OK",
-            "Modo lectura": source_mode,
+            "Fila encabezado": header_row,
             "Filas": len(op),
-            "Fecha mínima": op["Fecha"].min().strftime("%Y-%m-%d") if not op.empty else "",
-            "Fecha máxima": op["Fecha"].max().strftime("%Y-%m-%d") if not op.empty else "",
-            "Actividades detectadas": ", ".join(
-                sorted(op["Actividad"].map(norm_text).dropna().unique().tolist())[:12]
-            ),
-            "Tiendas detectadas": ", ".join(
-                sorted(op["Tienda"].dropna().unique().tolist())[:20]
-            ),
+            "Fecha mínima": op["Fecha"].min().strftime("%Y-%m-%d"),
+            "Fecha máxima": op["Fecha"].max().strftime("%Y-%m-%d"),
+            "Columnas detectadas": str(header_map),
+            "Actividades": ", ".join(sorted(op["Actividad"].map(norm_text).unique())[:15]),
+            "Tiendas": ", ".join(sorted(op["Tienda"].unique())[:20]),
         })
+
+    try:
+        wb.close()
+    except Exception:
+        pass
 
     if not frames:
         return pd.DataFrame(), pd.DataFrame(diag_rows)
