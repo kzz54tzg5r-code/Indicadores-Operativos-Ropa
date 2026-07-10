@@ -53,7 +53,7 @@ for p in [DATA_DIR, UPLOAD_DIR, CACHE_DIR, CONFIG_DIR, ASSETS_DIR]:
     p.mkdir(parents=True, exist_ok=True)
 
 MX_TZ = ZoneInfo("America/Mexico_City")
-APP_CACHE_VERSION = "v10.31"
+APP_CACHE_VERSION = "v10.32"
 AZUL = "#10245F"
 ROSA = "#EC007C"
 LAVANDA = "#F3F6FB"
@@ -1682,12 +1682,11 @@ def combined_chart(df, title):
         chart_df[c] = pd.to_numeric(chart_df[c], errors="coerce").fillna(0)
 
     raw_max = max(float(chart_df[c].max()) for c in ["Total", "Habilitadas", "Ubicadas"])
-    ymax = raw_max * 1.42 if raw_max > 0 else 10
+    ymax = raw_max * 1.55 if raw_max > 0 else 10
     leader_gap = max(ymax * 0.075, 30)
 
     fig = go.Figure()
 
-    # Línea primero; sus etiquetas se agregan como anotaciones con líder punteado.
     fig.add_trace(go.Scatter(
         x=chart_df["Tienda"],
         y=chart_df["Total"],
@@ -1703,7 +1702,7 @@ def combined_chart(df, title):
         y=chart_df["Habilitadas"],
         name="Pzas Habilitadas",
         marker_color=AZUL,
-        text=chart_df["Habilitadas"].map(lambda x: f"{x:,.0f}"),
+        text=chart_df["Habilitadas"].map(lambda x: f"<b>{x:,.0f}</b>"),
         textposition="outside",
         textfont=dict(color="#111827", size=13, family="Arial Black"),
         cliponaxis=False,
@@ -1715,19 +1714,26 @@ def combined_chart(df, title):
         y=chart_df["Ubicadas"],
         name="Pzas Ubicadas",
         marker_color=ROSA,
-        text=chart_df["Ubicadas"].map(lambda x: f"{x:,.0f}"),
+        text=chart_df["Ubicadas"].map(lambda x: f"<b>{x:,.0f}</b>"),
         textposition="outside",
         textfont=dict(color="#111827", size=13, family="Arial Black"),
         cliponaxis=False,
         hovertemplate="<b>%{x}</b><br>Ubicadas: %{y:,.0f}<extra></extra>",
     ))
 
-    # Líder vertical punteado + número de referencia para cada punto de la línea.
-    for tienda, total in zip(chart_df["Tienda"], chart_df["Total"]):
-        label_y = min(float(total) + leader_gap, ymax * 0.94)
+    for tienda, total, habilitadas, ubicadas in zip(
+        chart_df["Tienda"],
+        chart_df["Total"],
+        chart_df["Habilitadas"],
+        chart_df["Ubicadas"],
+    ):
+        group_top = max(float(total), float(habilitadas), float(ubicadas))
+        label_y = min(group_top + leader_gap, ymax * 0.94)
+
         fig.add_shape(
             type="line",
-            x0=tienda, x1=tienda,
+            x0=tienda,
+            x1=tienda,
             y0=float(total) + max(ymax * 0.012, 5),
             y1=label_y - max(ymax * 0.018, 8),
             line=dict(color="#43A5FF", width=2, dash="dot"),
@@ -1739,8 +1745,10 @@ def combined_chart(df, title):
             text=f"<b>{float(total):,.0f}</b>",
             showarrow=False,
             font=dict(color="#111827", size=13, family="Arial Black"),
-            bgcolor="rgba(255,255,255,0.92)",
-            borderpad=2,
+            bgcolor="rgba(255,255,255,0.96)",
+            bordercolor="#D9E1EE",
+            borderwidth=1,
+            borderpad=3,
         )
 
     fig.update_layout(
@@ -1869,11 +1877,29 @@ def _pdf_kpi_card(symbol, title, value, note, color_hex, styles):
     return outer
 
 
+
+def _pdf_footer(canvas, doc):
+    canvas.saveState()
+    page_width, _ = landscape(letter)
+
+    canvas.setStrokeColor(colors.HexColor("#D9E1EE"))
+    canvas.setLineWidth(0.5)
+    canvas.line(doc.leftMargin, 18, page_width - doc.rightMargin, 18)
+
+    canvas.setFont("Helvetica-Bold", 6.2)
+    canvas.setFillColor(colors.HexColor("#5B6476"))
+    canvas.drawString(
+        doc.leftMargin,
+        8,
+        "INFORMACIÓN CONFIDENCIAL | Price Shoes | Operaciones Ropa",
+    )
+    canvas.restoreState()
+
+
 def _pdf_chart(df):
-    """Gráfico manual para controlar barras, etiquetas y líderes."""
-    drawing = Drawing(742, 208)
+    drawing = Drawing(742, 215)
     x0, y0 = 48, 34
-    width, height = 655, 132
+    width, height = 655, 134
 
     tiendas = list(df["Tienda"].astype(str))
     hab = pd.to_numeric(df["Habilitadas"], errors="coerce").fillna(0).astype(float).tolist()
@@ -1881,7 +1907,7 @@ def _pdf_chart(df):
     total = pd.to_numeric(df["Total"], errors="coerce").fillna(0).astype(float).tolist()
 
     maxv = max(hab + ubic + total + [10.0])
-    ymax = maxv * 1.48
+    ymax = maxv * 1.62
 
     # Ejes y retícula.
     drawing.add(Line(x0, y0, x0 + width, y0, strokeColor=colors.HexColor("#AEB8C8"), strokeWidth=0.7))
@@ -1889,13 +1915,39 @@ def _pdf_chart(df):
         val = ymax * i / 5
         y = y0 + height * i / 5
         drawing.add(Line(x0, y, x0 + width, y, strokeColor=colors.HexColor("#E6EAF0"), strokeWidth=0.5))
-        drawing.add(String(x0 - 8, y - 2, f"{val:,.0f}", textAnchor="end", fontSize=5.5, fillColor=colors.HexColor("#586174")))
+        drawing.add(String(
+            x0 - 8, y - 2, f"{val:,.0f}",
+            textAnchor="end", fontSize=5.5,
+            fillColor=colors.HexColor("#586174"),
+        ))
 
     n = max(1, len(tiendas))
     group_w = width / n
     bar_w = min(24, group_w * 0.27)
-
     line_points = []
+
+    def add_label_box(cx, cy, text, font_size=6.5, pad_x=3.5, pad_y=2.0):
+        label_w = max(18, len(text) * font_size * 0.56 + pad_x * 2)
+        label_h = font_size + pad_y * 2 + 1
+        drawing.add(Rect(
+            cx - label_w / 2,
+            cy - pad_y - 1,
+            label_w,
+            label_h,
+            fillColor=colors.white,
+            strokeColor=colors.HexColor("#D9E1EE"),
+            strokeWidth=0.35,
+        ))
+        drawing.add(String(
+            cx,
+            cy,
+            text,
+            textAnchor="middle",
+            fontName="Helvetica-Bold",
+            fontSize=font_size,
+            fillColor=colors.black,
+        ))
+
     for i, tienda in enumerate(tiendas):
         center = x0 + group_w * (i + 0.5)
         x_h = center - bar_w - 1.5
@@ -1903,50 +1955,69 @@ def _pdf_chart(df):
 
         h_h = height * hab[i] / ymax
         h_u = height * ubic[i] / ymax
-
-        drawing.add(Rect(x_h, y0, bar_w, h_h, fillColor=colors.HexColor(AZUL), strokeColor=None))
-        drawing.add(Rect(x_u, y0, bar_w, h_u, fillColor=colors.HexColor(ROSA), strokeColor=None))
-
-        # Etiquetas centradas por encima de cada barra.
-        drawing.add(String(
-            x_h + bar_w / 2, y0 + h_h + 5,
-            f"{hab[i]:,.0f}",
-            textAnchor="middle", fontName="Helvetica-Bold", fontSize=6.3, fillColor=colors.black,
-        ))
-        drawing.add(String(
-            x_u + bar_w / 2, y0 + h_u + 5,
-            f"{ubic[i]:,.0f}",
-            textAnchor="middle", fontName="Helvetica-Bold", fontSize=6.3, fillColor=colors.black,
-        ))
-
         point_y = y0 + height * total[i] / ymax
+
+        drawing.add(Rect(
+            x_h, y0, bar_w, h_h,
+            fillColor=colors.HexColor(AZUL),
+            strokeColor=None,
+        ))
+        drawing.add(Rect(
+            x_u, y0, bar_w, h_u,
+            fillColor=colors.HexColor(ROSA),
+            strokeColor=None,
+        ))
+
+        # Etiquetas de barras: siempre visibles sobre fondo blanco.
+        hab_label_y = y0 + h_h + 7
+        ubic_label_y = y0 + h_u + 7
+        add_label_box(x_h + bar_w / 2, hab_label_y, f"{hab[i]:,.0f}", font_size=6.4)
+        add_label_box(x_u + bar_w / 2, ubic_label_y, f"{ubic[i]:,.0f}", font_size=6.4)
+
         line_points.append((center, point_y))
 
-        # Líder punteado y etiqueta de la línea.
-        label_y = min(point_y + 23, y0 + height + 25)
-        leader = Line(center, point_y + 3, center, label_y - 7, strokeColor=colors.HexColor("#43A5FF"), strokeWidth=1.1)
+        # El número de la línea se coloca por encima de la barra más alta del grupo.
+        group_top_value = max(total[i], hab[i], ubic[i])
+        group_top_y = y0 + height * group_top_value / ymax
+        label_y = min(group_top_y + 26, y0 + height + 23)
+
+        leader = Line(
+            center,
+            point_y + 3,
+            center,
+            label_y - 8,
+            strokeColor=colors.HexColor("#43A5FF"),
+            strokeWidth=1.1,
+        )
         leader.strokeDashArray = [2, 2]
         drawing.add(leader)
-        drawing.add(String(
-            center, label_y,
-            f"{total[i]:,.0f}",
-            textAnchor="middle", fontName="Helvetica-Bold", fontSize=6.5, fillColor=colors.black,
-        ))
+        add_label_box(center, label_y, f"{total[i]:,.0f}", font_size=6.7)
 
         drawing.add(String(
-            center + 2, y0 - 13,
+            center + 2,
+            y0 - 13,
             tienda,
-            textAnchor="end", fontSize=5.7, fillColor=colors.HexColor("#4B5563"),
+            textAnchor="end",
+            fontSize=5.7,
+            fillColor=colors.HexColor("#4B5563"),
             angle=35,
         ))
 
     if len(line_points) >= 2:
-        drawing.add(PolyLine(line_points, strokeColor=colors.HexColor("#43A5FF"), strokeWidth=2.2))
+        drawing.add(PolyLine(
+            line_points,
+            strokeColor=colors.HexColor("#43A5FF"),
+            strokeWidth=2.2,
+        ))
     for x, y in line_points:
-        drawing.add(Circle(x, y, 2.5, fillColor=colors.HexColor("#43A5FF"), strokeColor=None))
+        drawing.add(Circle(
+            x, y, 2.5,
+            fillColor=colors.HexColor("#43A5FF"),
+            strokeColor=None,
+        ))
 
     # Leyenda.
-    legend_y = 194
+    legend_y = 201
     drawing.add(Line(500, legend_y, 518, legend_y, strokeColor=colors.HexColor("#43A5FF"), strokeWidth=2.2))
     drawing.add(String(522, legend_y - 2, "Total ingresos", fontSize=5.8, fillColor=colors.HexColor("#313847")))
     drawing.add(Rect(588, legend_y - 4, 8, 8, fillColor=colors.HexColor(AZUL), strokeColor=None))
@@ -1965,7 +2036,7 @@ def build_pdf_report(title, subtitle, kpi_values, df):
         rightMargin=18,
         leftMargin=18,
         topMargin=14,
-        bottomMargin=12,
+        bottomMargin=28,
     )
     styles = getSampleStyleSheet()
     story = []
@@ -2066,7 +2137,7 @@ def build_pdf_report(title, subtitle, kpi_values, df):
     ))
     story.append(_pdf_chart(df))
 
-    doc.build(story)
+    doc.build(story, onFirstPage=_pdf_footer, onLaterPages=_pdf_footer)
     buffer.seek(0)
     return buffer.getvalue()
 
@@ -2108,7 +2179,7 @@ def build_generic_table_pdf(title, subtitle, df, kpi_values=None):
         rightMargin=18,
         leftMargin=18,
         topMargin=14,
-        bottomMargin=14,
+        bottomMargin=28,
     )
     styles = getSampleStyleSheet()
     story = []
@@ -2226,7 +2297,7 @@ def build_generic_table_pdf(title, subtitle, df, kpi_values=None):
         ))
         story.append(_pdf_chart(df))
 
-    doc.build(story)
+    doc.build(story, onFirstPage=_pdf_footer, onLaterPages=_pdf_footer)
     buffer.seek(0)
     return buffer.getvalue()
 

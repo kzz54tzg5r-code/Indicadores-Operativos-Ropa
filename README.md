@@ -1,24 +1,14 @@
-# Indicadores Cambios y Muertos v10.31
+# Indicadores Cambios y Muertos v10.32
 
-Corrección principal:
-- La fecha `2026-07-09 17:00:14` se estaba interpretando como `2026-09-07`.
-- Por eso Diagnóstico mostraba la hoja nueva hasta septiembre y el reporte del 09/07/2026 tenía operación = 0.
-- Ahora los formatos ISO con hora se interpretan siempre como:
-  año-mes-día.
+Cambios:
+- Los números de las barras del gráfico se muestran sobre un recuadro blanco.
+- Los valores de la línea se colocan por encima de la barra más alta del grupo.
+- La línea punteada conecta el punto con su valor sin que el número quede oculto.
+- El mismo diseño se aplica en Streamlit y en los PDF.
+- Todos los PDF incluyen en la parte inferior:
+  INFORMACIÓN CONFIDENCIAL | Price Shoes | Operaciones Ropa
 
-Resultado esperado:
-- Resultados productividad 2:
-  - fecha mínima: 2026-06-29
-  - fecha máxima: 2026-07-09
-- Al consultar 09/07/2026:
-  - operación debe ser mayor que 0;
-  - Acondicionado, Ubicado, Recolectadas, Muertos, Cajas y Probador deben mostrar valores reales.
-- El Dashboard Ejecutivo vuelve a sumar el histórico y la hoja nueva.
-
-Actualización obligatoria:
-1. Sustituir los archivos del repositorio.
-2. Reiniciar Streamlit.
-3. Borrar el archivo persistido.
-4. Cargar nuevamente el Excel.
-5. Procesar el archivo.
-6. Revisar que Diagnóstico muestre fecha máxima 2026-07-09, no 2026-09-07.
+Actualización:
+1. Sustituye los archivos del repositorio.
+2. Reinicia Streamlit.
+3. No es necesario volver a procesar el Excel.
