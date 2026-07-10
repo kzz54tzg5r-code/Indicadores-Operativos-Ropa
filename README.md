@@ -1,31 +1,25 @@
-# Indicadores Cambios y Muertos v10.26
+# Indicadores Cambios y Muertos v10.27
 
-Cambios principales:
+Corrección principal:
+- La aplicación ya no limita la operación a la última fecha de las hojas comerciales.
+- Se conserva la información de `Resultados productividad 2` desde el 29/06/2026.
+- Los registros del 09/07/2026 ahora alimentan:
+  - Recolectadas
+  - Habilitadas
+  - Ubicadas
+  - Muertos
+  - Cajas
+  - Probador
+  - Indicadores diarios, semanales y mensuales
 
-1. Nueva hoja operativa
-- Lee `Resultados productividad`.
-- Lee y concatena `Resultados productividad 2`.
-- La segunda hoja se considera a partir del 29/06/2026.
-- También reconoce temporalmente el alias `Resultados por Checklist`.
-- Mapea:
-  - Ubicación -> Tienda
-  - Actividad Realizada -> Actividad
-  - Ingreso al area de acondicionado -> Motivo
-  - Número de piezas -> Piezas
-  - Nómina -> Nombre
+Causa del error:
+La versión anterior tomaba el 28/06/2026 como fecha máxima porque era la última
+fecha comercial. Por eso los registros operativos de julio se filtraban y aparecían
+como cero.
 
-2. PDF semanal y mensual
-- Incluyen tarjetas KPI.
-- Incluyen tabla.
-- Incluyen gráfico combinado.
-- El porcentaje de ubicación se muestra:
-  - rojo cuando es menor a 75%;
-  - verde cuando es igual o mayor a 90%;
-  - negro entre 75% y 89.9%.
-
-Después de actualizar:
-1. Sustituye los archivos en GitHub.
-2. Reinicia la aplicación.
+Para actualizar:
+1. Sustituye los archivos del repositorio.
+2. Reinicia Streamlit.
 3. Borra el archivo persistido.
-4. Carga el Excel que ya contenga la pestaña `Resultados productividad 2`.
+4. Carga nuevamente el Excel con `Resultados productividad 2`.
 5. Procesa nuevamente el archivo.

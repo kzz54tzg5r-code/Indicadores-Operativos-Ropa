@@ -53,7 +53,7 @@ for p in [DATA_DIR, UPLOAD_DIR, CACHE_DIR, CONFIG_DIR, ASSETS_DIR]:
     p.mkdir(parents=True, exist_ok=True)
 
 MX_TZ = ZoneInfo("America/Mexico_City")
-APP_CACHE_VERSION = "v10.26"
+APP_CACHE_VERSION = "v10.27"
 AZUL = "#10245F"
 ROSA = "#EC007C"
 LAVANDA = "#F3F6FB"
@@ -2238,42 +2238,72 @@ def nav_bar():
 
 
 def reliable_data_horizon(op, co):
-    """Devuelve fecha mínima y máxima confiables del archivo.
+    """Obtiene el horizonte real sin eliminar la nueva operación de julio.
 
-    Las hojas comerciales mensuales tienen las fechas reales en sus encabezados.
-    Se usan como límite para descartar fechas operativas invertidas, por ejemplo
-    diciembre generado accidentalmente a partir de 12/06.
+    Antes se utilizaba únicamente la fecha máxima comercial. Como las hojas
+    comerciales cargadas terminaban el 28/06/2026, toda la información de
+    `Resultados productividad 2` del 29/06 en adelante quedaba descartada.
+
+    Ahora:
+    - se toman fechas válidas tanto de operación como de comercial;
+    - se descartan únicamente fechas futuras anómalas;
+    - se conserva la información operativa nueva hasta la fecha actual.
     """
     op = normalize_operation_df(op)
     co = normalize_commercial_df(co)
 
-    co_dates = pd.to_datetime(co["Fecha"], errors="coerce").dropna() if co is not None and not co.empty and "Fecha" in co.columns else pd.Series(dtype="datetime64[ns]")
-    op_dates = pd.to_datetime(op["Fecha"], errors="coerce").dropna() if op is not None and not op.empty and "Fecha" in op.columns else pd.Series(dtype="datetime64[ns]")
+    op_dates = (
+        pd.to_datetime(op["Fecha"], errors="coerce").dropna()
+        if op is not None and not op.empty and "Fecha" in op.columns
+        else pd.Series(dtype="datetime64[ns]")
+    )
+    co_dates = (
+        pd.to_datetime(co["Fecha"], errors="coerce").dropna()
+        if co is not None and not co.empty and "Fecha" in co.columns
+        else pd.Series(dtype="datetime64[ns]")
+    )
 
+    # Tolerancia corta para capturas con diferencia de zona horaria.
+    max_allowed = pd.Timestamp.today().normalize() + pd.Timedelta(days=2)
+
+    if not op_dates.empty:
+        op_dates = op_dates[op_dates <= max_allowed]
     if not co_dates.empty:
-        max_date = co_dates.max().normalize()
-        min_date = co_dates.min().normalize()
-    elif not op_dates.empty:
-        max_date = op_dates.max().normalize()
-        min_date = op_dates.min().normalize()
-    else:
+        co_dates = co_dates[co_dates <= max_allowed]
+
+    all_dates = pd.concat(
+        [s for s in [op_dates, co_dates] if not s.empty],
+        ignore_index=True,
+    ) if (not op_dates.empty or not co_dates.empty) else pd.Series(dtype="datetime64[ns]")
+
+    if all_dates.empty:
         today = pd.Timestamp.today().normalize()
         return today, today
 
-    return min_date, max_date
+    return all_dates.min().normalize(), all_dates.max().normalize()
 
 
 def reliable_operation(op, co):
+    """Conserva la operación válida de ambas hojas y elimina fechas anómalas."""
     op = normalize_operation_df(op)
     if op is None or op.empty:
         return op
+
     min_date, max_date = reliable_data_horizon(op, co)
     dates = pd.to_datetime(op["Fecha"], errors="coerce")
-    out = op[(dates >= min_date) & (dates <= max_date)].copy()
-    if "Fecha" in out.columns:
-        out["Semana ISO"] = pd.to_datetime(out["Fecha"]).dt.isocalendar().week.astype(int)
-        out["Año ISO"] = pd.to_datetime(out["Fecha"]).dt.isocalendar().year.astype(int)
-        out["Mes"] = pd.to_datetime(out["Fecha"]).dt.to_period("M").astype(str)
+
+    out = op[
+        dates.notna()
+        & (dates >= min_date)
+        & (dates <= max_date)
+    ].copy()
+
+    if "Fecha" in out.columns and not out.empty:
+        out["Fecha"] = pd.to_datetime(out["Fecha"], errors="coerce").dt.normalize()
+        out["Semana ISO"] = out["Fecha"].dt.isocalendar().week.astype(int)
+        out["Año ISO"] = out["Fecha"].dt.isocalendar().year.astype(int)
+        out["Mes"] = out["Fecha"].dt.to_period("M").astype(str)
+
     return out
 
 
@@ -2407,7 +2437,7 @@ def page_resumen(op, co):
 
 
 def page_por_dia(op, co):
-    op = normalize_operation_df(op)
+    op = reliable_operation(op, co)
     co = normalize_commercial_df(co)
     st.markdown("## Por Día")
     st.caption("Ingresos, pendientes y avance por tienda.")
