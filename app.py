@@ -53,7 +53,7 @@ for p in [DATA_DIR, UPLOAD_DIR, CACHE_DIR, CONFIG_DIR, ASSETS_DIR]:
     p.mkdir(parents=True, exist_ok=True)
 
 MX_TZ = ZoneInfo("America/Mexico_City")
-APP_CACHE_VERSION = "v10.25"
+APP_CACHE_VERSION = "v10.26"
 AZUL = "#10245F"
 ROSA = "#EC007C"
 LAVANDA = "#F3F6FB"
@@ -885,53 +885,170 @@ def apply_nombre_map(op, plantilla):
 
 
 def read_operation_sheet(file_path):
-    # Sólo lee la hoja operativa, no todo el libro.
-    sheet = "Resultados productividad"
+    """Lee y concentra las hojas operativas.
+
+    - Resultados productividad: información histórica hasta el 28/06/2026.
+    - Resultados productividad 2: información nueva a partir del 29/06/2026.
+
+    También acepta como alias temporal "Resultados por Checklist", que coincide
+    con la estructura del archivo de ejemplo proporcionado.
+    """
     try:
-        df = pd.read_excel(file_path, sheet_name=sheet, engine="openpyxl")
-    except Exception:
         xls = pd.ExcelFile(file_path, engine="openpyxl")
-        cand = [s for s in xls.sheet_names if "RESULTADOS" in norm_text(s) and "PRODUCT" in norm_text(s)]
-        if not cand:
-            return pd.DataFrame(), pd.DataFrame([{"Hoja": "Resultados productividad", "Estado": "No encontrada"}])
-        sheet = cand[0]
-        df = pd.read_excel(file_path, sheet_name=sheet, engine="openpyxl")
+        sheet_names = list(xls.sheet_names)
+    except Exception as exc:
+        return pd.DataFrame(), pd.DataFrame([{
+            "Hoja": "Libro",
+            "Estado": f"No fue posible abrir el archivo: {exc}",
+        }])
 
-    c_fecha = find_col(df.columns, ["Fecha", "Fecha s", "Fecha captura", "Día", "Dia"])
-    c_tienda = find_col(df.columns, ["Tienda"])
-    c_actividad = find_col(df.columns, ["Actividad Realizada", "Actividad"])
-    c_motivo = find_col(df.columns, ["Motivo de ingreso", "Motivo"])
-    c_piezas = find_col(df.columns, ["Número de Piezas", "Numero de Piezas", "Piezas", "Cantidad"])
-    c_nombre = find_col(df.columns, ["Nombre", "Usuario", "Colaborador"])
-    c_occ = find_col(df.columns, ["Occurrence", "Ocurrence", "Ocurrencia", "Folio"])
+    normalized_names = {norm_text(s): s for s in sheet_names}
 
-    if not c_fecha or not c_tienda or not c_piezas:
-        return pd.DataFrame(), pd.DataFrame([{"Hoja": sheet, "Estado": "Faltan columnas Fecha/Tienda/Piezas"}])
+    requested = []
+    # Hoja histórica.
+    for alias in ["RESULTADOS PRODUCTIVIDAD"]:
+        if alias in normalized_names:
+            requested.append(("histórica", normalized_names[alias]))
+            break
 
-    op = pd.DataFrame()
-    op["Fecha"] = df[c_fecha].map(parse_date)
-    op["Tienda"] = df[c_tienda].map(canon_store)
-    op["Actividad"] = df[c_actividad].astype(str) if c_actividad else ""
-    op["Motivo"] = df[c_motivo].astype(str) if c_motivo else ""
-    op["Piezas"] = df[c_piezas].map(safe_num)
-    op["Nombre"] = df[c_nombre].astype(str).fillna("") if c_nombre else ""
-    op["Occurrence"] = df[c_occ].astype(str).fillna("") if c_occ else ""
-    op = op.dropna(subset=["Fecha"])
-    op = op[op["Tienda"].astype(str).str.strip() != ""]
-    op["Semana ISO"] = op["Fecha"].dt.isocalendar().week.astype(int)
-    op["Mes"] = op["Fecha"].dt.to_period("M").astype(str)
+    # Hoja nueva. Primero busca el nombre definitivo y después el alias del ejemplo.
+    second_sheet = None
+    for alias in [
+        "RESULTADOS PRODUCTIVIDAD 2",
+        "RESULTADOS POR CHECKLIST",
+    ]:
+        if alias in normalized_names:
+            second_sheet = normalized_names[alias]
+            break
+    if second_sheet:
+        requested.append(("nueva", second_sheet))
 
-    diag = pd.DataFrame([{
-        "Hoja": sheet,
-        "Estado": "OK",
-        "Filas": len(op),
-        "Fecha": str(c_fecha),
-        "Tienda": str(c_tienda),
-        "Piezas": str(c_piezas),
-        "Actividad": str(c_actividad),
-        "Motivo": str(c_motivo),
-    }])
-    return op, diag
+    # Rescate semántico si algún nombre tiene espacios o variaciones.
+    if not requested:
+        candidates = [
+            s for s in sheet_names
+            if "RESULTADOS" in norm_text(s)
+            and ("PRODUCT" in norm_text(s) or "CHECKLIST" in norm_text(s))
+        ]
+        for idx, sheet in enumerate(candidates[:2]):
+            requested.append(("histórica" if idx == 0 else "nueva", sheet))
+
+    if not requested:
+        return pd.DataFrame(), pd.DataFrame([{
+            "Hoja": "Resultados productividad / Resultados productividad 2",
+            "Estado": "No se encontraron hojas operativas",
+        }])
+
+    frames = []
+    diag_rows = []
+
+    for sheet_type, sheet in requested:
+        try:
+            df = pd.read_excel(file_path, sheet_name=sheet, engine="openpyxl")
+        except Exception as exc:
+            diag_rows.append({
+                "Hoja": sheet,
+                "Tipo": sheet_type,
+                "Estado": f"Error de lectura: {exc}",
+            })
+            continue
+
+        # La hoja nueva usa Ubicación y Nómina; la histórica usa Tienda y Nombre.
+        c_fecha = find_col(df.columns, [
+            "Fecha", "Fecha s", "Fecha captura", "Día", "Dia",
+        ])
+        c_tienda = find_col(df.columns, [
+            "Tienda", "Ubicación", "Ubicacion", "Sucursal",
+        ])
+        c_actividad = find_col(df.columns, [
+            "Actividad Realizada", "Actividad",
+        ])
+        c_motivo = find_col(df.columns, [
+            "Motivo de ingreso",
+            "Motivo",
+            "Ingreso al area de acondicionado",
+            "Ingreso al área de acondicionado",
+        ])
+        c_piezas = find_col(df.columns, [
+            "Número de piezas", "Numero de piezas",
+            "Número de Piezas", "Numero de Piezas",
+            "Piezas", "Cantidad",
+        ])
+        c_nombre = find_col(df.columns, [
+            "Nombre", "Usuario", "Colaborador", "Nómina", "Nomina",
+        ])
+        c_occ = find_col(df.columns, [
+            "Occurrence", "Ocurrence", "Ocurrencia", "Folio",
+        ])
+
+        if not c_fecha or not c_tienda or not c_piezas:
+            diag_rows.append({
+                "Hoja": sheet,
+                "Tipo": sheet_type,
+                "Estado": "Faltan columnas Fecha/Tienda o Ubicación/Piezas",
+                "Fecha": str(c_fecha),
+                "Tienda": str(c_tienda),
+                "Piezas": str(c_piezas),
+            })
+            continue
+
+        op = pd.DataFrame()
+        op["Fecha"] = df[c_fecha].map(parse_date)
+        op["Tienda"] = df[c_tienda].map(canon_store)
+        op["Actividad"] = df[c_actividad].astype(str).fillna("") if c_actividad else ""
+        op["Motivo"] = df[c_motivo].astype(str).fillna("") if c_motivo else ""
+        op["Piezas"] = df[c_piezas].map(safe_num)
+        op["Nombre"] = df[c_nombre].astype(str).fillna("") if c_nombre else ""
+        op["Occurrence"] = df[c_occ].astype(str).fillna("") if c_occ else ""
+        op["Hoja origen"] = sheet
+
+        op = op.dropna(subset=["Fecha"])
+        op = op[op["Tienda"].astype(str).str.strip() != ""]
+
+        # La segunda fuente entra oficialmente a partir del 29/06/2026.
+        if sheet_type == "nueva":
+            op = op[op["Fecha"] >= pd.Timestamp("2026-06-29")]
+
+        # La hoja histórica no debe duplicar registros posteriores si el usuario
+        # copia información nueva accidentalmente en ambas hojas.
+        if sheet_type == "histórica" and second_sheet:
+            op = op[op["Fecha"] <= pd.Timestamp("2026-06-28")]
+
+        op["Semana ISO"] = op["Fecha"].dt.isocalendar().week.astype(int)
+        op["Mes"] = op["Fecha"].dt.to_period("M").astype(str)
+
+        frames.append(op)
+        diag_rows.append({
+            "Hoja": sheet,
+            "Tipo": sheet_type,
+            "Estado": "OK",
+            "Filas": len(op),
+            "Fecha mínima": op["Fecha"].min().strftime("%Y-%m-%d") if not op.empty else "",
+            "Fecha máxima": op["Fecha"].max().strftime("%Y-%m-%d") if not op.empty else "",
+            "Fecha": str(c_fecha),
+            "Tienda": str(c_tienda),
+            "Piezas": str(c_piezas),
+            "Actividad": str(c_actividad),
+            "Motivo": str(c_motivo),
+        })
+
+    if not frames:
+        return pd.DataFrame(), pd.DataFrame(diag_rows)
+
+    result = pd.concat(frames, ignore_index=True)
+
+    # Evita duplicados exactos dentro de la misma fuente o entre hojas.
+    dedupe_cols = [
+        c for c in [
+            "Occurrence", "Fecha", "Tienda", "Actividad",
+            "Motivo", "Piezas", "Nombre",
+        ] if c in result.columns
+    ]
+    if dedupe_cols:
+        result = result.drop_duplicates(subset=dedupe_cols, keep="last")
+
+    result = normalize_operation_df(result)
+    return result, pd.DataFrame(diag_rows)
 
 
 def read_plantilla(file_path):
@@ -946,7 +1063,7 @@ def read_monthly_dev(file_path, progress=None):
     wb = load_workbook(file_path, read_only=True, data_only=True)
     monthly_sheets = [
         s for s in wb.sheetnames
-        if s not in ["Resultados productividad", "Plantilla"]
+        if norm_text(s) not in ["RESULTADOS PRODUCTIVIDAD", "RESULTADOS PRODUCTIVIDAD 2", "RESULTADOS POR CHECKLIST", "PLANTILLA"]
         and re.search(r"(ABRIL|MAYO|JUNIO|JULIO|AGOSTO|SEPT|OCT|NOV|DIC|ENERO|FEBR|MARZO|26|25)", norm_text(s))
     ]
 
@@ -1150,7 +1267,7 @@ def read_monthly_dev(file_path, progress=None):
 
 def process_excel(file_path):
     progress = st.progress(0, text="Iniciando procesamiento...")
-    progress.progress(0.10, text="Leyendo hoja Resultados productividad...")
+    progress.progress(0.10, text="Leyendo Resultados productividad y Resultados productividad 2...")
     op, diag_op = read_operation_sheet(file_path)
 
     progress.progress(0.25, text="Leyendo Plantilla...")
@@ -1888,7 +2005,10 @@ def build_generic_table_pdf(title, subtitle, df, kpi_values=None):
     doc = SimpleDocTemplate(
         buffer,
         pagesize=landscape(letter),
-        rightMargin=18, leftMargin=18, topMargin=14, bottomMargin=14,
+        rightMargin=18,
+        leftMargin=18,
+        topMargin=14,
+        bottomMargin=14,
     )
     styles = getSampleStyleSheet()
     story = []
@@ -1902,16 +2022,18 @@ def build_generic_table_pdf(title, subtitle, df, kpi_values=None):
     )
     header = Table([[logo, header_text]], colWidths=[72, 650], rowHeights=[40])
     header.setStyle(TableStyle([
-        ("VALIGN",(0,0),(-1,-1),"MIDDLE"),
-        ("LEFTPADDING",(0,0),(-1,-1),0),
-        ("RIGHTPADDING",(0,0),(-1,-1),6),
+        ("VALIGN", (0,0), (-1,-1), "MIDDLE"),
+        ("LEFTPADDING", (0,0), (-1,-1), 0),
+        ("RIGHTPADDING", (0,0), (-1,-1), 6),
     ]))
     story.append(header)
 
-    line = Table([[""]], colWidths=[744], rowHeights=[3])
-    line.setStyle(TableStyle([("BACKGROUND",(0,0),(-1,-1),colors.HexColor(ROSA))]))
-    story.append(line)
-    story.append(Spacer(1,8))
+    pink_line = Table([[""]], colWidths=[744], rowHeights=[3])
+    pink_line.setStyle(TableStyle([
+        ("BACKGROUND", (0,0), (-1,-1), colors.HexColor(ROSA)),
+    ]))
+    story.append(pink_line)
+    story.append(Spacer(1, 7))
 
     if kpi_values:
         cards = [
@@ -1921,44 +2043,88 @@ def build_generic_table_pdf(title, subtitle, df, kpi_values=None):
             _pdf_kpi_card("⌛", "Pendientes por Ubicar", fmt_num(kpi_values.get("Pendiente", 0)), "Ingreso + pendiente ant. - ubicado", "#05B957", styles),
             _pdf_kpi_card("%", "% Procesado", fmt_pct(kpi_values.get("% Procesado", 0)), "Ubicado / base", "#5B00D6", styles),
         ]
-        row = Table([cards], colWidths=[148]*5, rowHeights=[68])
-        row.setStyle(TableStyle([
-            ("VALIGN",(0,0),(-1,-1),"MIDDLE"),
-            ("LEFTPADDING",(0,0),(-1,-1),2),
-            ("RIGHTPADDING",(0,0),(-1,-1),2),
+        cards_row = Table([cards], colWidths=[148] * 5, rowHeights=[68])
+        cards_row.setStyle(TableStyle([
+            ("VALIGN", (0,0), (-1,-1), "MIDDLE"),
+            ("LEFTPADDING", (0,0), (-1,-1), 2),
+            ("RIGHTPADDING", (0,0), (-1,-1), 2),
         ]))
-        story.append(row)
-        story.append(Spacer(1,8))
+        story.append(cards_row)
+        story.append(Spacer(1, 7))
 
     if df is None or df.empty:
         story.append(Paragraph("Sin información para el periodo seleccionado.", styles["Normal"]))
-    else:
-        out = df.copy()
-        for col in out.columns:
-            if pd.api.types.is_numeric_dtype(out[col]):
-                if "%" in str(col):
-                    out[col] = pd.to_numeric(out[col], errors="coerce").fillna(0).map(lambda x: f"{x:.1f}%")
-                elif "$" in str(col) or "Importe" in str(col) or "Recuperación" in str(col):
-                    out[col] = pd.to_numeric(out[col], errors="coerce").fillna(0).map(lambda x: f"${x:,.0f}")
+        doc.build(story)
+        buffer.seek(0)
+        return buffer.getvalue()
+
+    out = df.copy()
+    numeric_raw = {}
+    for col in out.columns:
+        if pd.api.types.is_numeric_dtype(out[col]):
+            numeric_raw[col] = pd.to_numeric(out[col], errors="coerce").fillna(0).tolist()
+            values = pd.to_numeric(out[col], errors="coerce").fillna(0)
+            if "%" in str(col):
+                out[col] = values.map(lambda x: f"{x:.1f}%")
+            elif "$" in str(col) or "Importe" in str(col) or "Recuperación" in str(col):
+                out[col] = values.map(lambda x: f"${x:,.0f}")
+            else:
+                out[col] = values.map(lambda x: f"{x:,.0f}")
+
+    max_cols = max(1, len(out.columns))
+    widths = [730 / max_cols] * max_cols
+    data = [list(out.columns)] + out.astype(str).values.tolist()
+    table = Table(data, colWidths=widths, repeatRows=1)
+
+    style_cmds = [
+        ("BACKGROUND", (0,0), (-1,0), colors.HexColor(AZUL)),
+        ("TEXTCOLOR", (0,0), (-1,0), colors.white),
+        ("FONTNAME", (0,0), (-1,0), "Helvetica-Bold"),
+        ("FONTSIZE", (0,0), (-1,0), 6.2),
+        ("FONTSIZE", (0,1), (-1,-1), 5.9),
+        ("GRID", (0,0), (-1,-1), 0.25, colors.HexColor("#DDE4F0")),
+        ("ROWBACKGROUNDS", (0,1), (-1,-1), [colors.white, colors.HexColor("#F7F9FC")]),
+        ("ALIGN", (1,1), (-1,-1), "RIGHT"),
+        ("TOPPADDING", (0,0), (-1,-1), 3),
+        ("BOTTOMPADDING", (0,0), (-1,-1), 3),
+    ]
+
+    # Semáforo solicitado para porcentajes de ubicación:
+    # menor de 75% rojo; 90% o más verde.
+    for pct_name in ["% Ubic.", "% Ubicado", "% Ubicación"]:
+        if pct_name in out.columns and pct_name in numeric_raw:
+            col_idx = list(out.columns).index(pct_name)
+            for row_idx, pct in enumerate(numeric_raw[pct_name], start=1):
+                if pct < 75:
+                    color = colors.HexColor("#D71920")
+                elif pct >= 90:
+                    color = colors.HexColor("#008A3B")
                 else:
-                    out[col] = pd.to_numeric(out[col], errors="coerce").fillna(0).map(lambda x: f"{x:,.0f}")
-        max_cols = max(1, len(out.columns))
-        widths = [730/max_cols] * max_cols
-        data = [list(out.columns)] + out.astype(str).values.tolist()
-        table = Table(data, colWidths=widths, repeatRows=1)
-        table.setStyle(TableStyle([
-            ("BACKGROUND",(0,0),(-1,0),colors.HexColor(AZUL)),
-            ("TEXTCOLOR",(0,0),(-1,0),colors.white),
-            ("FONTNAME",(0,0),(-1,0),"Helvetica-Bold"),
-            ("FONTSIZE",(0,0),(-1,0),6.4),
-            ("FONTSIZE",(0,1),(-1,-1),6.0),
-            ("GRID",(0,0),(-1,-1),0.25,colors.HexColor("#DDE4F0")),
-            ("ROWBACKGROUNDS",(0,1),(-1,-1),[colors.white,colors.HexColor("#F7F9FC")]),
-            ("ALIGN",(1,1),(-1,-1),"RIGHT"),
-            ("TOPPADDING",(0,0),(-1,-1),3),
-            ("BOTTOMPADDING",(0,0),(-1,-1),3),
-        ]))
-        story.append(table)
+                    color = colors.HexColor("#111827")
+                style_cmds.extend([
+                    ("TEXTCOLOR", (col_idx, row_idx), (col_idx, row_idx), color),
+                    ("FONTNAME", (col_idx, row_idx), (col_idx, row_idx), "Helvetica-Bold"),
+                ])
+
+    table.setStyle(TableStyle(style_cmds))
+    story.append(table)
+
+    # Semanal y mensual usan la misma tabla operativa, por lo que se agrega
+    # también el gráfico combinado dentro del PDF.
+    chart_cols = {"Tienda", "Total", "Habilitadas", "Ubicadas"}
+    if chart_cols.issubset(set(df.columns)):
+        story.append(Spacer(1, 7))
+        story.append(Paragraph(
+            "<b>Ingreso vs Habilitado vs Ubicado por tienda</b>",
+            ParagraphStyle(
+                "generic_chart_title",
+                parent=styles["Normal"],
+                fontSize=9,
+                textColor=colors.HexColor("#1D1259"),
+                spaceAfter=2,
+            ),
+        ))
+        story.append(_pdf_chart(df))
 
     doc.build(story)
     buffer.seek(0)

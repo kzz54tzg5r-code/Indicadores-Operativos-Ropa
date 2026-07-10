@@ -1,14 +1,31 @@
-# Indicadores Cambios y Muertos v10.25
+# Indicadores Cambios y Muertos v10.26
 
-Corrección:
-- Se corrigió `available_iso_weeks()`.
-- Pandas cambiaba los nombres `_iso_year` y `_iso_week` al usar `itertuples()`.
-- Ahora se usan columnas sin guion bajo y `itertuples(name=None)`.
+Cambios principales:
 
-Error corregido:
-`AttributeError` en `r._iso_year`.
+1. Nueva hoja operativa
+- Lee `Resultados productividad`.
+- Lee y concatena `Resultados productividad 2`.
+- La segunda hoja se considera a partir del 29/06/2026.
+- También reconoce temporalmente el alias `Resultados por Checklist`.
+- Mapea:
+  - Ubicación -> Tienda
+  - Actividad Realizada -> Actividad
+  - Ingreso al area de acondicionado -> Motivo
+  - Número de piezas -> Piezas
+  - Nómina -> Nombre
 
-Para actualizar:
-1. Sustituye los archivos del repositorio.
-2. Reinicia la aplicación en Streamlit Cloud.
-3. No es necesario reprocesar el Excel.
+2. PDF semanal y mensual
+- Incluyen tarjetas KPI.
+- Incluyen tabla.
+- Incluyen gráfico combinado.
+- El porcentaje de ubicación se muestra:
+  - rojo cuando es menor a 75%;
+  - verde cuando es igual o mayor a 90%;
+  - negro entre 75% y 89.9%.
+
+Después de actualizar:
+1. Sustituye los archivos en GitHub.
+2. Reinicia la aplicación.
+3. Borra el archivo persistido.
+4. Carga el Excel que ya contenga la pestaña `Resultados productividad 2`.
+5. Procesa nuevamente el archivo.
