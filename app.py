@@ -53,7 +53,7 @@ for p in [DATA_DIR, UPLOAD_DIR, CACHE_DIR, CONFIG_DIR, ASSETS_DIR]:
     p.mkdir(parents=True, exist_ok=True)
 
 MX_TZ = ZoneInfo("America/Mexico_City")
-APP_CACHE_VERSION = "v10.30"
+APP_CACHE_VERSION = "v10.31"
 AZUL = "#10245F"
 ROSA = "#EC007C"
 LAVANDA = "#F3F6FB"
@@ -191,80 +191,117 @@ def excel_col_name(n):
 
 
 def parse_date(x):
-    """Convierte fechas de Excel/UI a Timestamp normalizado.
+    """Convierte fechas de Excel/UI a Timestamp normalizado sin invertir mes y día.
 
-    Corrección v10.17:
-    - Si viene como YYYY/MM/DD o YYYY-MM-DD, se interpreta como año-mes-día.
-    - Si viene como DD/MM/YYYY, se interpreta como día-mes-año.
-    - Evita que 2026/06/12 se convierta a 2026/12/06.
+    Casos soportados:
+    - 2026-07-09
+    - 2026/07/09
+    - 2026-07-09 17:00:14
+    - 2026/07/09 17:00:14
+    - 09/07/2026
+    - Fechas reales de Excel
+    - Números seriales de Excel
     """
     if x is None:
         return pd.NaT
+
     try:
         if pd.isna(x):
             return pd.NaT
     except Exception:
         pass
 
+    # Objetos de fecha reales.
     if isinstance(x, (pd.Timestamp, datetime, date)):
         try:
-            return pd.to_datetime(x).normalize()
+            return pd.Timestamp(x).normalize()
         except Exception:
             return pd.NaT
 
+    # Seriales de Excel o timestamps numéricos.
     if isinstance(x, (int, float, np.integer, np.floating)):
         val = float(x)
         if not np.isfinite(val):
             return pd.NaT
-        try:
-            if val > 10**14:
-                return pd.to_datetime(int(val), unit="ns", errors="coerce").normalize()
-            if val > 10**11:
-                return pd.to_datetime(int(val), unit="ms", errors="coerce").normalize()
-            if val > 10**9:
-                return pd.to_datetime(int(val), unit="s", errors="coerce").normalize()
-        except Exception:
-            pass
+
         if 20000 <= val <= 60000:
             try:
-                return (pd.Timestamp("1899-12-30") + pd.to_timedelta(val, unit="D")).normalize()
+                return (
+                    pd.Timestamp("1899-12-30")
+                    + pd.to_timedelta(val, unit="D")
+                ).normalize()
             except Exception:
-                pass
+                return pd.NaT
+
+        for unit, minimum in [("ns", 10**14), ("ms", 10**11), ("s", 10**9)]:
+            if val > minimum:
+                try:
+                    parsed = pd.to_datetime(int(val), unit=unit, errors="coerce")
+                    return parsed.normalize() if pd.notna(parsed) else pd.NaT
+                except Exception:
+                    pass
 
     s = str(x).strip()
-    if not s or s in ["-", "nan", "NaT", "None"]:
+    if not s or s in {"-", "nan", "NaT", "None"}:
         return pd.NaT
 
-    # Fecha ISO / año primero: 2026/06/28 o 2026-06-28
-    if re.match(r"^\d{4}[-/]\d{1,2}[-/]\d{1,2}$", s):
-        d = pd.to_datetime(s, errors="coerce", yearfirst=True, dayfirst=False)
-        return d.normalize() if pd.notna(d) else pd.NaT
+    # Año primero, con o sin hora. Este es el formato de Resultados productividad 2.
+    # Ejemplo: 2026-07-09 17:00:14.
+    if re.match(
+        r"^\d{4}[-/]\d{1,2}[-/]\d{1,2}(?:[ T]\d{1,2}:\d{2}(?::\d{2}(?:\.\d+)?)?)?$",
+        s,
+    ):
+        parsed = pd.to_datetime(
+            s,
+            errors="coerce",
+            yearfirst=True,
+            dayfirst=False,
+        )
+        return parsed.normalize() if pd.notna(parsed) else pd.NaT
 
-    # Fecha con día primero: 28/06/2026
-    if re.match(r"^\d{1,2}[-/]\d{1,2}[-/]\d{4}$", s):
-        d = pd.to_datetime(s, errors="coerce", dayfirst=True, yearfirst=False)
-        return d.normalize() if pd.notna(d) else pd.NaT
+    # Día primero, con o sin hora.
+    # Ejemplo: 09/07/2026 17:00:14.
+    if re.match(
+        r"^\d{1,2}[-/]\d{1,2}[-/]\d{4}(?:[ T]\d{1,2}:\d{2}(?::\d{2}(?:\.\d+)?)?)?$",
+        s,
+    ):
+        parsed = pd.to_datetime(
+            s,
+            errors="coerce",
+            dayfirst=True,
+            yearfirst=False,
+        )
+        return parsed.normalize() if pd.notna(parsed) else pd.NaT
 
-    s_num = re.sub(r"[^0-9.\-]", "", s)
-    if re.fullmatch(r"-?\d+(\.\d+)?", s_num or ""):
+    # Posible serial guardado como texto.
+    compact = s.replace("$", "").replace(",", "").replace(" ", "")
+    if re.fullmatch(r"-?\d+(?:\.\d+)?", compact):
         try:
-            val = float(s_num)
-            if val > 10**14:
-                return pd.to_datetime(int(val), unit="ns", errors="coerce").normalize()
-            if val > 10**11:
-                return pd.to_datetime(int(val), unit="ms", errors="coerce").normalize()
-            if val > 10**9:
-                return pd.to_datetime(int(val), unit="s", errors="coerce").normalize()
+            val = float(compact)
             if 20000 <= val <= 60000:
-                return (pd.Timestamp("1899-12-30") + pd.to_timedelta(val, unit="D")).normalize()
+                return (
+                    pd.Timestamp("1899-12-30")
+                    + pd.to_timedelta(val, unit="D")
+                ).normalize()
         except Exception:
             pass
 
-    d = pd.to_datetime(s, errors="coerce", dayfirst=True)
-    if pd.isna(d):
-        d = pd.to_datetime(s, errors="coerce", dayfirst=False)
-    return d.normalize() if pd.notna(d) else pd.NaT
+    # Último intento controlado. Se prueba primero año-mes-día y después día-mes-año.
+    parsed = pd.to_datetime(
+        s,
+        errors="coerce",
+        yearfirst=True,
+        dayfirst=False,
+    )
+    if pd.isna(parsed):
+        parsed = pd.to_datetime(
+            s,
+            errors="coerce",
+            dayfirst=True,
+            yearfirst=False,
+        )
 
+    return parsed.normalize() if pd.notna(parsed) else pd.NaT
 
 
 def fmt_num(x):
@@ -1290,6 +1327,20 @@ def process_excel(file_path):
 
     progress.progress(0.90, text="Guardando cache optimizado...")
     diag = pd.concat([diag_op, diag_co], ignore_index=True)
+
+    # Validación de fechas operativas para detectar inversiones mes/día.
+    if op is not None and not op.empty and "Fecha" in op.columns:
+        fechas_op = pd.to_datetime(op["Fecha"], errors="coerce").dropna()
+        if not fechas_op.empty:
+            diag_fecha = pd.DataFrame([{
+                "Hoja": "VALIDACIÓN FECHAS OPERACIÓN",
+                "Tipo": "Control",
+                "Estado": "OK",
+                "Filas válidas": len(fechas_op),
+                "Fecha mínima": fechas_op.min().strftime("%Y-%m-%d"),
+                "Fecha máxima": fechas_op.max().strftime("%Y-%m-%d"),
+            }])
+            diag = pd.concat([diag_fecha, diag], ignore_index=True)
     op = normalize_operation_df(op)
     co = normalize_commercial_df(co)
     write_cache(op, co, diag)
