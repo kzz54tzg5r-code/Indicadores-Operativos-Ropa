@@ -53,7 +53,7 @@ for p in [DATA_DIR, UPLOAD_DIR, CACHE_DIR, CONFIG_DIR, ASSETS_DIR]:
     p.mkdir(parents=True, exist_ok=True)
 
 MX_TZ = ZoneInfo("America/Mexico_City")
-APP_CACHE_VERSION = "v10.21"
+APP_CACHE_VERSION = "v10.22"
 AZUL = "#10245F"
 ROSA = "#EC007C"
 LAVANDA = "#F3F6FB"
@@ -1525,37 +1525,80 @@ def _pdf_icon(symbol, color_hex):
 
 def _pdf_kpi_card(symbol, title, value, note, color_hex, styles):
     icon = _pdf_icon(symbol, color_hex)
-    text = Paragraph(
-        f"<b>{title}</b><br/>"
-        f"<font color='{ROSA}' size='14'><b>{value}</b></font><br/>"
-        f"<font color='#4B5563' size='5.7'>{note}</font>",
+
+    title_p = Paragraph(
+        f"<b>{title}</b>",
         ParagraphStyle(
-            f"kpi_{re.sub(r'[^A-Za-z0-9]', '', title)}",
+            f"kpi_title_{re.sub(r'[^A-Za-z0-9]', '', title)}",
             parent=styles["Normal"],
-            fontName="Helvetica",
-            fontSize=6.8,
-            leading=8.4,
+            fontName="Helvetica-Bold",
+            fontSize=7.1,
+            leading=8.2,
             textColor=colors.HexColor("#15102E"),
+            spaceAfter=0,
         ),
     )
-    inner = Table([[icon, text]], colWidths=[38, 100], rowHeights=[48])
+    value_p = Paragraph(
+        f"<font color='{ROSA}' size='14'><b>{value}</b></font>",
+        ParagraphStyle(
+            f"kpi_value_{re.sub(r'[^A-Za-z0-9]', '', title)}",
+            parent=styles["Normal"],
+            fontName="Helvetica-Bold",
+            fontSize=14,
+            leading=15,
+            textColor=colors.HexColor(ROSA),
+            spaceAfter=0,
+        ),
+    )
+    note_p = Paragraph(
+        note,
+        ParagraphStyle(
+            f"kpi_note_{re.sub(r'[^A-Za-z0-9]', '', title)}",
+            parent=styles["Normal"],
+            fontName="Helvetica",
+            fontSize=5.2,
+            leading=6.2,
+            textColor=colors.HexColor("#4B5563"),
+            spaceAfter=0,
+        ),
+    )
+
+    text_stack = Table(
+        [[title_p], [value_p], [note_p]],
+        colWidths=[102],
+        rowHeights=[17, 18, 18],
+    )
+    text_stack.setStyle(TableStyle([
+        ("VALIGN", (0,0), (-1,-1), "MIDDLE"),
+        ("LEFTPADDING", (0,0), (-1,-1), 1),
+        ("RIGHTPADDING", (0,0), (-1,-1), 1),
+        ("TOPPADDING", (0,0), (-1,-1), 0),
+        ("BOTTOMPADDING", (0,0), (-1,-1), 0),
+    ]))
+
+    inner = Table(
+        [[icon, text_stack]],
+        colWidths=[36, 104],
+        rowHeights=[58],
+    )
     inner.setStyle(TableStyle([
         ("VALIGN", (0,0), (-1,-1), "MIDDLE"),
         ("LEFTPADDING", (0,0), (0,0), 1),
-        ("RIGHTPADDING", (0,0), (0,0), 4),
-        ("LEFTPADDING", (1,0), (1,0), 3),
-        ("RIGHTPADDING", (1,0), (1,0), 3),
-        ("TOPPADDING", (0,0), (-1,-1), 2),
-        ("BOTTOMPADDING", (0,0), (-1,-1), 2),
+        ("RIGHTPADDING", (0,0), (0,0), 3),
+        ("LEFTPADDING", (1,0), (1,0), 1),
+        ("RIGHTPADDING", (1,0), (1,0), 1),
+        ("TOPPADDING", (0,0), (-1,-1), 0),
+        ("BOTTOMPADDING", (0,0), (-1,-1), 0),
     ]))
-    outer = Table([[inner]], colWidths=[142], rowHeights=[56])
+
+    outer = Table([[inner]], colWidths=[146], rowHeights=[66])
     outer.setStyle(TableStyle([
         ("BACKGROUND", (0,0), (-1,-1), colors.white),
-        ("BOX", (0,0), (-1,-1), 0.5, colors.HexColor("#D9E1EE")),
-        ("LEFTPADDING", (0,0), (-1,-1), 5),
-        ("RIGHTPADDING", (0,0), (-1,-1), 5),
-        ("TOPPADDING", (0,0), (-1,-1), 4),
-        ("BOTTOMPADDING", (0,0), (-1,-1), 4),
+        ("BOX", (0,0), (-1,-1), 0.55, colors.HexColor("#D9E1EE")),
+        ("LEFTPADDING", (0,0), (-1,-1), 3),
+        ("RIGHTPADDING", (0,0), (-1,-1), 3),
+        ("TOPPADDING", (0,0), (-1,-1), 3),
+        ("BOTTOMPADDING", (0,0), (-1,-1), 3),
         ("VALIGN", (0,0), (-1,-1), "MIDDLE"),
     ]))
     return outer
@@ -1685,13 +1728,13 @@ def build_pdf_report(title, subtitle, kpi_values, df):
     story.append(Spacer(1, 7))
 
     cards = [
-        _pdf_kpi_card("↻", "Piezas<br/>Ingresadas", fmt_num(kpi_values.get("Ingresos", 0)), "Dev + muertos + cajas + probador", ROSA, styles),
-        _pdf_kpi_card("✓", "Piezas<br/>Acondicionadas", fmt_num(kpi_values.get("Acondicionado", 0)), "Acondicionado", "#5B00D6", styles),
-        _pdf_kpi_card("⊕", "Piezas<br/>Ubicadas", fmt_num(kpi_values.get("Ubicado", 0)), "Ubicado", "#F59E0B", styles),
-        _pdf_kpi_card("⌛", "Pendientes<br/>por Ubicar", fmt_num(kpi_values.get("Pendiente", 0)), "Ingreso + pendiente ant. - ubicado", "#05B957", styles),
+        _pdf_kpi_card("↻", "Piezas Ingresadas", fmt_num(kpi_values.get("Ingresos", 0)), "Dev + muertos + cajas + probador", ROSA, styles),
+        _pdf_kpi_card("✓", "Piezas Acondicionadas", fmt_num(kpi_values.get("Acondicionado", 0)), "Acondicionado", "#5B00D6", styles),
+        _pdf_kpi_card("⊕", "Piezas Ubicadas", fmt_num(kpi_values.get("Ubicado", 0)), "Ubicado", "#F59E0B", styles),
+        _pdf_kpi_card("⌛", "Pendientes por Ubicar", fmt_num(kpi_values.get("Pendiente", 0)), "Ingreso + pendiente ant. - ubicado", "#05B957", styles),
         _pdf_kpi_card("%", "% Procesado", fmt_pct(kpi_values.get("% Procesado", 0)), "Ubicado / base", "#5B00D6", styles),
     ]
-    cards_row = Table([cards], colWidths=[146,146,146,146,146], rowHeights=[58])
+    cards_row = Table([cards], colWidths=[148,148,148,148,148], rowHeights=[68])
     cards_row.setStyle(TableStyle([
         ("VALIGN", (0,0), (-1,-1), "MIDDLE"),
         ("LEFTPADDING", (0,0), (-1,-1), 2),
@@ -1700,7 +1743,7 @@ def build_pdf_report(title, subtitle, kpi_values, df):
         ("BOTTOMPADDING", (0,0), (-1,-1), 0),
     ]))
     story.append(cards_row)
-    story.append(Spacer(1, 8))
+    story.append(Spacer(1, 6))
 
     story.append(Paragraph(
         "<b>Tabla por tienda - Por Día</b>",
@@ -1765,7 +1808,28 @@ def build_pdf_report(title, subtitle, kpi_values, df):
 def download_pdf_button(label="Descargar PDF", title="Reporte", subtitle="", kpi_values=None, df=None, key=None):
     if kpi_values is not None and df is not None:
         pdf = build_pdf_report(title, subtitle, kpi_values, df)
-        st.download_button(label, data=pdf, file_name=f"{title.lower().replace(' ', '_').replace('|','_')}.pdf", mime="application/pdf", key=key or f"pdf_{title}")
+
+        # Extrae la fecha del subtítulo, por ejemplo: "Fecha: 2026-06-28".
+        date_match = re.search(r"(\d{4})[-/](\d{2})[-/](\d{2})", str(subtitle))
+        if date_match:
+            yyyy, mm, dd = date_match.groups()
+            date_suffix = f"{dd}-{mm}-{yyyy}"
+        else:
+            date_suffix = pd.Timestamp.today().strftime("%d-%m-%Y")
+
+        clean_title = re.sub(r"[^A-Za-z0-9ÁÉÍÓÚáéíóúÑñ]+", "_", str(title)).strip("_")
+        if clean_title.lower().replace("_", "") in {"pordia", "reporte_pordia"}:
+            file_name = f"Reporte_Por_Dia_{date_suffix}.pdf"
+        else:
+            file_name = f"{clean_title}_{date_suffix}.pdf"
+
+        st.download_button(
+            label,
+            data=pdf,
+            file_name=file_name,
+            mime="application/pdf",
+            key=key or f"pdf_{clean_title}_{date_suffix}",
+        )
     else:
         st.button(label, help="PDF disponible en pestañas con indicadores.")
 
