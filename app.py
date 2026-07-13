@@ -53,7 +53,7 @@ for p in [DATA_DIR, UPLOAD_DIR, CACHE_DIR, CONFIG_DIR, ASSETS_DIR]:
     p.mkdir(parents=True, exist_ok=True)
 
 MX_TZ = ZoneInfo("America/Mexico_City")
-APP_CACHE_VERSION = "v10.32"
+APP_CACHE_VERSION = "v10.33"
 AZUL = "#10245F"
 ROSA = "#EC007C"
 LAVANDA = "#F3F6FB"
@@ -732,6 +732,290 @@ html, body, [data-testid="stAppViewContainer"] {{
 }}
 .ps-tabbar input[type="radio"] {{
     accent-color: #FFFFFF !important;
+}}
+
+
+/* =========================================================
+   VISTA RESPONSIVA: COMPUTADORA Y MÓVIL
+   ========================================================= */
+
+/* Computadora y tablet horizontal */
+@media (min-width: 769px) {{
+    .ps-kpi-grid {{
+        grid-template-columns: repeat(5, minmax(0, 1fr)) !important;
+    }}
+
+    .ps-kpi-card {{
+        min-width: 0 !important;
+    }}
+}}
+
+/* Móvil y tablet vertical */
+@media (max-width: 768px) {{
+    html, body, [data-testid="stAppViewContainer"] {{
+        overflow-x: hidden !important;
+    }}
+
+    .block-container {{
+        padding-top: .35rem !important;
+        padding-left: .65rem !important;
+        padding-right: .65rem !important;
+        padding-bottom: 1rem !important;
+    }}
+
+    .ps-top-line {{
+        height: 4px !important;
+        margin: 0 -.65rem 8px -.65rem !important;
+    }}
+
+    .ps-header {{
+        padding: 8px 8px 10px 8px !important;
+        gap: 8px !important;
+        flex-direction: column !important;
+        align-items: stretch !important;
+    }}
+
+    .ps-header-left {{
+        gap: 9px !important;
+        width: 100% !important;
+    }}
+
+    .ps-logo-wrap {{
+        width: 58px !important;
+        height: 50px !important;
+        min-width: 58px !important;
+    }}
+
+    .ps-logo-img {{
+        max-width: 56px !important;
+        max-height: 46px !important;
+    }}
+
+    .ps-logo-text {{
+        font-size: 15px !important;
+    }}
+
+    .ps-header-sep {{
+        width: 3px !important;
+        height: 48px !important;
+        min-width: 3px !important;
+    }}
+
+    .ps-title {{
+        font-size: 19px !important;
+        line-height: 1.05 !important;
+    }}
+
+    .ps-subtitle {{
+        font-size: 10px !important;
+        line-height: 1.15 !important;
+        margin-top: 3px !important;
+    }}
+
+    .ps-header-right {{
+        display: grid !important;
+        grid-template-columns: 1fr 1fr !important;
+        gap: 7px !important;
+        width: 100% !important;
+    }}
+
+    .ps-meta {{
+        min-width: 0 !important;
+        border-radius: 8px !important;
+        padding: 7px 9px !important;
+    }}
+
+    .ps-meta-label {{
+        letter-spacing: 2px !important;
+        font-size: 8px !important;
+    }}
+
+    .ps-meta-value {{
+        font-size: 12px !important;
+        margin-top: 3px !important;
+        white-space: nowrap !important;
+        overflow: hidden !important;
+        text-overflow: ellipsis !important;
+    }}
+
+    .ps-tabbar {{
+        margin: 0 -.65rem 12px -.65rem !important;
+        padding: 0 6px !important;
+        overflow-x: auto !important;
+        -webkit-overflow-scrolling: touch !important;
+        scrollbar-width: thin !important;
+    }}
+
+    .ps-tabbar [role="radiogroup"] {{
+        min-height: 44px !important;
+        width: max-content !important;
+    }}
+
+    .ps-tabbar label {{
+        min-height: 44px !important;
+        padding: 0 11px !important;
+        font-size: 10px !important;
+    }}
+
+    h1 {{
+        font-size: 1.55rem !important;
+    }}
+
+    h2 {{
+        font-size: 1.32rem !important;
+    }}
+
+    h3 {{
+        font-size: 1.1rem !important;
+    }}
+
+    .ps-kpi-grid {{
+        grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+        gap: 9px !important;
+        margin: 10px 0 14px 0 !important;
+    }}
+
+    .ps-kpi-card {{
+        min-height: 112px !important;
+        height: auto !important;
+        padding: 11px 9px !important;
+        border-radius: 12px !important;
+        gap: 8px !important;
+        align-items: center !important;
+        box-shadow: 0 4px 12px rgba(16,36,95,.06) !important;
+    }}
+
+    .ps-kpi-card:nth-child(5) {{
+        grid-column: 1 / -1 !important;
+        min-height: 96px !important;
+    }}
+
+    .ps-kpi-icon {{
+        width: 47px !important;
+        height: 47px !important;
+        min-width: 47px !important;
+        font-size: 23px !important;
+    }}
+
+    .ps-kpi-title {{
+        font-size: 11px !important;
+        line-height: 1.12 !important;
+    }}
+
+    .ps-kpi-value {{
+        font-size: 22px !important;
+        line-height: 1 !important;
+        margin: 5px 0 !important;
+        white-space: nowrap !important;
+    }}
+
+    .ps-kpi-sub {{
+        font-size: 8.5px !important;
+        line-height: 1.18 !important;
+    }}
+
+    .panel-title {{
+        font-size: 14px !important;
+        padding: 12px 13px !important;
+        margin: 12px 0 8px 0 !important;
+    }}
+
+    .week-card-grid {{
+        grid-template-columns: 1fr !important;
+        gap: 10px !important;
+        margin: 10px 0 16px 0 !important;
+    }}
+
+    .week-card-head {{
+        font-size: 16px !important;
+        padding: 10px 8px !important;
+    }}
+
+    .week-row {{
+        padding: 9px 11px !important;
+        gap: 8px !important;
+    }}
+
+    .week-row span {{
+        font-size: 10px !important;
+    }}
+
+    .week-row b {{
+        font-size: 16px !important;
+    }}
+
+    .week-row em {{
+        font-size: 10px !important;
+    }}
+
+    /* Tablas: conservar estructura completa con desplazamiento horizontal */
+    [data-testid="stDataFrame"],
+    [data-testid="stDataEditor"],
+    .ag-root-wrapper {{
+        max-width: 100% !important;
+        overflow-x: auto !important;
+        -webkit-overflow-scrolling: touch !important;
+    }}
+
+    .ag-cell {{
+        font-size: 10px !important;
+    }}
+
+    .ag-header-cell-text {{
+        font-size: 10px !important;
+    }}
+
+    /* Gráficos adaptados al ancho del teléfono */
+    [data-testid="stPlotlyChart"] {{
+        width: 100% !important;
+        overflow: hidden !important;
+    }}
+
+    [data-testid="stPlotlyChart"] > div {{
+        width: 100% !important;
+    }}
+
+    .footer {{
+        font-size: 10px !important;
+        margin-top: 22px !important;
+        padding-top: 12px !important;
+    }}
+
+    /* Evita que botones flotantes tapen contenido */
+    .block-container {{
+        padding-bottom: 5.5rem !important;
+    }}
+}}
+
+/* Teléfonos muy angostos */
+@media (max-width: 390px) {{
+    .ps-kpi-grid {{
+        gap: 7px !important;
+    }}
+
+    .ps-kpi-card {{
+        padding: 9px 7px !important;
+        gap: 6px !important;
+    }}
+
+    .ps-kpi-icon {{
+        width: 42px !important;
+        height: 42px !important;
+        min-width: 42px !important;
+        font-size: 20px !important;
+    }}
+
+    .ps-kpi-title {{
+        font-size: 10px !important;
+    }}
+
+    .ps-kpi-value {{
+        font-size: 19px !important;
+    }}
+
+    .ps-kpi-sub {{
+        font-size: 7.7px !important;
+    }}
 }}
 
 </style>

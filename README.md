@@ -1,12 +1,21 @@
-# Indicadores Cambios y Muertos v10.32
+# Indicadores Cambios y Muertos v10.33
 
-Cambios:
-- Los números de las barras del gráfico se muestran sobre un recuadro blanco.
-- Los valores de la línea se colocan por encima de la barra más alta del grupo.
-- La línea punteada conecta el punto con su valor sin que el número quede oculto.
-- El mismo diseño se aplica en Streamlit y en los PDF.
-- Todos los PDF incluyen en la parte inferior:
-  INFORMACIÓN CONFIDENCIAL | Price Shoes | Operaciones Ropa
+## Vista para computadora
+- Cinco tarjetas KPI en una sola fila.
+- Encabezado completo.
+- Menú horizontal de extremo a extremo.
+- Tablas y gráficas con tamaño amplio.
+
+## Vista para móvil
+- Tarjetas compactas en dos columnas.
+- La tarjeta de porcentaje ocupa todo el ancho.
+- Logo, título, fecha y usuario reducidos.
+- Menú desplazable horizontalmente.
+- Tablas con desplazamiento horizontal.
+- Gráficas ajustadas al ancho del teléfono.
+- Menor espacio entre elementos y tipografía optimizada.
+
+La vista cambia automáticamente según el ancho de la pantalla.
 
 Actualización:
 1. Sustituye los archivos del repositorio.
