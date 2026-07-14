@@ -53,7 +53,7 @@ for p in [DATA_DIR, UPLOAD_DIR, CACHE_DIR, CONFIG_DIR, ASSETS_DIR]:
     p.mkdir(parents=True, exist_ok=True)
 
 MX_TZ = ZoneInfo("America/Mexico_City")
-APP_CACHE_VERSION = "v11.0"
+APP_CACHE_VERSION = "v11.1"
 AZUL = "#10245F"
 ROSA = "#EC007C"
 LAVANDA = "#F3F6FB"
@@ -2090,14 +2090,47 @@ def table_by_store(op, co, start_date, end_date, stores=None):
 
 
 def summary_from_table(df):
-    if df.empty:
-        return {"Ingresos":0,"Acondicionado":0,"Ubicado":0,"Pendiente":0,"% Procesado":0}
-    ingresos = pd.to_numeric(df["Total"], errors="coerce").fillna(0).sum()
-    hab = pd.to_numeric(df["Habilitadas"], errors="coerce").fillna(0).sum()
-    ubic = pd.to_numeric(df["Ubicadas"], errors="coerce").fillna(0).sum()
-    pend = pd.to_numeric(df["Pend. Ub."], errors="coerce").fillna(0).sum()
-    pct = ubic / ingresos * 100 if ingresos else 0
-    return {"Ingresos": ingresos, "Acondicionado": hab, "Ubicado": ubic, "Pendiente": pend, "% Procesado": pct}
+    """Calcula los KPI generales a partir de la misma base.
+
+    Reglas:
+    - Pendientes por ubicar = Piezas ingresadas - Piezas ubicadas.
+    - % Procesado = Piezas ubicadas / Piezas ingresadas.
+    - El pendiente nunca puede ser negativo.
+    """
+    if df is None or df.empty:
+        return {
+            "Ingresos": 0,
+            "Acondicionado": 0,
+            "Ubicado": 0,
+            "Pendiente": 0,
+            "% Procesado": 0,
+        }
+
+    ingresos = pd.to_numeric(
+        df.get("Total", pd.Series(dtype=float)),
+        errors="coerce",
+    ).fillna(0).sum()
+
+    hab = pd.to_numeric(
+        df.get("Habilitadas", pd.Series(dtype=float)),
+        errors="coerce",
+    ).fillna(0).sum()
+
+    ubic = pd.to_numeric(
+        df.get("Ubicadas", pd.Series(dtype=float)),
+        errors="coerce",
+    ).fillna(0).sum()
+
+    pendiente = max(float(ingresos) - float(ubic), 0)
+    pct = (float(ubic) / float(ingresos) * 100) if ingresos > 0 else 0
+
+    return {
+        "Ingresos": ingresos,
+        "Acondicionado": hab,
+        "Ubicado": ubic,
+        "Pendiente": pendiente,
+        "% Procesado": pct,
+    }
 
 
 def format_display(df):
@@ -2204,8 +2237,8 @@ def kpis(res):
         ("↻", "Piezas Ingresadas", fmt_num(res.get("Ingresos", 0)), "Dev + muertos + cajas + probador", ROSA),
         ("✓", "Piezas Acondicionadas", fmt_num(res.get("Acondicionado", 0)), "Acondicionado", "#3720B8"),
         ("⊕", "Piezas Ubicadas", fmt_num(res.get("Ubicado", 0)), "Ubicado", "#F59E0B"),
-        ("⌛", "Pendientes por Ubicar", fmt_num(res.get("Pendiente", 0)), "Ingreso + pendiente ant. - ubicado", "#05B957"),
-        ("%", "% Procesado", fmt_pct(res.get("% Procesado", 0)), "Ubicado / base", "#3720B8"),
+        ("⌛", "Pendientes por Ubicar", fmt_num(res.get("Pendiente", 0)), "Piezas ingresadas - piezas ubicadas", "#05B957"),
+        ("%", "% Procesado", fmt_pct(res.get("% Procesado", 0)), "Piezas ubicadas / piezas ingresadas", "#3720B8"),
     ]
     html = '<div class="ps-kpi-grid">'
     for icon, title, val, sub, color in vals:
@@ -2614,8 +2647,8 @@ def build_pdf_report(title, subtitle, kpi_values, df):
         _pdf_kpi_card("↻", "Piezas Ingresadas", fmt_num(kpi_values.get("Ingresos", 0)), "Dev + muertos + cajas + probador", ROSA, styles),
         _pdf_kpi_card("✓", "Piezas Acondicionadas", fmt_num(kpi_values.get("Acondicionado", 0)), "Acondicionado", "#5B00D6", styles),
         _pdf_kpi_card("⊕", "Piezas Ubicadas", fmt_num(kpi_values.get("Ubicado", 0)), "Ubicado", "#F59E0B", styles),
-        _pdf_kpi_card("⌛", "Pendientes por Ubicar", fmt_num(kpi_values.get("Pendiente", 0)), "Ingreso + pendiente ant. - ubicado", "#05B957", styles),
-        _pdf_kpi_card("%", "% Procesado", fmt_pct(kpi_values.get("% Procesado", 0)), "Ubicado / base", "#5B00D6", styles),
+        _pdf_kpi_card("⌛", "Pendientes por Ubicar", fmt_num(kpi_values.get("Pendiente", 0)), "Piezas ingresadas - piezas ubicadas", "#05B957", styles),
+        _pdf_kpi_card("%", "% Procesado", fmt_pct(kpi_values.get("% Procesado", 0)), "Piezas ubicadas / piezas ingresadas", "#5B00D6", styles),
     ]
     cards_row = Table([cards], colWidths=[148,148,148,148,148], rowHeights=[68])
     cards_row.setStyle(TableStyle([
@@ -2758,8 +2791,8 @@ def build_generic_table_pdf(title, subtitle, df, kpi_values=None):
             _pdf_kpi_card("↻", "Piezas Ingresadas", fmt_num(kpi_values.get("Ingresos", 0)), "Dev + muertos + cajas + probador", ROSA, styles),
             _pdf_kpi_card("✓", "Piezas Acondicionadas", fmt_num(kpi_values.get("Acondicionado", 0)), "Acondicionado", "#5B00D6", styles),
             _pdf_kpi_card("⊕", "Piezas Ubicadas", fmt_num(kpi_values.get("Ubicado", 0)), "Ubicado", "#F59E0B", styles),
-            _pdf_kpi_card("⌛", "Pendientes por Ubicar", fmt_num(kpi_values.get("Pendiente", 0)), "Ingreso + pendiente ant. - ubicado", "#05B957", styles),
-            _pdf_kpi_card("%", "% Procesado", fmt_pct(kpi_values.get("% Procesado", 0)), "Ubicado / base", "#5B00D6", styles),
+            _pdf_kpi_card("⌛", "Pendientes por Ubicar", fmt_num(kpi_values.get("Pendiente", 0)), "Piezas ingresadas - piezas ubicadas", "#05B957", styles),
+            _pdf_kpi_card("%", "% Procesado", fmt_pct(kpi_values.get("% Procesado", 0)), "Piezas ubicadas / piezas ingresadas", "#5B00D6", styles),
         ]
         cards_row = Table([cards], colWidths=[148] * 5, rowHeights=[68])
         cards_row.setStyle(TableStyle([
