@@ -53,7 +53,7 @@ for p in [DATA_DIR, UPLOAD_DIR, CACHE_DIR, CONFIG_DIR, ASSETS_DIR]:
     p.mkdir(parents=True, exist_ok=True)
 
 MX_TZ = ZoneInfo("America/Mexico_City")
-APP_CACHE_VERSION = "v10.33"
+APP_CACHE_VERSION = "v11.0"
 AZUL = "#10245F"
 ROSA = "#EC007C"
 LAVANDA = "#F3F6FB"
@@ -1015,6 +1015,269 @@ html, body, [data-testid="stAppViewContainer"] {{
 
     .ps-kpi-sub {{
         font-size: 7.7px !important;
+    }}
+}}
+
+
+/* =========================================================
+   V11 — DISEÑO RESPONSIVE EJECUTIVO
+   ========================================================= */
+
+:root {{
+    --ps-gap: 14px;
+    --ps-radius: 14px;
+}}
+
+.block-container {{
+    max-width: 100% !important;
+    width: 100% !important;
+    padding-left: 1rem !important;
+    padding-right: 1rem !important;
+}}
+
+.ps-kpi-grid {{
+    width: 100% !important;
+    gap: var(--ps-gap) !important;
+}}
+
+.ps-kpi-card {{
+    min-width: 0 !important;
+    width: 100% !important;
+    border-radius: var(--ps-radius) !important;
+}}
+
+.week-card-grid {{
+    display: grid !important;
+    grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+    gap: 14px !important;
+    width: 100% !important;
+    margin: 12px 0 18px 0 !important;
+}}
+
+.week-card {{
+    min-width: 0 !important;
+    width: 100% !important;
+    border-radius: 12px !important;
+    overflow: hidden !important;
+}}
+
+.week-card-head {{
+    padding: 11px 8px !important;
+    font-size: 17px !important;
+    line-height: 1.1 !important;
+}}
+
+.week-row {{
+    display: grid !important;
+    grid-template-columns: minmax(92px, 1fr) auto auto !important;
+    align-items: center !important;
+    gap: 8px !important;
+    padding: 9px 12px !important;
+    min-height: 43px !important;
+}}
+
+.week-row span {{
+    font-size: 10px !important;
+    white-space: nowrap !important;
+}}
+
+.week-row b {{
+    font-size: 17px !important;
+    white-space: nowrap !important;
+}}
+
+.week-row em {{
+    min-width: 56px !important;
+    text-align: right !important;
+    font-size: 10px !important;
+    white-space: nowrap !important;
+}}
+
+.panel-title {{
+    margin-bottom: 6px !important;
+}}
+
+[data-testid="stDataFrame"],
+[data-testid="stDataEditor"],
+.ag-root-wrapper {{
+    width: 100% !important;
+    max-width: 100% !important;
+    border-radius: 10px !important;
+}}
+
+[data-testid="stPlotlyChart"] {{
+    width: 100% !important;
+    max-width: 100% !important;
+    margin-left: 0 !important;
+    margin-right: 0 !important;
+}}
+
+[data-testid="stPlotlyChart"] > div,
+.js-plotly-plot,
+.plot-container,
+.svg-container {{
+    width: 100% !important;
+    max-width: 100% !important;
+}}
+
+@media (min-width: 1440px) {{
+    .block-container {{
+        padding-left: 1.25rem !important;
+        padding-right: 1.25rem !important;
+    }}
+
+    .ps-kpi-card {{
+        min-height: 126px !important;
+    }}
+
+    .week-card-grid {{
+        gap: 18px !important;
+    }}
+
+    .week-row {{
+        min-height: 46px !important;
+    }}
+}}
+
+@media (min-width: 769px) and (max-width: 1100px) {{
+    .week-card-grid {{
+        grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    }}
+
+    .ps-kpi-grid {{
+        grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+    }}
+}}
+
+@media (max-width: 768px) {{
+    .block-container {{
+        padding-left: .5rem !important;
+        padding-right: .5rem !important;
+        padding-top: .3rem !important;
+    }}
+
+    .ps-kpi-grid {{
+        grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+        gap: 8px !important;
+    }}
+
+    .ps-kpi-card {{
+        min-height: 104px !important;
+        padding: 10px 8px !important;
+        gap: 7px !important;
+        border-radius: 12px !important;
+    }}
+
+    .ps-kpi-card:nth-child(5) {{
+        grid-column: 1 / -1 !important;
+        min-height: 90px !important;
+    }}
+
+    .ps-kpi-icon {{
+        width: 44px !important;
+        height: 44px !important;
+        min-width: 44px !important;
+        font-size: 21px !important;
+    }}
+
+    .ps-kpi-title {{
+        font-size: 10px !important;
+        line-height: 1.1 !important;
+    }}
+
+    .ps-kpi-value {{
+        font-size: 20px !important;
+        line-height: 1 !important;
+        margin: 4px 0 !important;
+    }}
+
+    .ps-kpi-sub {{
+        font-size: 7.8px !important;
+        line-height: 1.15 !important;
+    }}
+
+    .week-card-grid {{
+        grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+        gap: 8px !important;
+        margin: 10px 0 14px 0 !important;
+    }}
+
+    .week-card-head {{
+        padding: 9px 6px !important;
+        font-size: 14px !important;
+    }}
+
+    .week-row {{
+        grid-template-columns: 1fr auto !important;
+        gap: 5px !important;
+        padding: 7px 8px !important;
+        min-height: 38px !important;
+    }}
+
+    .week-row span {{
+        font-size: 8px !important;
+    }}
+
+    .week-row b {{
+        font-size: 13px !important;
+    }}
+
+    .week-row em {{
+        grid-column: 1 / -1 !important;
+        min-width: 0 !important;
+        text-align: right !important;
+        font-size: 8px !important;
+        margin-top: -3px !important;
+    }}
+
+    [data-testid="stDataFrame"],
+    [data-testid="stDataEditor"],
+    .ag-root-wrapper {{
+        overflow-x: auto !important;
+        -webkit-overflow-scrolling: touch !important;
+    }}
+
+    .ag-header-cell-text,
+    .ag-cell {{
+        font-size: 9px !important;
+    }}
+
+    [data-testid="stPlotlyChart"] {{
+        width: calc(100vw - 1rem) !important;
+        margin-left: 0 !important;
+        margin-right: 0 !important;
+    }}
+
+    [data-testid="stPlotlyChart"] .svg-container {{
+        min-height: 430px !important;
+    }}
+}}
+
+@media (max-width: 390px) {{
+    .ps-kpi-grid {{
+        gap: 6px !important;
+    }}
+
+    .ps-kpi-card {{
+        padding: 8px 6px !important;
+    }}
+
+    .ps-kpi-icon {{
+        width: 40px !important;
+        height: 40px !important;
+        min-width: 40px !important;
+    }}
+
+    .ps-kpi-value {{
+        font-size: 18px !important;
+    }}
+
+    .week-card-grid {{
+        gap: 6px !important;
+    }}
+
+    .week-row {{
+        padding: 6px 6px !important;
     }}
 }}
 
@@ -2038,11 +2301,11 @@ def combined_chart(df, title):
     fig.update_layout(
         title=title,
         barmode="group",
-        height=520,
+        height=580,
         plot_bgcolor="white",
         paper_bgcolor="white",
-        legend=dict(orientation="h", y=1.10, x=1, xanchor="right"),
-        margin=dict(l=14, r=14, t=85, b=115),
+        legend=dict(orientation="h", y=1.08, x=1, xanchor="right"),
+        margin=dict(l=8, r=8, t=72, b=92),
         dragmode=False,
         uniformtext_minsize=10,
         uniformtext_mode="show",
