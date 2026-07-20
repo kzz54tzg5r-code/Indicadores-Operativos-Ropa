@@ -53,7 +53,7 @@ for p in [DATA_DIR, UPLOAD_DIR, CACHE_DIR, CONFIG_DIR, ASSETS_DIR]:
     p.mkdir(parents=True, exist_ok=True)
 
 MX_TZ = ZoneInfo("America/Mexico_City")
-APP_CACHE_VERSION = "v11.3"
+APP_CACHE_VERSION = "v11.4"
 AZUL = "#10245F"
 ROSA = "#EC007C"
 LAVANDA = "#F3F6FB"
@@ -1500,6 +1500,173 @@ html, body, [data-testid="stAppViewContainer"] {{
         min-width:140px!important;
         height:78px!important;
         min-height:78px!important;
+    }}
+}}
+
+
+/* V11.4 — CARRUSEL HORIZONTAL REAL */
+.st-key-nav_v114_carousel,
+.st-key-nav_v113_carousel {{
+    width: calc(100% + 3.2rem) !important;
+    margin-left: -1.6rem !important;
+    margin-right: -1.6rem !important;
+    margin-bottom: 22px !important;
+    padding: 0 1.6rem !important;
+    box-sizing: border-box !important;
+    background: var(--azul) !important;
+    border-top: 4px solid var(--rosa) !important;
+    overflow: hidden !important;
+}}
+.st-key-nav_v114_carousel [data-testid="stRadio"],
+.st-key-nav_v113_carousel [data-testid="stRadio"] {{
+    width: 100% !important;
+}}
+.st-key-nav_v114_carousel [role="radiogroup"],
+.st-key-nav_v113_carousel [role="radiogroup"] {{
+    display: flex !important;
+    flex-flow: row nowrap !important;
+    align-items: stretch !important;
+    gap: 0 !important;
+    width: max-content !important;
+    min-width: 100% !important;
+    min-height: 58px !important;
+    overflow: visible !important;
+}}
+.st-key-nav_v114_carousel label,
+.st-key-nav_v113_carousel label {{
+    flex: 0 0 auto !important;
+    min-width: max-content !important;
+    min-height: 58px !important;
+    padding: 0 18px !important;
+    margin: 0 !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    background: transparent !important;
+    color: rgba(255,255,255,.76) !important;
+    white-space: nowrap !important;
+    font-weight: 850 !important;
+    box-shadow: none !important;
+}}
+.st-key-nav_v114_carousel label:hover,
+.st-key-nav_v113_carousel label:hover {{
+    color: #FFFFFF !important;
+    background: rgba(255,255,255,.06) !important;
+}}
+.st-key-nav_v114_carousel label:has(input:checked),
+.st-key-nav_v113_carousel label:has(input:checked) {{
+    color: #FFFFFF !important;
+    background: #142E73 !important;
+    box-shadow: inset 0 -5px 0 var(--rosa) !important;
+}}
+.st-key-nav_v114_carousel label *,
+.st-key-nav_v113_carousel label * {{
+    color: inherit !important;
+    font-weight: inherit !important;
+}}
+.st-key-nav_v114_carousel [data-testid="stRadio"] input,
+.st-key-nav_v113_carousel [data-testid="stRadio"] input,
+.st-key-nav_v114_carousel [data-testid="stRadio"] [data-baseweb="radio"] > div:first-child,
+.st-key-nav_v113_carousel [data-testid="stRadio"] [data-baseweb="radio"] > div:first-child {{
+    position: absolute !important;
+    opacity: 0 !important;
+    width: 1px !important;
+    height: 1px !important;
+    pointer-events: none !important;
+}}
+@media (max-width: 768px) {{
+    .ps-mobile-nav-title {{
+        display: flex !important;
+        align-items: center !important;
+        justify-content: space-between !important;
+        margin: 8px 2px 7px 2px !important;
+        color: #5B6476 !important;
+        font-size: 12px !important;
+        font-weight: 850 !important;
+    }}
+    .ps-mobile-nav-arrow {{
+        color: var(--rosa) !important;
+        font-size: 18px !important;
+        font-weight: 900 !important;
+    }}
+    .st-key-nav_v114_carousel,
+    .st-key-nav_v113_carousel {{
+        width: calc(100% + 1rem) !important;
+        margin-left: -.5rem !important;
+        margin-right: -.5rem !important;
+        margin-bottom: 18px !important;
+        padding: 10px 0 12px 0 !important;
+        background: linear-gradient(135deg,#111A55 0%,#24126E 55%,#3B146E 100%) !important;
+        border-top: 4px solid var(--rosa) !important;
+        border-bottom: 1px solid rgba(255,255,255,.14) !important;
+        overflow-x: auto !important;
+        overflow-y: hidden !important;
+        scroll-snap-type: x proximity !important;
+        scroll-padding-inline: 18px !important;
+        overscroll-behavior-x: contain !important;
+        -webkit-overflow-scrolling: touch !important;
+        scrollbar-width: none !important;
+        touch-action: pan-x !important;
+    }}
+    .st-key-nav_v114_carousel::-webkit-scrollbar,
+    .st-key-nav_v113_carousel::-webkit-scrollbar {{
+        display: none !important;
+    }}
+    .st-key-nav_v114_carousel [data-testid="stRadio"],
+    .st-key-nav_v113_carousel [data-testid="stRadio"] {{
+        width: max-content !important;
+        min-width: max-content !important;
+        overflow: visible !important;
+    }}
+    .st-key-nav_v114_carousel [role="radiogroup"],
+    .st-key-nav_v113_carousel [role="radiogroup"] {{
+        display: flex !important;
+        flex-flow: row nowrap !important;
+        width: max-content !important;
+        min-width: max-content !important;
+        gap: 10px !important;
+        padding: 0 14px !important;
+        min-height: 58px !important;
+    }}
+    .st-key-nav_v114_carousel label,
+    .st-key-nav_v113_carousel label {{
+        flex: 0 0 auto !important;
+        width: auto !important;
+        min-width: 126px !important;
+        max-width: 190px !important;
+        height: 54px !important;
+        min-height: 54px !important;
+        padding: 0 15px !important;
+        border-radius: 12px !important;
+        border: 1px solid rgba(255,255,255,.22) !important;
+        background: rgba(255,255,255,.09) !important;
+        color: rgba(255,255,255,.80) !important;
+        white-space: nowrap !important;
+        text-align: center !important;
+        scroll-snap-align: center !important;
+        box-shadow: 0 5px 13px rgba(0,0,0,.14) !important;
+        transform: none !important;
+        opacity: 1 !important;
+        font-size: 13px !important;
+        line-height: 1.1 !important;
+    }}
+    .st-key-nav_v114_carousel label:has(input:checked),
+    .st-key-nav_v113_carousel label:has(input:checked) {{
+        background: #FFFFFF !important;
+        color: var(--azul) !important;
+        border-color: #FFFFFF !important;
+        box-shadow: 0 7px 18px rgba(0,0,0,.22), inset 0 -5px 0 var(--rosa) !important;
+    }}
+    .st-key-nav_v114_carousel label:has(input:checked) *,
+    .st-key-nav_v113_carousel label:has(input:checked) * {{
+        color: var(--azul) !important;
+    }}
+}}
+@media (min-width: 769px) {{
+    .ps-mobile-nav-title {{
+        display: none !important;
     }}
 }}
 
@@ -3349,19 +3516,16 @@ def nav_bar():
             <span>Desliza para cambiar reporte</span>
             <span class="ps-mobile-nav-arrow">↔</span>
         </div>
-        <div class="ps-tabbar">
         """,
         unsafe_allow_html=True,
     )
-    page = st.radio(
+    return st.radio(
         "Pestañas",
         PAGES,
         horizontal=True,
         label_visibility="collapsed",
-        key="nav_v113_carousel",
+        key="nav_v114_carousel",
     )
-    st.markdown("</div>", unsafe_allow_html=True)
-    return page
 
 
 def reliable_data_horizon(op, co):
