@@ -53,7 +53,7 @@ for p in [DATA_DIR, UPLOAD_DIR, CACHE_DIR, CONFIG_DIR, ASSETS_DIR]:
     p.mkdir(parents=True, exist_ok=True)
 
 MX_TZ = ZoneInfo("America/Mexico_City")
-APP_CACHE_VERSION = "v11.1"
+APP_CACHE_VERSION = "v11.3"
 AZUL = "#10245F"
 ROSA = "#EC007C"
 LAVANDA = "#F3F6FB"
@@ -1281,6 +1281,228 @@ html, body, [data-testid="stAppViewContainer"] {{
     }}
 }}
 
+
+/* =========================================================
+   V11.3 — MENÚ TIPO CARRUSEL
+   Inspirado en navegación móvil por tarjetas deslizables
+   ========================================================= */
+
+.ps-mobile-nav-title {{
+    display:none;
+}}
+
+/* Escritorio: navegación corporativa horizontal */
+@media (min-width: 769px) {{
+    .ps-tabbar {{
+        background:var(--azul)!important;
+        border-top:5px solid var(--rosa)!important;
+        overflow-x:auto!important;
+        scroll-behavior:smooth!important;
+    }}
+
+    .ps-tabbar [role="radiogroup"] {{
+        display:flex!important;
+        flex-wrap:nowrap!important;
+        min-width:max-content!important;
+    }}
+
+    .ps-tabbar label {{
+        min-height:58px!important;
+        padding:0 20px!important;
+        background:var(--azul)!important;
+        color:rgba(255,255,255,.76)!important;
+        transition:background .18s ease, color .18s ease!important;
+    }}
+
+    .ps-tabbar label:has(input:checked) {{
+        background:#142E73!important;
+        box-shadow:inset 0 -5px 0 var(--rosa)!important;
+        color:#FFF!important;
+    }}
+}}
+
+/* Móvil: carrusel de reportes */
+@media (max-width: 768px) {{
+    .ps-mobile-nav-title {{
+        display:flex!important;
+        align-items:center!important;
+        justify-content:space-between!important;
+        margin:8px 2px 7px 2px!important;
+        color:#5B6476!important;
+        font-size:11px!important;
+        font-weight:800!important;
+    }}
+
+    .ps-mobile-nav-arrow {{
+        color:var(--rosa)!important;
+        font-size:17px!important;
+        font-weight:900!important;
+    }}
+
+    .ps-tabbar {{
+        position:relative!important;
+        left:auto!important;
+        right:auto!important;
+        width:calc(100% + 1rem)!important;
+        max-width:none!important;
+        margin:0 -.5rem 16px -.5rem!important;
+        padding:8px 0 12px 0!important;
+        background:
+            linear-gradient(135deg,#111A55 0%,#24126E 55%,#3B146E 100%)!important;
+        border-top:4px solid var(--rosa)!important;
+        border-bottom:1px solid rgba(255,255,255,.12)!important;
+        overflow-x:auto!important;
+        overflow-y:hidden!important;
+        scroll-snap-type:x mandatory!important;
+        scroll-padding-inline:calc(50vw - 92px)!important;
+        -webkit-overflow-scrolling:touch!important;
+        scrollbar-width:none!important;
+    }}
+
+    .ps-tabbar::-webkit-scrollbar {{
+        display:none!important;
+    }}
+
+    .ps-tabbar [role="radiogroup"] {{
+        display:flex!important;
+        flex-wrap:nowrap!important;
+        align-items:center!important;
+        gap:10px!important;
+        width:max-content!important;
+        min-width:max-content!important;
+        padding:0 calc(50vw - 92px)!important;
+        min-height:106px!important;
+    }}
+
+    .ps-tabbar label {{
+        position:relative!important;
+        flex:0 0 154px!important;
+        width:154px!important;
+        min-width:154px!important;
+        height:82px!important;
+        min-height:82px!important;
+        padding:39px 9px 8px 9px!important;
+        border-radius:15px!important;
+        border:1px solid rgba(255,255,255,.22)!important;
+        background:rgba(255,255,255,.10)!important;
+        color:rgba(255,255,255,.82)!important;
+        display:flex!important;
+        align-items:center!important;
+        justify-content:center!important;
+        text-align:center!important;
+        white-space:normal!important;
+        scroll-snap-align:center!important;
+        box-shadow:0 8px 18px rgba(0,0,0,.16)!important;
+        transform:scale(.91)!important;
+        opacity:.76!important;
+        transition:
+            transform .22s ease,
+            opacity .22s ease,
+            background .22s ease,
+            border-color .22s ease!important;
+    }}
+
+    .ps-tabbar label p,
+    .ps-tabbar label span {{
+        color:inherit!important;
+        font-size:11px!important;
+        line-height:1.08!important;
+        font-weight:900!important;
+        text-align:center!important;
+    }}
+
+    .ps-tabbar label::before {{
+        content:"▦";
+        position:absolute!important;
+        top:9px!important;
+        left:50%!important;
+        transform:translateX(-50%)!important;
+        width:27px!important;
+        height:27px!important;
+        border-radius:50%!important;
+        display:flex!important;
+        align-items:center!important;
+        justify-content:center!important;
+        background:rgba(255,255,255,.16)!important;
+        color:#FFF!important;
+        font-size:15px!important;
+        font-weight:900!important;
+    }}
+
+    /* Iconos por reporte */
+    .ps-tabbar label:nth-child(1)::before {{content:"▦";}}
+    .ps-tabbar label:nth-child(2)::before {{content:"◷";}}
+    .ps-tabbar label:nth-child(3)::before {{content:"W";}}
+    .ps-tabbar label:nth-child(4)::before {{content:"M";}}
+    .ps-tabbar label:nth-child(5)::before {{content:"↗";}}
+    .ps-tabbar label:nth-child(6)::before {{content:"$";}}
+    .ps-tabbar label:nth-child(7)::before {{content:"✓";}}
+    .ps-tabbar label:nth-child(8)::before {{content:"↻";}}
+    .ps-tabbar label:nth-child(9)::before {{content:"#";}}
+    .ps-tabbar label:nth-child(10)::before {{content:"Σ";}}
+    .ps-tabbar label:nth-child(11)::before {{content:"!";}}
+    .ps-tabbar label:nth-child(12)::before {{content:"⚙";}}
+    .ps-tabbar label:nth-child(13)::before {{content:"♙";}}
+
+    .ps-tabbar label:hover {{
+        background:rgba(255,255,255,.15)!important;
+        color:#FFF!important;
+    }}
+
+    .ps-tabbar label:has(input:checked) {{
+        transform:scale(1.04)!important;
+        opacity:1!important;
+        z-index:3!important;
+        background:
+            linear-gradient(145deg,rgba(255,255,255,.24),rgba(255,255,255,.13))!important;
+        border:2px solid #FFF!important;
+        box-shadow:
+            0 12px 25px rgba(0,0,0,.25),
+            0 0 0 3px rgba(255,0,128,.30)!important;
+        color:#FFF!important;
+    }}
+
+    .ps-tabbar label:has(input:checked)::before {{
+        background:var(--rosa)!important;
+        box-shadow:0 4px 10px rgba(255,0,128,.35)!important;
+    }}
+
+    .ps-tabbar label:has(input:checked)::after {{
+        content:"";
+        position:absolute!important;
+        bottom:-9px!important;
+        left:50%!important;
+        transform:translateX(-50%)!important;
+        width:30px!important;
+        height:4px!important;
+        border-radius:4px!important;
+        background:var(--rosa)!important;
+    }}
+
+    .ps-tabbar input[type="radio"] {{
+        position:absolute!important;
+        opacity:0!important;
+        pointer-events:none!important;
+    }}
+}}
+
+/* Teléfono angosto */
+@media (max-width: 390px) {{
+    .ps-tabbar [role="radiogroup"] {{
+        padding-left:calc(50vw - 82px)!important;
+        padding-right:calc(50vw - 82px)!important;
+        gap:8px!important;
+    }}
+
+    .ps-tabbar label {{
+        flex-basis:140px!important;
+        width:140px!important;
+        min-width:140px!important;
+        height:78px!important;
+        min-height:78px!important;
+    }}
+}}
+
 </style>
 """,
         unsafe_allow_html=True,
@@ -2020,7 +2242,130 @@ def filter_commercial_by_date(co, start, end, stores_list):
 
     return out
 
-def table_by_store(op, co, start_date, end_date, stores=None):
+def closing_pending_by_store(op, co, cutoff_date, stores=None):
+    """Calcula el saldo pendiente real por tienda hasta una fecha de cierre.
+
+    Saldo diario:
+        saldo final = máximo(saldo anterior + ingresos del día - ubicadas del día, 0)
+
+    Esto evita que las ubicaciones excedentes de una tienda compensen el
+    pendiente de otra y permite trasladar correctamente el cierre del domingo
+    a la semana siguiente.
+    """
+    op = normalize_operation_df(op)
+    co = normalize_commercial_df(co)
+    stores_list = stores or PROJECT_STORES
+    cutoff = parse_date(cutoff_date)
+
+    result = {store: 0.0 for store in stores_list}
+    if pd.isna(cutoff):
+        return result
+
+    op2 = split_operation(op)
+    min_dates = []
+
+    if op2 is not None and not op2.empty and "Fecha" in op2.columns:
+        valid_op_dates = pd.to_datetime(op2["Fecha"], errors="coerce").dropna()
+        if not valid_op_dates.empty:
+            min_dates.append(valid_op_dates.min().normalize())
+
+    if co is not None and not co.empty and "Fecha" in co.columns:
+        valid_co_dates = pd.to_datetime(co["Fecha"], errors="coerce").dropna()
+        if not valid_co_dates.empty:
+            min_dates.append(valid_co_dates.min().normalize())
+
+    if not min_dates:
+        return result
+
+    first_date = min(min_dates)
+    if cutoff < first_date:
+        return result
+
+    op_cut = (
+        op2[
+            (pd.to_datetime(op2["Fecha"], errors="coerce") >= first_date)
+            & (pd.to_datetime(op2["Fecha"], errors="coerce") <= cutoff)
+        ].copy()
+        if op2 is not None and not op2.empty
+        else pd.DataFrame()
+    )
+    op_cut = filter_stores(op_cut, stores_list)
+
+    co_cut = filter_commercial_by_date(co, first_date, cutoff, stores_list)
+
+    daily_parts = []
+
+    if not op_cut.empty:
+        op_cut["Fecha"] = pd.to_datetime(op_cut["Fecha"], errors="coerce").dt.normalize()
+        op_daily = (
+            op_cut.groupby(["Fecha", "Tienda"], as_index=False)
+            .agg({
+                "Muertos": "sum",
+                "Cajas": "sum",
+                "Probador": "sum",
+                "Ubicadas": "sum",
+            })
+        )
+        op_daily["Ingresos operación"] = (
+            pd.to_numeric(op_daily["Muertos"], errors="coerce").fillna(0)
+            + pd.to_numeric(op_daily["Cajas"], errors="coerce").fillna(0)
+            + pd.to_numeric(op_daily["Probador"], errors="coerce").fillna(0)
+        )
+        daily_parts.append(
+            op_daily[["Fecha", "Tienda", "Ingresos operación", "Ubicadas"]]
+        )
+
+    if not co_cut.empty:
+        co_cut["Fecha"] = pd.to_datetime(co_cut["Fecha"], errors="coerce").dt.normalize()
+        co_daily = (
+            co_cut.groupby(["Fecha", "Tienda"], as_index=False)["Dev_Pzs"]
+            .sum()
+            .rename(columns={"Dev_Pzs": "Dev diario"})
+        )
+    else:
+        co_daily = pd.DataFrame(columns=["Fecha", "Tienda", "Dev diario"])
+
+    if daily_parts:
+        daily = daily_parts[0]
+    else:
+        daily = pd.DataFrame(
+            columns=["Fecha", "Tienda", "Ingresos operación", "Ubicadas"]
+        )
+
+    daily = daily.merge(co_daily, on=["Fecha", "Tienda"], how="outer")
+    for col in ["Ingresos operación", "Ubicadas", "Dev diario"]:
+        daily[col] = pd.to_numeric(daily.get(col, 0), errors="coerce").fillna(0)
+
+    daily["Ingresos"] = daily["Ingresos operación"] + daily["Dev diario"]
+    daily = daily.sort_values(["Tienda", "Fecha"])
+
+    for store in stores_list:
+        saldo = 0.0
+        store_daily = daily[daily["Tienda"].eq(store)]
+        for row in store_daily.itertuples(index=False):
+            saldo = max(
+                saldo + float(row.Ingresos) - float(row.Ubicadas),
+                0.0,
+            )
+        result[store] = saldo
+
+    return result
+
+def table_by_store(
+    op,
+    co,
+    start_date,
+    end_date,
+    stores=None,
+    carryover_mode="previous_day",
+):
+    """Construye la tabla por tienda para un periodo.
+
+    carryover_mode:
+    - "previous_day": traslada el saldo acumulado al cierre del día anterior.
+    - "previous_sunday": traslada el saldo acumulado al domingo anterior.
+    - "none": no agrega saldo anterior; se usan solo ingresos del periodo.
+    """
     op = normalize_operation_df(op)
     co = normalize_commercial_df(co)
 
@@ -2029,24 +2374,38 @@ def table_by_store(op, co, start_date, end_date, stores=None):
     end = parse_date(end_date)
     stores_list = stores or PROJECT_STORES
 
-    op_p = op2[(op2["Fecha"] >= start) & (op2["Fecha"] <= end)] if op2 is not None and not op2.empty else pd.DataFrame()
+    op_p = (
+        op2[(op2["Fecha"] >= start) & (op2["Fecha"] <= end)]
+        if op2 is not None and not op2.empty
+        else pd.DataFrame()
+    )
     op_p = filter_stores(op_p, stores_list)
-
     co_p = filter_commercial_by_date(co, start, end, stores_list)
 
-    prev_day = start - pd.Timedelta(days=1)
-    op_prev = op2[(op2["Fecha"] >= prev_day) & (op2["Fecha"] <= prev_day)] if op2 is not None and not op2.empty else pd.DataFrame()
-    op_prev = filter_stores(op_prev, stores_list)
-
-    co_prev = filter_commercial_by_date(co, prev_day, prev_day, stores_list)
+    if carryover_mode == "none":
+        prior_balances = {store: 0.0 for store in stores_list}
+    else:
+        # Para una semana ISO el día anterior al lunes es exactamente el domingo previo.
+        cutoff = start - pd.Timedelta(days=1)
+        prior_balances = closing_pending_by_store(
+            op,
+            co,
+            cutoff,
+            stores_list,
+        )
 
     rows = []
     for t in stores_list:
-        dev = pd.to_numeric(co_p.loc[co_p["Tienda"].eq(t), "Dev_Pzs"], errors="coerce").fillna(0).sum() if not co_p.empty and "Dev_Pzs" in co_p.columns else 0
-        prev_dev = pd.to_numeric(co_prev.loc[co_prev["Tienda"].eq(t), "Dev_Pzs"], errors="coerce").fillna(0).sum() if not co_prev.empty and "Dev_Pzs" in co_prev.columns else 0
+        dev = (
+            pd.to_numeric(
+                co_p.loc[co_p["Tienda"].eq(t), "Dev_Pzs"],
+                errors="coerce",
+            ).fillna(0).sum()
+            if not co_p.empty and "Dev_Pzs" in co_p.columns
+            else 0
+        )
 
         o = op_p[op_p["Tienda"].eq(t)] if not op_p.empty else pd.DataFrame()
-        prev = op_prev[op_prev["Tienda"].eq(t)] if not op_prev.empty else pd.DataFrame()
 
         muertos = o["Muertos"].sum() if not o.empty and "Muertos" in o.columns else 0
         cajas = o["Cajas"].sum() if not o.empty and "Cajas" in o.columns else 0
@@ -2055,20 +2414,16 @@ def table_by_store(op, co, start_date, end_date, stores=None):
         hab = o["Habilitadas"].sum() if not o.empty and "Habilitadas" in o.columns else 0
         ubic = o["Ubicadas"].sum() if not o.empty and "Ubicadas" in o.columns else 0
 
-        prev_muertos = prev["Muertos"].sum() if not prev.empty and "Muertos" in prev.columns else 0
-        prev_cajas = prev["Cajas"].sum() if not prev.empty and "Cajas" in prev.columns else 0
-        prev_prob = prev["Probador"].sum() if not prev.empty and "Probador" in prev.columns else 0
-        prev_total_ing = prev_dev + prev_muertos + prev_cajas + prev_prob
-        prev_ubic = prev["Ubicadas"].sum() if not prev.empty and "Ubicadas" in prev.columns else 0
-        pend_ant = max(prev_total_ing - prev_ubic, 0)
-
-        ingresos_dia = dev + muertos + cajas + prob
-        total_base = ingresos_dia + pend_ant
+        ingresos_periodo = dev + muertos + cajas + prob
+        pend_ant = float(prior_balances.get(t, 0))
+        total_base = ingresos_periodo + pend_ant
 
         pend_hab = max(total_base - hab, 0)
         pend_ub = max(total_base - ubic, 0)
-        pct_hab = hab / total_base * 100 if total_base else 0
-        pct_ub = ubic / total_base * 100 if total_base else 0
+        procesado = max(total_base - pend_ub, 0)
+
+        pct_hab = min(hab / total_base * 100, 100) if total_base else 0
+        pct_ub = min(procesado / total_base * 100, 100) if total_base else 0
 
         rows.append({
             "Tienda": t,
@@ -2076,8 +2431,9 @@ def table_by_store(op, co, start_date, end_date, stores=None):
             "Muertos": muertos,
             "Cajas": cajas,
             "Probador": prob,
-            "Total": total_base,
+            "Ingresos periodo": ingresos_periodo,
             "Pend. Ant.": pend_ant,
+            "Total": total_base,
             "Recolectadas": reco,
             "Habilitadas": hab,
             "Pend. Hab.": pend_hab,
@@ -2086,16 +2442,16 @@ def table_by_store(op, co, start_date, end_date, stores=None):
             "Pend. Ub.": pend_ub,
             "% Ubic.": pct_ub,
         })
+
     return pd.DataFrame(rows)
 
 
-def summary_from_table(df):
-    """Calcula los KPI generales a partir de la misma base.
+def summary_from_table(df, income_column="Total"):
+    """Calcula KPI respetando los pendientes individuales por tienda.
 
-    Reglas:
-    - Pendientes por ubicar = Piezas ingresadas - Piezas ubicadas.
-    - % Procesado = Piezas ubicadas / Piezas ingresadas.
-    - El pendiente nunca puede ser negativo.
+    - Pendiente general = suma de `Pend. Ub.` de cada tienda.
+    - % Procesado = (base - pendiente) / base.
+    - Nunca se compensan pendientes entre tiendas.
     """
     if df is None or df.empty:
         return {
@@ -2106,8 +2462,10 @@ def summary_from_table(df):
             "% Procesado": 0,
         }
 
+    base_col = income_column if income_column in df.columns else "Total"
+
     ingresos = pd.to_numeric(
-        df.get("Total", pd.Series(dtype=float)),
+        df.get(base_col, pd.Series(dtype=float)),
         errors="coerce",
     ).fillna(0).sum()
 
@@ -2121,8 +2479,13 @@ def summary_from_table(df):
         errors="coerce",
     ).fillna(0).sum()
 
-    pendiente = max(float(ingresos) - float(ubic), 0)
-    pct = (float(ubic) / float(ingresos) * 100) if ingresos > 0 else 0
+    pendiente = pd.to_numeric(
+        df.get("Pend. Ub.", pd.Series(dtype=float)),
+        errors="coerce",
+    ).fillna(0).clip(lower=0).sum()
+
+    procesado = max(float(ingresos) - float(pendiente), 0)
+    pct = min(procesado / float(ingresos) * 100, 100) if ingresos > 0 else 0
 
     return {
         "Ingresos": ingresos,
@@ -2980,12 +3343,25 @@ PAGES = [
 
 
 def nav_bar():
-    st.markdown('<div class="ps-tabbar">', unsafe_allow_html=True)
-    page = st.radio("Pestañas", PAGES, horizontal=True, label_visibility="collapsed", key="nav_v10")
+    st.markdown(
+        """
+        <div class="ps-mobile-nav-title">
+            <span>Desliza para cambiar reporte</span>
+            <span class="ps-mobile-nav-arrow">↔</span>
+        </div>
+        <div class="ps-tabbar">
+        """,
+        unsafe_allow_html=True,
+    )
+    page = st.radio(
+        "Pestañas",
+        PAGES,
+        horizontal=True,
+        label_visibility="collapsed",
+        key="nav_v113_carousel",
+    )
     st.markdown("</div>", unsafe_allow_html=True)
     return page
-
-
 
 
 def reliable_data_horizon(op, co):
@@ -3259,9 +3635,10 @@ def page_semanal(op, co):
         return
 
     start, end = week_dates.min().normalize(), week_dates.max().normalize()
-    df = table_by_store(op, co, start, end, tiendas)
-    resumen = summary_from_table(df)
+    df = table_by_store(op, co, start, end, tiendas, carryover_mode="previous_sunday")
+    resumen = summary_from_table(df, income_column="Total")
     kpis(resumen)
+    st.caption("La base semanal incluye el saldo pendiente acumulado al cierre del domingo anterior.")
 
     generic_pdf_button(
         f"Reporte Semanal - Semana {week}",
@@ -3289,9 +3666,10 @@ def page_mensual(op, co):
         st.info("Sin fechas para el mes seleccionado.")
         return
     start, end = dates.min().normalize(), dates.max().normalize()
-    df = table_by_store(op, co, start, end, tiendas)
-    resumen = summary_from_table(df)
+    df = table_by_store(op, co, start, end, tiendas, carryover_mode="none")
+    resumen = summary_from_table(df, income_column="Ingresos periodo")
     kpis(resumen)
+    st.caption("Los ingresos mensuales consideran únicamente movimientos del mes; el pendiente se suma por tienda.")
     generic_pdf_button(
         f"Reporte Mensual - {m}",
         f"Periodo: {start.strftime('%d-%m-%Y')} al {end.strftime('%d-%m-%Y')}",
