@@ -21,7 +21,6 @@ from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.graphics.shapes import Drawing, String, PolyLine, Circle, Rect, Line
 from reportlab.graphics.charts.barcharts import VerticalBarChart
 import streamlit as st
-import streamlit.components.v1 as components
 from openpyxl import load_workbook
 
 try:
@@ -54,7 +53,7 @@ for p in [DATA_DIR, UPLOAD_DIR, CACHE_DIR, CONFIG_DIR, ASSETS_DIR]:
     p.mkdir(parents=True, exist_ok=True)
 
 MX_TZ = ZoneInfo("America/Mexico_City")
-APP_CACHE_VERSION = "v11.5"
+APP_CACHE_VERSION = "v10.33"
 AZUL = "#10245F"
 ROSA = "#EC007C"
 LAVANDA = "#F3F6FB"
@@ -1019,666 +1018,6 @@ html, body, [data-testid="stAppViewContainer"] {{
     }}
 }}
 
-
-/* =========================================================
-   V11 — DISEÑO RESPONSIVE EJECUTIVO
-   ========================================================= */
-
-:root {{
-    --ps-gap: 14px;
-    --ps-radius: 14px;
-}}
-
-.block-container {{
-    max-width: 100% !important;
-    width: 100% !important;
-    padding-left: 1rem !important;
-    padding-right: 1rem !important;
-}}
-
-.ps-kpi-grid {{
-    width: 100% !important;
-    gap: var(--ps-gap) !important;
-}}
-
-.ps-kpi-card {{
-    min-width: 0 !important;
-    width: 100% !important;
-    border-radius: var(--ps-radius) !important;
-}}
-
-.week-card-grid {{
-    display: grid !important;
-    grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
-    gap: 14px !important;
-    width: 100% !important;
-    margin: 12px 0 18px 0 !important;
-}}
-
-.week-card {{
-    min-width: 0 !important;
-    width: 100% !important;
-    border-radius: 12px !important;
-    overflow: hidden !important;
-}}
-
-.week-card-head {{
-    padding: 11px 8px !important;
-    font-size: 17px !important;
-    line-height: 1.1 !important;
-}}
-
-.week-row {{
-    display: grid !important;
-    grid-template-columns: minmax(92px, 1fr) auto auto !important;
-    align-items: center !important;
-    gap: 8px !important;
-    padding: 9px 12px !important;
-    min-height: 43px !important;
-}}
-
-.week-row span {{
-    font-size: 10px !important;
-    white-space: nowrap !important;
-}}
-
-.week-row b {{
-    font-size: 17px !important;
-    white-space: nowrap !important;
-}}
-
-.week-row em {{
-    min-width: 56px !important;
-    text-align: right !important;
-    font-size: 10px !important;
-    white-space: nowrap !important;
-}}
-
-.panel-title {{
-    margin-bottom: 6px !important;
-}}
-
-[data-testid="stDataFrame"],
-[data-testid="stDataEditor"],
-.ag-root-wrapper {{
-    width: 100% !important;
-    max-width: 100% !important;
-    border-radius: 10px !important;
-}}
-
-[data-testid="stPlotlyChart"] {{
-    width: 100% !important;
-    max-width: 100% !important;
-    margin-left: 0 !important;
-    margin-right: 0 !important;
-}}
-
-[data-testid="stPlotlyChart"] > div,
-.js-plotly-plot,
-.plot-container,
-.svg-container {{
-    width: 100% !important;
-    max-width: 100% !important;
-}}
-
-@media (min-width: 1440px) {{
-    .block-container {{
-        padding-left: 1.25rem !important;
-        padding-right: 1.25rem !important;
-    }}
-
-    .ps-kpi-card {{
-        min-height: 126px !important;
-    }}
-
-    .week-card-grid {{
-        gap: 18px !important;
-    }}
-
-    .week-row {{
-        min-height: 46px !important;
-    }}
-}}
-
-@media (min-width: 769px) and (max-width: 1100px) {{
-    .week-card-grid {{
-        grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
-    }}
-
-    .ps-kpi-grid {{
-        grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
-    }}
-}}
-
-@media (max-width: 768px) {{
-    .block-container {{
-        padding-left: .5rem !important;
-        padding-right: .5rem !important;
-        padding-top: .3rem !important;
-    }}
-
-    .ps-kpi-grid {{
-        grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
-        gap: 8px !important;
-    }}
-
-    .ps-kpi-card {{
-        min-height: 104px !important;
-        padding: 10px 8px !important;
-        gap: 7px !important;
-        border-radius: 12px !important;
-    }}
-
-    .ps-kpi-card:nth-child(5) {{
-        grid-column: 1 / -1 !important;
-        min-height: 90px !important;
-    }}
-
-    .ps-kpi-icon {{
-        width: 44px !important;
-        height: 44px !important;
-        min-width: 44px !important;
-        font-size: 21px !important;
-    }}
-
-    .ps-kpi-title {{
-        font-size: 10px !important;
-        line-height: 1.1 !important;
-    }}
-
-    .ps-kpi-value {{
-        font-size: 20px !important;
-        line-height: 1 !important;
-        margin: 4px 0 !important;
-    }}
-
-    .ps-kpi-sub {{
-        font-size: 7.8px !important;
-        line-height: 1.15 !important;
-    }}
-
-    .week-card-grid {{
-        grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
-        gap: 8px !important;
-        margin: 10px 0 14px 0 !important;
-    }}
-
-    .week-card-head {{
-        padding: 9px 6px !important;
-        font-size: 14px !important;
-    }}
-
-    .week-row {{
-        grid-template-columns: 1fr auto !important;
-        gap: 5px !important;
-        padding: 7px 8px !important;
-        min-height: 38px !important;
-    }}
-
-    .week-row span {{
-        font-size: 8px !important;
-    }}
-
-    .week-row b {{
-        font-size: 13px !important;
-    }}
-
-    .week-row em {{
-        grid-column: 1 / -1 !important;
-        min-width: 0 !important;
-        text-align: right !important;
-        font-size: 8px !important;
-        margin-top: -3px !important;
-    }}
-
-    [data-testid="stDataFrame"],
-    [data-testid="stDataEditor"],
-    .ag-root-wrapper {{
-        overflow-x: auto !important;
-        -webkit-overflow-scrolling: touch !important;
-    }}
-
-    .ag-header-cell-text,
-    .ag-cell {{
-        font-size: 9px !important;
-    }}
-
-    [data-testid="stPlotlyChart"] {{
-        width: calc(100vw - 1rem) !important;
-        margin-left: 0 !important;
-        margin-right: 0 !important;
-    }}
-
-    [data-testid="stPlotlyChart"] .svg-container {{
-        min-height: 430px !important;
-    }}
-}}
-
-@media (max-width: 390px) {{
-    .ps-kpi-grid {{
-        gap: 6px !important;
-    }}
-
-    .ps-kpi-card {{
-        padding: 8px 6px !important;
-    }}
-
-    .ps-kpi-icon {{
-        width: 40px !important;
-        height: 40px !important;
-        min-width: 40px !important;
-    }}
-
-    .ps-kpi-value {{
-        font-size: 18px !important;
-    }}
-
-    .week-card-grid {{
-        gap: 6px !important;
-    }}
-
-    .week-row {{
-        padding: 6px 6px !important;
-    }}
-}}
-
-
-/* =========================================================
-   V11.3 — MENÚ TIPO CARRUSEL
-   Inspirado en navegación móvil por tarjetas deslizables
-   ========================================================= */
-
-.ps-mobile-nav-title {{
-    display:none;
-}}
-
-/* Escritorio: navegación corporativa horizontal */
-@media (min-width: 769px) {{
-    .ps-tabbar {{
-        background:var(--azul)!important;
-        border-top:5px solid var(--rosa)!important;
-        overflow-x:auto!important;
-        scroll-behavior:smooth!important;
-    }}
-
-    .ps-tabbar [role="radiogroup"] {{
-        display:flex!important;
-        flex-wrap:nowrap!important;
-        min-width:max-content!important;
-    }}
-
-    .ps-tabbar label {{
-        min-height:58px!important;
-        padding:0 20px!important;
-        background:var(--azul)!important;
-        color:rgba(255,255,255,.76)!important;
-        transition:background .18s ease, color .18s ease!important;
-    }}
-
-    .ps-tabbar label:has(input:checked) {{
-        background:#142E73!important;
-        box-shadow:inset 0 -5px 0 var(--rosa)!important;
-        color:#FFF!important;
-    }}
-}}
-
-/* Móvil: carrusel de reportes */
-@media (max-width: 768px) {{
-    .ps-mobile-nav-title {{
-        display:flex!important;
-        align-items:center!important;
-        justify-content:space-between!important;
-        margin:8px 2px 7px 2px!important;
-        color:#5B6476!important;
-        font-size:11px!important;
-        font-weight:800!important;
-    }}
-
-    .ps-mobile-nav-arrow {{
-        color:var(--rosa)!important;
-        font-size:17px!important;
-        font-weight:900!important;
-    }}
-
-    .ps-tabbar {{
-        position:relative!important;
-        left:auto!important;
-        right:auto!important;
-        width:calc(100% + 1rem)!important;
-        max-width:none!important;
-        margin:0 -.5rem 16px -.5rem!important;
-        padding:8px 0 12px 0!important;
-        background:
-            linear-gradient(135deg,#111A55 0%,#24126E 55%,#3B146E 100%)!important;
-        border-top:4px solid var(--rosa)!important;
-        border-bottom:1px solid rgba(255,255,255,.12)!important;
-        overflow-x:auto!important;
-        overflow-y:hidden!important;
-        scroll-snap-type:x mandatory!important;
-        scroll-padding-inline:calc(50vw - 92px)!important;
-        -webkit-overflow-scrolling:touch!important;
-        scrollbar-width:none!important;
-    }}
-
-    .ps-tabbar::-webkit-scrollbar {{
-        display:none!important;
-    }}
-
-    .ps-tabbar [role="radiogroup"] {{
-        display:flex!important;
-        flex-wrap:nowrap!important;
-        align-items:center!important;
-        gap:10px!important;
-        width:max-content!important;
-        min-width:max-content!important;
-        padding:0 calc(50vw - 92px)!important;
-        min-height:106px!important;
-    }}
-
-    .ps-tabbar label {{
-        position:relative!important;
-        flex:0 0 154px!important;
-        width:154px!important;
-        min-width:154px!important;
-        height:82px!important;
-        min-height:82px!important;
-        padding:39px 9px 8px 9px!important;
-        border-radius:15px!important;
-        border:1px solid rgba(255,255,255,.22)!important;
-        background:rgba(255,255,255,.10)!important;
-        color:rgba(255,255,255,.82)!important;
-        display:flex!important;
-        align-items:center!important;
-        justify-content:center!important;
-        text-align:center!important;
-        white-space:normal!important;
-        scroll-snap-align:center!important;
-        box-shadow:0 8px 18px rgba(0,0,0,.16)!important;
-        transform:scale(.91)!important;
-        opacity:.76!important;
-        transition:
-            transform .22s ease,
-            opacity .22s ease,
-            background .22s ease,
-            border-color .22s ease!important;
-    }}
-
-    .ps-tabbar label p,
-    .ps-tabbar label span {{
-        color:inherit!important;
-        font-size:11px!important;
-        line-height:1.08!important;
-        font-weight:900!important;
-        text-align:center!important;
-    }}
-
-    .ps-tabbar label::before {{
-        content:"▦";
-        position:absolute!important;
-        top:9px!important;
-        left:50%!important;
-        transform:translateX(-50%)!important;
-        width:27px!important;
-        height:27px!important;
-        border-radius:50%!important;
-        display:flex!important;
-        align-items:center!important;
-        justify-content:center!important;
-        background:rgba(255,255,255,.16)!important;
-        color:#FFF!important;
-        font-size:15px!important;
-        font-weight:900!important;
-    }}
-
-    /* Iconos por reporte */
-    .ps-tabbar label:nth-child(1)::before {{content:"▦";}}
-    .ps-tabbar label:nth-child(2)::before {{content:"◷";}}
-    .ps-tabbar label:nth-child(3)::before {{content:"W";}}
-    .ps-tabbar label:nth-child(4)::before {{content:"M";}}
-    .ps-tabbar label:nth-child(5)::before {{content:"↗";}}
-    .ps-tabbar label:nth-child(6)::before {{content:"$";}}
-    .ps-tabbar label:nth-child(7)::before {{content:"✓";}}
-    .ps-tabbar label:nth-child(8)::before {{content:"↻";}}
-    .ps-tabbar label:nth-child(9)::before {{content:"#";}}
-    .ps-tabbar label:nth-child(10)::before {{content:"Σ";}}
-    .ps-tabbar label:nth-child(11)::before {{content:"!";}}
-    .ps-tabbar label:nth-child(12)::before {{content:"⚙";}}
-    .ps-tabbar label:nth-child(13)::before {{content:"♙";}}
-
-    .ps-tabbar label:hover {{
-        background:rgba(255,255,255,.15)!important;
-        color:#FFF!important;
-    }}
-
-    .ps-tabbar label:has(input:checked) {{
-        transform:scale(1.04)!important;
-        opacity:1!important;
-        z-index:3!important;
-        background:
-            linear-gradient(145deg,rgba(255,255,255,.24),rgba(255,255,255,.13))!important;
-        border:2px solid #FFF!important;
-        box-shadow:
-            0 12px 25px rgba(0,0,0,.25),
-            0 0 0 3px rgba(255,0,128,.30)!important;
-        color:#FFF!important;
-    }}
-
-    .ps-tabbar label:has(input:checked)::before {{
-        background:var(--rosa)!important;
-        box-shadow:0 4px 10px rgba(255,0,128,.35)!important;
-    }}
-
-    .ps-tabbar label:has(input:checked)::after {{
-        content:"";
-        position:absolute!important;
-        bottom:-9px!important;
-        left:50%!important;
-        transform:translateX(-50%)!important;
-        width:30px!important;
-        height:4px!important;
-        border-radius:4px!important;
-        background:var(--rosa)!important;
-    }}
-
-    .ps-tabbar input[type="radio"] {{
-        position:absolute!important;
-        opacity:0!important;
-        pointer-events:none!important;
-    }}
-}}
-
-/* Teléfono angosto */
-@media (max-width: 390px) {{
-    .ps-tabbar [role="radiogroup"] {{
-        padding-left:calc(50vw - 82px)!important;
-        padding-right:calc(50vw - 82px)!important;
-        gap:8px!important;
-    }}
-
-    .ps-tabbar label {{
-        flex-basis:140px!important;
-        width:140px!important;
-        min-width:140px!important;
-        height:78px!important;
-        min-height:78px!important;
-    }}
-}}
-
-
-/* V11.4 — CARRUSEL HORIZONTAL REAL */
-.st-key-nav_v114_carousel,
-.st-key-nav_v113_carousel {{
-    width: calc(100% + 3.2rem) !important;
-    margin-left: -1.6rem !important;
-    margin-right: -1.6rem !important;
-    margin-bottom: 22px !important;
-    padding: 0 1.6rem !important;
-    box-sizing: border-box !important;
-    background: var(--azul) !important;
-    border-top: 4px solid var(--rosa) !important;
-    overflow: hidden !important;
-}}
-.st-key-nav_v114_carousel [data-testid="stRadio"],
-.st-key-nav_v113_carousel [data-testid="stRadio"] {{
-    width: 100% !important;
-}}
-.st-key-nav_v114_carousel [role="radiogroup"],
-.st-key-nav_v113_carousel [role="radiogroup"] {{
-    display: flex !important;
-    flex-flow: row nowrap !important;
-    align-items: stretch !important;
-    gap: 0 !important;
-    width: max-content !important;
-    min-width: 100% !important;
-    min-height: 58px !important;
-    overflow: visible !important;
-}}
-.st-key-nav_v114_carousel label,
-.st-key-nav_v113_carousel label {{
-    flex: 0 0 auto !important;
-    min-width: max-content !important;
-    min-height: 58px !important;
-    padding: 0 18px !important;
-    margin: 0 !important;
-    display: flex !important;
-    align-items: center !important;
-    justify-content: center !important;
-    border: 0 !important;
-    border-radius: 0 !important;
-    background: transparent !important;
-    color: rgba(255,255,255,.76) !important;
-    white-space: nowrap !important;
-    font-weight: 850 !important;
-    box-shadow: none !important;
-}}
-.st-key-nav_v114_carousel label:hover,
-.st-key-nav_v113_carousel label:hover {{
-    color: #FFFFFF !important;
-    background: rgba(255,255,255,.06) !important;
-}}
-.st-key-nav_v114_carousel label:has(input:checked),
-.st-key-nav_v113_carousel label:has(input:checked) {{
-    color: #FFFFFF !important;
-    background: #142E73 !important;
-    box-shadow: inset 0 -5px 0 var(--rosa) !important;
-}}
-.st-key-nav_v114_carousel label *,
-.st-key-nav_v113_carousel label * {{
-    color: inherit !important;
-    font-weight: inherit !important;
-}}
-.st-key-nav_v114_carousel [data-testid="stRadio"] input,
-.st-key-nav_v113_carousel [data-testid="stRadio"] input,
-.st-key-nav_v114_carousel [data-testid="stRadio"] [data-baseweb="radio"] > div:first-child,
-.st-key-nav_v113_carousel [data-testid="stRadio"] [data-baseweb="radio"] > div:first-child {{
-    position: absolute !important;
-    opacity: 0 !important;
-    width: 1px !important;
-    height: 1px !important;
-    pointer-events: none !important;
-}}
-@media (max-width: 768px) {{
-    .ps-mobile-nav-title {{
-        display: flex !important;
-        align-items: center !important;
-        justify-content: space-between !important;
-        margin: 8px 2px 7px 2px !important;
-        color: #5B6476 !important;
-        font-size: 12px !important;
-        font-weight: 850 !important;
-    }}
-    .ps-mobile-nav-arrow {{
-        color: var(--rosa) !important;
-        font-size: 18px !important;
-        font-weight: 900 !important;
-    }}
-    .st-key-nav_v114_carousel,
-    .st-key-nav_v113_carousel {{
-        width: calc(100% + 1rem) !important;
-        margin-left: -.5rem !important;
-        margin-right: -.5rem !important;
-        margin-bottom: 18px !important;
-        padding: 10px 0 12px 0 !important;
-        background: linear-gradient(135deg,#111A55 0%,#24126E 55%,#3B146E 100%) !important;
-        border-top: 4px solid var(--rosa) !important;
-        border-bottom: 1px solid rgba(255,255,255,.14) !important;
-        overflow-x: auto !important;
-        overflow-y: hidden !important;
-        scroll-snap-type: x proximity !important;
-        scroll-padding-inline: 18px !important;
-        overscroll-behavior-x: contain !important;
-        -webkit-overflow-scrolling: touch !important;
-        scrollbar-width: none !important;
-        touch-action: pan-x !important;
-    }}
-    .st-key-nav_v114_carousel::-webkit-scrollbar,
-    .st-key-nav_v113_carousel::-webkit-scrollbar {{
-        display: none !important;
-    }}
-    .st-key-nav_v114_carousel [data-testid="stRadio"],
-    .st-key-nav_v113_carousel [data-testid="stRadio"] {{
-        width: max-content !important;
-        min-width: max-content !important;
-        overflow: visible !important;
-    }}
-    .st-key-nav_v114_carousel [role="radiogroup"],
-    .st-key-nav_v113_carousel [role="radiogroup"] {{
-        display: flex !important;
-        flex-flow: row nowrap !important;
-        width: max-content !important;
-        min-width: max-content !important;
-        gap: 10px !important;
-        padding: 0 14px !important;
-        min-height: 58px !important;
-    }}
-    .st-key-nav_v114_carousel label,
-    .st-key-nav_v113_carousel label {{
-        flex: 0 0 auto !important;
-        width: auto !important;
-        min-width: 126px !important;
-        max-width: 190px !important;
-        height: 54px !important;
-        min-height: 54px !important;
-        padding: 0 15px !important;
-        border-radius: 12px !important;
-        border: 1px solid rgba(255,255,255,.22) !important;
-        background: rgba(255,255,255,.09) !important;
-        color: rgba(255,255,255,.80) !important;
-        white-space: nowrap !important;
-        text-align: center !important;
-        scroll-snap-align: center !important;
-        box-shadow: 0 5px 13px rgba(0,0,0,.14) !important;
-        transform: none !important;
-        opacity: 1 !important;
-        font-size: 13px !important;
-        line-height: 1.1 !important;
-    }}
-    .st-key-nav_v114_carousel label:has(input:checked),
-    .st-key-nav_v113_carousel label:has(input:checked) {{
-        background: #FFFFFF !important;
-        color: var(--azul) !important;
-        border-color: #FFFFFF !important;
-        box-shadow: 0 7px 18px rgba(0,0,0,.22), inset 0 -5px 0 var(--rosa) !important;
-    }}
-    .st-key-nav_v114_carousel label:has(input:checked) *,
-    .st-key-nav_v113_carousel label:has(input:checked) * {{
-        color: var(--azul) !important;
-    }}
-}}
-@media (min-width: 769px) {{
-    .ps-mobile-nav-title {{
-        display: none !important;
-    }}
-}}
-
-
-/* V11.5: el carrusel es un componente independiente; ocultar restos del menú radio anterior. */
-.ps-mobile-nav-title,
-.st-key-nav_v114_carousel,
-.st-key-nav_v113_carousel {{
-    display: none !important;
-}}
-
 </style>
 """,
         unsafe_allow_html=True,
@@ -2418,130 +1757,7 @@ def filter_commercial_by_date(co, start, end, stores_list):
 
     return out
 
-def closing_pending_by_store(op, co, cutoff_date, stores=None):
-    """Calcula el saldo pendiente real por tienda hasta una fecha de cierre.
-
-    Saldo diario:
-        saldo final = máximo(saldo anterior + ingresos del día - ubicadas del día, 0)
-
-    Esto evita que las ubicaciones excedentes de una tienda compensen el
-    pendiente de otra y permite trasladar correctamente el cierre del domingo
-    a la semana siguiente.
-    """
-    op = normalize_operation_df(op)
-    co = normalize_commercial_df(co)
-    stores_list = stores or PROJECT_STORES
-    cutoff = parse_date(cutoff_date)
-
-    result = {store: 0.0 for store in stores_list}
-    if pd.isna(cutoff):
-        return result
-
-    op2 = split_operation(op)
-    min_dates = []
-
-    if op2 is not None and not op2.empty and "Fecha" in op2.columns:
-        valid_op_dates = pd.to_datetime(op2["Fecha"], errors="coerce").dropna()
-        if not valid_op_dates.empty:
-            min_dates.append(valid_op_dates.min().normalize())
-
-    if co is not None and not co.empty and "Fecha" in co.columns:
-        valid_co_dates = pd.to_datetime(co["Fecha"], errors="coerce").dropna()
-        if not valid_co_dates.empty:
-            min_dates.append(valid_co_dates.min().normalize())
-
-    if not min_dates:
-        return result
-
-    first_date = min(min_dates)
-    if cutoff < first_date:
-        return result
-
-    op_cut = (
-        op2[
-            (pd.to_datetime(op2["Fecha"], errors="coerce") >= first_date)
-            & (pd.to_datetime(op2["Fecha"], errors="coerce") <= cutoff)
-        ].copy()
-        if op2 is not None and not op2.empty
-        else pd.DataFrame()
-    )
-    op_cut = filter_stores(op_cut, stores_list)
-
-    co_cut = filter_commercial_by_date(co, first_date, cutoff, stores_list)
-
-    daily_parts = []
-
-    if not op_cut.empty:
-        op_cut["Fecha"] = pd.to_datetime(op_cut["Fecha"], errors="coerce").dt.normalize()
-        op_daily = (
-            op_cut.groupby(["Fecha", "Tienda"], as_index=False)
-            .agg({
-                "Muertos": "sum",
-                "Cajas": "sum",
-                "Probador": "sum",
-                "Ubicadas": "sum",
-            })
-        )
-        op_daily["Ingresos operación"] = (
-            pd.to_numeric(op_daily["Muertos"], errors="coerce").fillna(0)
-            + pd.to_numeric(op_daily["Cajas"], errors="coerce").fillna(0)
-            + pd.to_numeric(op_daily["Probador"], errors="coerce").fillna(0)
-        )
-        daily_parts.append(
-            op_daily[["Fecha", "Tienda", "Ingresos operación", "Ubicadas"]]
-        )
-
-    if not co_cut.empty:
-        co_cut["Fecha"] = pd.to_datetime(co_cut["Fecha"], errors="coerce").dt.normalize()
-        co_daily = (
-            co_cut.groupby(["Fecha", "Tienda"], as_index=False)["Dev_Pzs"]
-            .sum()
-            .rename(columns={"Dev_Pzs": "Dev diario"})
-        )
-    else:
-        co_daily = pd.DataFrame(columns=["Fecha", "Tienda", "Dev diario"])
-
-    if daily_parts:
-        daily = daily_parts[0]
-    else:
-        daily = pd.DataFrame(
-            columns=["Fecha", "Tienda", "Ingresos operación", "Ubicadas"]
-        )
-
-    daily = daily.merge(co_daily, on=["Fecha", "Tienda"], how="outer")
-    for col in ["Ingresos operación", "Ubicadas", "Dev diario"]:
-        daily[col] = pd.to_numeric(daily.get(col, 0), errors="coerce").fillna(0)
-
-    daily["Ingresos"] = daily["Ingresos operación"] + daily["Dev diario"]
-    daily = daily.sort_values(["Tienda", "Fecha"])
-
-    for store in stores_list:
-        saldo = 0.0
-        store_daily = daily[daily["Tienda"].eq(store)]
-        for row in store_daily.itertuples(index=False):
-            saldo = max(
-                saldo + float(row.Ingresos) - float(row.Ubicadas),
-                0.0,
-            )
-        result[store] = saldo
-
-    return result
-
-def table_by_store(
-    op,
-    co,
-    start_date,
-    end_date,
-    stores=None,
-    carryover_mode="previous_day",
-):
-    """Construye la tabla por tienda para un periodo.
-
-    carryover_mode:
-    - "previous_day": traslada el saldo acumulado al cierre del día anterior.
-    - "previous_sunday": traslada el saldo acumulado al domingo anterior.
-    - "none": no agrega saldo anterior; se usan solo ingresos del periodo.
-    """
+def table_by_store(op, co, start_date, end_date, stores=None):
     op = normalize_operation_df(op)
     co = normalize_commercial_df(co)
 
@@ -2550,38 +1766,24 @@ def table_by_store(
     end = parse_date(end_date)
     stores_list = stores or PROJECT_STORES
 
-    op_p = (
-        op2[(op2["Fecha"] >= start) & (op2["Fecha"] <= end)]
-        if op2 is not None and not op2.empty
-        else pd.DataFrame()
-    )
+    op_p = op2[(op2["Fecha"] >= start) & (op2["Fecha"] <= end)] if op2 is not None and not op2.empty else pd.DataFrame()
     op_p = filter_stores(op_p, stores_list)
+
     co_p = filter_commercial_by_date(co, start, end, stores_list)
 
-    if carryover_mode == "none":
-        prior_balances = {store: 0.0 for store in stores_list}
-    else:
-        # Para una semana ISO el día anterior al lunes es exactamente el domingo previo.
-        cutoff = start - pd.Timedelta(days=1)
-        prior_balances = closing_pending_by_store(
-            op,
-            co,
-            cutoff,
-            stores_list,
-        )
+    prev_day = start - pd.Timedelta(days=1)
+    op_prev = op2[(op2["Fecha"] >= prev_day) & (op2["Fecha"] <= prev_day)] if op2 is not None and not op2.empty else pd.DataFrame()
+    op_prev = filter_stores(op_prev, stores_list)
+
+    co_prev = filter_commercial_by_date(co, prev_day, prev_day, stores_list)
 
     rows = []
     for t in stores_list:
-        dev = (
-            pd.to_numeric(
-                co_p.loc[co_p["Tienda"].eq(t), "Dev_Pzs"],
-                errors="coerce",
-            ).fillna(0).sum()
-            if not co_p.empty and "Dev_Pzs" in co_p.columns
-            else 0
-        )
+        dev = pd.to_numeric(co_p.loc[co_p["Tienda"].eq(t), "Dev_Pzs"], errors="coerce").fillna(0).sum() if not co_p.empty and "Dev_Pzs" in co_p.columns else 0
+        prev_dev = pd.to_numeric(co_prev.loc[co_prev["Tienda"].eq(t), "Dev_Pzs"], errors="coerce").fillna(0).sum() if not co_prev.empty and "Dev_Pzs" in co_prev.columns else 0
 
         o = op_p[op_p["Tienda"].eq(t)] if not op_p.empty else pd.DataFrame()
+        prev = op_prev[op_prev["Tienda"].eq(t)] if not op_prev.empty else pd.DataFrame()
 
         muertos = o["Muertos"].sum() if not o.empty and "Muertos" in o.columns else 0
         cajas = o["Cajas"].sum() if not o.empty and "Cajas" in o.columns else 0
@@ -2590,16 +1792,20 @@ def table_by_store(
         hab = o["Habilitadas"].sum() if not o.empty and "Habilitadas" in o.columns else 0
         ubic = o["Ubicadas"].sum() if not o.empty and "Ubicadas" in o.columns else 0
 
-        ingresos_periodo = dev + muertos + cajas + prob
-        pend_ant = float(prior_balances.get(t, 0))
-        total_base = ingresos_periodo + pend_ant
+        prev_muertos = prev["Muertos"].sum() if not prev.empty and "Muertos" in prev.columns else 0
+        prev_cajas = prev["Cajas"].sum() if not prev.empty and "Cajas" in prev.columns else 0
+        prev_prob = prev["Probador"].sum() if not prev.empty and "Probador" in prev.columns else 0
+        prev_total_ing = prev_dev + prev_muertos + prev_cajas + prev_prob
+        prev_ubic = prev["Ubicadas"].sum() if not prev.empty and "Ubicadas" in prev.columns else 0
+        pend_ant = max(prev_total_ing - prev_ubic, 0)
+
+        ingresos_dia = dev + muertos + cajas + prob
+        total_base = ingresos_dia + pend_ant
 
         pend_hab = max(total_base - hab, 0)
         pend_ub = max(total_base - ubic, 0)
-        procesado = max(total_base - pend_ub, 0)
-
-        pct_hab = min(hab / total_base * 100, 100) if total_base else 0
-        pct_ub = min(procesado / total_base * 100, 100) if total_base else 0
+        pct_hab = hab / total_base * 100 if total_base else 0
+        pct_ub = ubic / total_base * 100 if total_base else 0
 
         rows.append({
             "Tienda": t,
@@ -2607,9 +1813,8 @@ def table_by_store(
             "Muertos": muertos,
             "Cajas": cajas,
             "Probador": prob,
-            "Ingresos periodo": ingresos_periodo,
-            "Pend. Ant.": pend_ant,
             "Total": total_base,
+            "Pend. Ant.": pend_ant,
             "Recolectadas": reco,
             "Habilitadas": hab,
             "Pend. Hab.": pend_hab,
@@ -2618,58 +1823,18 @@ def table_by_store(
             "Pend. Ub.": pend_ub,
             "% Ubic.": pct_ub,
         })
-
     return pd.DataFrame(rows)
 
 
-def summary_from_table(df, income_column="Total"):
-    """Calcula KPI respetando los pendientes individuales por tienda.
-
-    - Pendiente general = suma de `Pend. Ub.` de cada tienda.
-    - % Procesado = (base - pendiente) / base.
-    - Nunca se compensan pendientes entre tiendas.
-    """
-    if df is None or df.empty:
-        return {
-            "Ingresos": 0,
-            "Acondicionado": 0,
-            "Ubicado": 0,
-            "Pendiente": 0,
-            "% Procesado": 0,
-        }
-
-    base_col = income_column if income_column in df.columns else "Total"
-
-    ingresos = pd.to_numeric(
-        df.get(base_col, pd.Series(dtype=float)),
-        errors="coerce",
-    ).fillna(0).sum()
-
-    hab = pd.to_numeric(
-        df.get("Habilitadas", pd.Series(dtype=float)),
-        errors="coerce",
-    ).fillna(0).sum()
-
-    ubic = pd.to_numeric(
-        df.get("Ubicadas", pd.Series(dtype=float)),
-        errors="coerce",
-    ).fillna(0).sum()
-
-    pendiente = pd.to_numeric(
-        df.get("Pend. Ub.", pd.Series(dtype=float)),
-        errors="coerce",
-    ).fillna(0).clip(lower=0).sum()
-
-    procesado = max(float(ingresos) - float(pendiente), 0)
-    pct = min(procesado / float(ingresos) * 100, 100) if ingresos > 0 else 0
-
-    return {
-        "Ingresos": ingresos,
-        "Acondicionado": hab,
-        "Ubicado": ubic,
-        "Pendiente": pendiente,
-        "% Procesado": pct,
-    }
+def summary_from_table(df):
+    if df.empty:
+        return {"Ingresos":0,"Acondicionado":0,"Ubicado":0,"Pendiente":0,"% Procesado":0}
+    ingresos = pd.to_numeric(df["Total"], errors="coerce").fillna(0).sum()
+    hab = pd.to_numeric(df["Habilitadas"], errors="coerce").fillna(0).sum()
+    ubic = pd.to_numeric(df["Ubicadas"], errors="coerce").fillna(0).sum()
+    pend = pd.to_numeric(df["Pend. Ub."], errors="coerce").fillna(0).sum()
+    pct = ubic / ingresos * 100 if ingresos else 0
+    return {"Ingresos": ingresos, "Acondicionado": hab, "Ubicado": ubic, "Pendiente": pend, "% Procesado": pct}
 
 
 def format_display(df):
@@ -2776,8 +1941,8 @@ def kpis(res):
         ("↻", "Piezas Ingresadas", fmt_num(res.get("Ingresos", 0)), "Dev + muertos + cajas + probador", ROSA),
         ("✓", "Piezas Acondicionadas", fmt_num(res.get("Acondicionado", 0)), "Acondicionado", "#3720B8"),
         ("⊕", "Piezas Ubicadas", fmt_num(res.get("Ubicado", 0)), "Ubicado", "#F59E0B"),
-        ("⌛", "Pendientes por Ubicar", fmt_num(res.get("Pendiente", 0)), "Piezas ingresadas - piezas ubicadas", "#05B957"),
-        ("%", "% Procesado", fmt_pct(res.get("% Procesado", 0)), "Piezas ubicadas / piezas ingresadas", "#3720B8"),
+        ("⌛", "Pendientes por Ubicar", fmt_num(res.get("Pendiente", 0)), "Ingreso + pendiente ant. - ubicado", "#05B957"),
+        ("%", "% Procesado", fmt_pct(res.get("% Procesado", 0)), "Ubicado / base", "#3720B8"),
     ]
     html = '<div class="ps-kpi-grid">'
     for icon, title, val, sub, color in vals:
@@ -2873,11 +2038,11 @@ def combined_chart(df, title):
     fig.update_layout(
         title=title,
         barmode="group",
-        height=580,
+        height=520,
         plot_bgcolor="white",
         paper_bgcolor="white",
-        legend=dict(orientation="h", y=1.08, x=1, xanchor="right"),
-        margin=dict(l=8, r=8, t=72, b=92),
+        legend=dict(orientation="h", y=1.10, x=1, xanchor="right"),
+        margin=dict(l=14, r=14, t=85, b=115),
         dragmode=False,
         uniformtext_minsize=10,
         uniformtext_mode="show",
@@ -3186,8 +2351,8 @@ def build_pdf_report(title, subtitle, kpi_values, df):
         _pdf_kpi_card("↻", "Piezas Ingresadas", fmt_num(kpi_values.get("Ingresos", 0)), "Dev + muertos + cajas + probador", ROSA, styles),
         _pdf_kpi_card("✓", "Piezas Acondicionadas", fmt_num(kpi_values.get("Acondicionado", 0)), "Acondicionado", "#5B00D6", styles),
         _pdf_kpi_card("⊕", "Piezas Ubicadas", fmt_num(kpi_values.get("Ubicado", 0)), "Ubicado", "#F59E0B", styles),
-        _pdf_kpi_card("⌛", "Pendientes por Ubicar", fmt_num(kpi_values.get("Pendiente", 0)), "Piezas ingresadas - piezas ubicadas", "#05B957", styles),
-        _pdf_kpi_card("%", "% Procesado", fmt_pct(kpi_values.get("% Procesado", 0)), "Piezas ubicadas / piezas ingresadas", "#5B00D6", styles),
+        _pdf_kpi_card("⌛", "Pendientes por Ubicar", fmt_num(kpi_values.get("Pendiente", 0)), "Ingreso + pendiente ant. - ubicado", "#05B957", styles),
+        _pdf_kpi_card("%", "% Procesado", fmt_pct(kpi_values.get("% Procesado", 0)), "Ubicado / base", "#5B00D6", styles),
     ]
     cards_row = Table([cards], colWidths=[148,148,148,148,148], rowHeights=[68])
     cards_row.setStyle(TableStyle([
@@ -3330,8 +2495,8 @@ def build_generic_table_pdf(title, subtitle, df, kpi_values=None):
             _pdf_kpi_card("↻", "Piezas Ingresadas", fmt_num(kpi_values.get("Ingresos", 0)), "Dev + muertos + cajas + probador", ROSA, styles),
             _pdf_kpi_card("✓", "Piezas Acondicionadas", fmt_num(kpi_values.get("Acondicionado", 0)), "Acondicionado", "#5B00D6", styles),
             _pdf_kpi_card("⊕", "Piezas Ubicadas", fmt_num(kpi_values.get("Ubicado", 0)), "Ubicado", "#F59E0B", styles),
-            _pdf_kpi_card("⌛", "Pendientes por Ubicar", fmt_num(kpi_values.get("Pendiente", 0)), "Piezas ingresadas - piezas ubicadas", "#05B957", styles),
-            _pdf_kpi_card("%", "% Procesado", fmt_pct(kpi_values.get("% Procesado", 0)), "Piezas ubicadas / piezas ingresadas", "#5B00D6", styles),
+            _pdf_kpi_card("⌛", "Pendientes por Ubicar", fmt_num(kpi_values.get("Pendiente", 0)), "Ingreso + pendiente ant. - ubicado", "#05B957", styles),
+            _pdf_kpi_card("%", "% Procesado", fmt_pct(kpi_values.get("% Procesado", 0)), "Ubicado / base", "#5B00D6", styles),
         ]
         cards_row = Table([cards], colWidths=[148] * 5, rowHeights=[68])
         cards_row.setStyle(TableStyle([
@@ -3519,185 +2684,12 @@ PAGES = [
 
 
 def nav_bar():
-    """Menú tipo carrusel inspirado en el ejemplo móvil enviado.
-
-    En móvil:
-    - tarjeta activa centrada y más grande;
-    - tarjetas laterales parcialmente visibles;
-    - desplazamiento horizontal con el dedo;
-    - sin círculos de radio ni saltos de línea.
-
-    En computadora:
-    - pestañas horizontales compactas sobre fondo azul.
-    """
-    raw_page = st.query_params.get("report", "")
-    if isinstance(raw_page, list):
-        raw_page = raw_page[0] if raw_page else ""
-
-    page = raw_page if raw_page in PAGES else st.session_state.get("nav_page", PAGES[0])
-    if page not in PAGES:
-        page = PAGES[0]
-    st.session_state["nav_page"] = page
-
-    pages_json = json.dumps(PAGES, ensure_ascii=False)
-    selected_json = json.dumps(page, ensure_ascii=False)
-
-    carousel_html = f"""
-<!doctype html>
-<html lang="es">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
-<style>
-:root {{
-    --azul: {AZUL};
-    --rosa: {ROSA};
-    --azul-activo: #142E73;
-}}
-* {{
-    box-sizing: border-box;
-}}
-html, body {{
-    margin: 0;
-    padding: 0;
-    background: transparent;
-    overflow: hidden;
-    font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-}}
-.nav-shell {{
-    width: 100%;
-    background: linear-gradient(135deg, #101D5A 0%, #25106B 58%, #42136F 100%);
-    border-top: 4px solid var(--rosa);
-    border-bottom: 1px solid rgba(255,255,255,.14);
-    overflow: hidden;
-}}
-.nav-track {{
-    display: flex;
-    flex-flow: row nowrap;
-    align-items: center;
-    gap: 10px;
-    width: 100%;
-    overflow-x: auto;
-    overflow-y: hidden;
-    padding: 10px 18px 12px;
-    scroll-snap-type: x mandatory;
-    scroll-padding-inline: calc(50% - 82px);
-    overscroll-behavior-x: contain;
-    -webkit-overflow-scrolling: touch;
-    scrollbar-width: none;
-    touch-action: pan-x;
-}}
-.nav-track::-webkit-scrollbar {{
-    display: none;
-}}
-.nav-card {{
-    appearance: none;
-    border: 1px solid rgba(255,255,255,.23);
-    outline: none;
-    flex: 0 0 154px;
-    width: 154px;
-    height: 62px;
-    padding: 0 13px;
-    border-radius: 14px;
-    background: rgba(255,255,255,.09);
-    color: rgba(255,255,255,.78);
-    font-size: 13px;
-    line-height: 1.08;
-    font-weight: 800;
-    text-align: center;
-    white-space: normal;
-    scroll-snap-align: center;
-    box-shadow: 0 5px 14px rgba(0,0,0,.16);
-    transform: scale(.91);
-    opacity: .75;
-    transition: transform .2s ease, opacity .2s ease, background .2s ease, color .2s ease;
-    cursor: pointer;
-}}
-.nav-card.active {{
-    background: #FFFFFF;
-    color: var(--azul);
-    border-color: #FFFFFF;
-    transform: scale(1);
-    opacity: 1;
-    box-shadow:
-        0 8px 20px rgba(0,0,0,.24),
-        inset 0 -5px 0 var(--rosa);
-}}
-.nav-card:active {{
-    transform: scale(.97);
-}}
-@media (min-width: 769px) {{
-    .nav-track {{
-        justify-content: flex-start;
-        gap: 0;
-        padding: 0 24px;
-        min-height: 58px;
-        scroll-snap-type: none;
-    }}
-    .nav-card {{
-        flex: 0 0 auto;
-        width: auto;
-        height: 58px;
-        min-width: max-content;
-        padding: 0 18px;
-        border: 0;
-        border-radius: 0;
-        background: transparent;
-        color: rgba(255,255,255,.76);
-        box-shadow: none;
-        transform: none;
-        opacity: 1;
-        white-space: nowrap;
-    }}
-    .nav-card.active {{
-        background: var(--azul-activo);
-        color: #FFFFFF;
-        transform: none;
-        box-shadow: inset 0 -5px 0 var(--rosa);
-    }}
-}}
-</style>
-</head>
-<body>
-<div class="nav-shell">
-    <div id="track" class="nav-track" aria-label="Reportes"></div>
-</div>
-<script>
-const pages = {pages_json};
-const selected = {selected_json};
-const track = document.getElementById("track");
-
-function goToReport(page) {{
-    const url = new URL(window.parent.location.href);
-    url.searchParams.set("report", page);
-    window.parent.location.href = url.toString();
-}}
-
-pages.forEach((page) => {{
-    const button = document.createElement("button");
-    button.type = "button";
-    button.className = "nav-card" + (page === selected ? " active" : "");
-    button.textContent = page;
-    button.setAttribute("aria-current", page === selected ? "page" : "false");
-    button.addEventListener("click", () => goToReport(page));
-    track.appendChild(button);
-}});
-
-function centerSelected() {{
-    const active = track.querySelector(".active");
-    if (!active) return;
-    const left = active.offsetLeft - (track.clientWidth - active.offsetWidth) / 2;
-    track.scrollTo({{ left: Math.max(0, left), behavior: "instant" }});
-}}
-
-requestAnimationFrame(centerSelected);
-window.addEventListener("resize", centerSelected);
-</script>
-</body>
-</html>
-"""
-    components.html(carousel_html, height=92, scrolling=False)
+    st.markdown('<div class="ps-tabbar">', unsafe_allow_html=True)
+    page = st.radio("Pestañas", PAGES, horizontal=True, label_visibility="collapsed", key="nav_v10")
+    st.markdown("</div>", unsafe_allow_html=True)
     return page
+
+
 
 
 def reliable_data_horizon(op, co):
@@ -3971,10 +2963,9 @@ def page_semanal(op, co):
         return
 
     start, end = week_dates.min().normalize(), week_dates.max().normalize()
-    df = table_by_store(op, co, start, end, tiendas, carryover_mode="previous_sunday")
-    resumen = summary_from_table(df, income_column="Total")
+    df = table_by_store(op, co, start, end, tiendas)
+    resumen = summary_from_table(df)
     kpis(resumen)
-    st.caption("La base semanal incluye el saldo pendiente acumulado al cierre del domingo anterior.")
 
     generic_pdf_button(
         f"Reporte Semanal - Semana {week}",
@@ -4002,10 +2993,9 @@ def page_mensual(op, co):
         st.info("Sin fechas para el mes seleccionado.")
         return
     start, end = dates.min().normalize(), dates.max().normalize()
-    df = table_by_store(op, co, start, end, tiendas, carryover_mode="none")
-    resumen = summary_from_table(df, income_column="Ingresos periodo")
+    df = table_by_store(op, co, start, end, tiendas)
+    resumen = summary_from_table(df)
     kpis(resumen)
-    st.caption("Los ingresos mensuales consideran únicamente movimientos del mes; el pendiente se suma por tienda.")
     generic_pdf_button(
         f"Reporte Mensual - {m}",
         f"Periodo: {start.strftime('%d-%m-%Y')} al {end.strftime('%d-%m-%Y')}",
