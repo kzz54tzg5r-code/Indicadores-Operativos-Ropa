@@ -54,7 +54,7 @@ for p in [DATA_DIR, UPLOAD_DIR, CACHE_DIR, CONFIG_DIR, ASSETS_DIR]:
     p.mkdir(parents=True, exist_ok=True)
 
 MX_TZ = ZoneInfo("America/Mexico_City")
-APP_CACHE_VERSION = "v11.9"
+APP_CACHE_VERSION = "v12.0"
 AZUL = "#10245F"
 ROSA = "#EC007C"
 LAVANDA = "#F3F6FB"
@@ -2092,21 +2092,254 @@ html, body, [data-testid="stAppViewContainer"] {{
     }}
 }}
 
+
+/* V12 — Portal de aplicaciones y módulo Cambios y Muertos */
+.portal-home-brand {{
+    display:flex;
+    align-items:center;
+    gap:18px;
+    min-height:92px;
+    padding:12px 0;
+}}
+.portal-home-logo {{
+    width:105px;
+    min-width:105px;
+}}
+.portal-home-title {{
+    color:var(--azul);
+    font-size:32px;
+    font-weight:900;
+    line-height:1.05;
+}}
+.portal-home-subtitle {{
+    color:#667085;
+    font-size:14px;
+    font-weight:700;
+    margin-top:7px;
+}}
+.portal-section-title {{
+    margin-top:22px;
+    color:var(--azul);
+    font-size:28px;
+    font-weight:900;
+}}
+.portal-section-subtitle {{
+    color:#6B7280;
+    margin:5px 0 18px;
+}}
+.app-tile {{
+    display:flex;
+    align-items:center;
+    gap:20px;
+    min-height:150px;
+    padding:24px 28px;
+    border:1px solid #D9E1EF;
+    border-radius:16px;
+    background:#FFFFFF;
+    box-shadow:0 12px 30px rgba(31,42,68,.08);
+}}
+.app-tile-icon {{
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    width:72px;
+    height:72px;
+    min-width:72px;
+    border-radius:18px;
+    background:linear-gradient(135deg,var(--azul),#402080);
+    color:#FFFFFF;
+    font-size:36px;
+    font-weight:900;
+}}
+.app-tile-title {{
+    color:var(--azul);
+    font-size:25px;
+    font-weight:900;
+}}
+.app-tile-subtitle {{
+    color:#667085;
+    margin-top:6px;
+    line-height:1.35;
+}}
+
+/* Pestañas internas de Cambios y Muertos */
+.st-key-nav_v120_tabs {{
+    width:calc(100% + 2rem) !important;
+    margin-left:-1rem !important;
+    margin-right:-1rem !important;
+    margin-bottom:22px !important;
+    padding:0 1rem !important;
+    background:var(--azul) !important;
+    border-top:4px solid var(--rosa) !important;
+    overflow-x:auto !important;
+    overflow-y:hidden !important;
+    scrollbar-width:none !important;
+    -webkit-overflow-scrolling:touch !important;
+}}
+.st-key-nav_v120_tabs::-webkit-scrollbar {{
+    display:none !important;
+}}
+.st-key-nav_v120_tabs [role="radiogroup"] {{
+    display:flex !important;
+    flex-flow:row nowrap !important;
+    width:max-content !important;
+    min-width:100% !important;
+    gap:0 !important;
+}}
+.st-key-nav_v120_tabs label {{
+    flex:0 0 auto !important;
+    min-width:max-content !important;
+    min-height:58px !important;
+    padding:0 18px !important;
+    margin:0 !important;
+    display:flex !important;
+    align-items:center !important;
+    justify-content:center !important;
+    color:rgba(255,255,255,.76) !important;
+    white-space:nowrap !important;
+    font-weight:850 !important;
+    background:transparent !important;
+}}
+.st-key-nav_v120_tabs label:has(input:checked) {{
+    color:#FFFFFF !important;
+    background:#142E73 !important;
+    box-shadow:inset 0 -5px 0 var(--rosa) !important;
+}}
+.st-key-nav_v120_tabs label *,
+.st-key-nav_v120_tabs label:has(input:checked) * {{
+    color:inherit !important;
+    font-weight:inherit !important;
+}}
+.st-key-nav_v120_tabs input,
+.st-key-nav_v120_tabs [data-baseweb="radio"] > div:first-child {{
+    position:absolute !important;
+    opacity:0 !important;
+    width:1px !important;
+    height:1px !important;
+}}
+
+@media(max-width:768px) {{
+    .portal-home-brand {{
+        gap:10px;
+        min-height:70px;
+    }}
+    .portal-home-logo {{
+        width:72px;
+        min-width:72px;
+    }}
+    .portal-home-title {{
+        font-size:23px;
+    }}
+    .portal-home-subtitle {{
+        font-size:10px;
+    }}
+    .app-tile {{
+        padding:18px;
+        min-height:125px;
+    }}
+    .app-tile-icon {{
+        width:58px;
+        height:58px;
+        min-width:58px;
+        font-size:28px;
+    }}
+    .app-tile-title {{
+        font-size:20px;
+    }}
+    .st-key-nav_v120_tabs {{
+        width:calc(100% + 1rem) !important;
+        margin-left:-.5rem !important;
+        margin-right:-.5rem !important;
+        padding:10px 0 12px !important;
+        background:linear-gradient(135deg,#111A55,#24126E 55%,#3B146E) !important;
+        scroll-snap-type:x proximity !important;
+    }}
+    .st-key-nav_v120_tabs [role="radiogroup"] {{
+        gap:10px !important;
+        padding:0 14px !important;
+        min-width:max-content !important;
+    }}
+    .st-key-nav_v120_tabs label {{
+        min-width:145px !important;
+        height:56px !important;
+        min-height:56px !important;
+        border-radius:13px !important;
+        border:1px solid rgba(255,255,255,.22) !important;
+        background:rgba(255,255,255,.09) !important;
+        scroll-snap-align:center !important;
+    }}
+    .st-key-nav_v120_tabs label:has(input:checked) {{
+        background:#FFFFFF !important;
+        color:var(--azul) !important;
+        border-color:#FFFFFF !important;
+        box-shadow:0 7px 18px rgba(0,0,0,.22), inset 0 -5px 0 var(--rosa) !important;
+    }}
+}}
+
 </style>
 """,
         unsafe_allow_html=True,
     )
 
 
+def render_portal_header():
+    now = datetime.now(MX_TZ)
+    user = st.session_state.get("user", {})
+    user_name = user.get("nombre", "Consulta")
+    permiso = user.get("permiso", "Consulta")
+    nomina = user.get("nomina", "")
+
+    st.markdown('<div class="portal-header-spacer"></div>', unsafe_allow_html=True)
+    c_logo, c_user = st.columns([7.5, 2.5], vertical_alignment="center")
+
+    with c_logo:
+        st.markdown(
+            f"""
+            <div class="portal-home-brand">
+                <div class="portal-home-logo">{logo_html()}</div>
+                <div>
+                    <div class="portal-home-title">Operaciones Ropa</div>
+                    <div class="portal-home-subtitle">Portal de aplicaciones e indicadores</div>
+                </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+    with c_user:
+        with st.popover(f"👤 {user_name}", use_container_width=True):
+            st.markdown(f"**Usuario:** {user_name}")
+            if nomina:
+                st.caption(f"Nómina: {nomina}")
+            st.caption(f"Permiso: {permiso}")
+            st.caption(f"Fecha: {now.strftime('%d/%m/%Y')}")
+            if st.button("Cerrar sesión", key="logout_portal", use_container_width=True):
+                st.session_state.pop("user", None)
+                st.session_state.pop("active_app", None)
+                st.session_state.pop("nav_page", None)
+                st.rerun()
+
+        st.markdown(
+            f'<div class="portal-user-date">{now.strftime("%d/%m/%Y")} · {permiso}</div>',
+            unsafe_allow_html=True,
+        )
+
+    st.markdown('<div class="portal-pink-line"></div>', unsafe_allow_html=True)
+
 def render_header():
     now = datetime.now(MX_TZ)
     user = st.session_state.get("user", {})
     user_name = user.get("nombre", "Consulta")
-    nomina = user.get("nomina", "")
     permiso = user.get("permiso", "Consulta")
 
     st.markdown('<div class="portal-header-spacer"></div>', unsafe_allow_html=True)
-    c_brand, c_user = st.columns([7.4, 2.6], vertical_alignment="center")
+    c_back, c_brand, c_user = st.columns([0.7, 6.8, 2.5], vertical_alignment="center")
+
+    with c_back:
+        if st.button("←", key="back_to_apps", help="Volver al menú principal", use_container_width=True):
+            st.session_state["active_app"] = None
+            st.session_state["nav_page"] = "Resumen"
+            st.rerun()
 
     with c_brand:
         st.markdown(
@@ -2124,13 +2357,11 @@ def render_header():
 
     with c_user:
         with st.popover(f"👤 {user_name}", use_container_width=True):
-            st.markdown(f"**Usuario:** {user_name}")
-            if nomina:
-                st.caption(f"Nómina: {nomina}")
             st.caption(f"Permiso: {permiso}")
             st.caption(f"Fecha: {now.strftime('%d/%m/%Y')}")
             if st.button("Cerrar sesión", key="logout_top", use_container_width=True):
                 st.session_state.pop("user", None)
+                st.session_state.pop("active_app", None)
                 st.session_state.pop("nav_page", None)
                 st.rerun()
         st.markdown(
@@ -3994,6 +4225,112 @@ def sidebar_data_admin():
     )
 
 
+def render_app_portal():
+    user = st.session_state.get("user", {})
+    permiso = user.get("permiso", "Consulta")
+
+    render_portal_header()
+
+    st.markdown(
+        """
+        <div class="portal-section-title">Aplicaciones</div>
+        <div class="portal-section-subtitle">
+            Selecciona el indicador que deseas consultar.
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    app_col, admin_col = st.columns([7, 3], vertical_alignment="top")
+
+    with app_col:
+        st.markdown(
+            """
+            <div class="app-tile">
+                <div class="app-tile-icon">↻</div>
+                <div class="app-tile-copy">
+                    <div class="app-tile-title">Cambios y Muertos</div>
+                    <div class="app-tile-subtitle">
+                        Recuperación, productividad y conversión de mercancía.
+                    </div>
+                </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+        if st.button(
+            "Ingresar a Cambios y Muertos",
+            key="open_cambios_muertos",
+            type="primary",
+            use_container_width=True,
+        ):
+            st.session_state["active_app"] = "Cambios y Muertos"
+            st.session_state["nav_page"] = "Resumen"
+            st.rerun()
+
+    with admin_col:
+        if permiso == "Administrador":
+            with st.expander("⚙️ Administración de Cambios y Muertos", expanded=False):
+                st.markdown("#### Fuente de datos")
+                meta = {}
+                if META_FILE.exists():
+                    try:
+                        meta = json.loads(META_FILE.read_text(encoding="utf-8"))
+                    except Exception:
+                        meta = {}
+
+                if ACTIVE_FILE.exists():
+                    st.success("Archivo cargado")
+                    st.caption(meta.get("nombre_original", ACTIVE_FILE.name))
+                    st.caption(meta.get("fecha_carga", ""))
+                    if cache_valid():
+                        st.caption("Estado: procesado")
+                    else:
+                        st.warning("Estado: pendiente de procesar")
+                else:
+                    st.warning("No hay archivo cargado")
+
+                up = st.file_uploader(
+                    "Cargar o reemplazar Excel",
+                    type=["xlsx"],
+                    key="portal_upload_excel",
+                )
+
+                if up is not None and st.button(
+                    "Guardar archivo",
+                    key="portal_save_excel",
+                    type="primary",
+                    use_container_width=True,
+                ):
+                    save_uploaded_file(up)
+                    st.success("Archivo guardado. Ahora procesa el archivo.")
+                    st.rerun()
+
+                if ACTIVE_FILE.exists() and not cache_valid():
+                    if st.button(
+                        "Procesar archivo activo",
+                        key="portal_process_excel",
+                        type="primary",
+                        use_container_width=True,
+                    ):
+                        try:
+                            process_excel(str(ACTIVE_FILE))
+                            st.success("Archivo procesado correctamente.")
+                            st.rerun()
+                        except Exception as exc:
+                            st.error("No fue posible procesar el archivo.")
+                            st.exception(exc)
+
+                if ACTIVE_FILE.exists() and st.button(
+                    "Borrar archivo persistido",
+                    key="portal_delete_excel",
+                    use_container_width=True,
+                ):
+                    delete_active_file()
+                    st.rerun()
+        else:
+            st.info("El archivo de datos es administrado por un usuario Administrador.")
+
 # ============================================================
 # PÁGINAS
 # ============================================================
@@ -4009,82 +4346,14 @@ def nav_bar():
     if current not in PAGES:
         current = PAGES[0]
 
-    user = st.session_state.get("user", {})
-    permiso = user.get("permiso", "Consulta")
-
-    menu_col, admin_col = st.columns([7, 3], vertical_alignment="bottom")
-
-    with menu_col:
-        selected = st.selectbox(
-            "Indicador / reporte",
-            PAGES,
-            index=PAGES.index(current),
-            key="nav_portal_select",
-        )
-
-    with admin_col:
-        if permiso == "Administrador":
-            with st.popover("⚙️ Administración", use_container_width=True):
-                st.markdown("### Fuente de datos")
-                meta = {}
-                if META_FILE.exists():
-                    try:
-                        meta = json.loads(META_FILE.read_text(encoding="utf-8"))
-                    except Exception:
-                        meta = {}
-
-                if ACTIVE_FILE.exists():
-                    st.success("Archivo cargado")
-                    st.caption(meta.get("nombre_original", ACTIVE_FILE.name))
-                    if cache_valid():
-                        st.caption("Archivo procesado")
-                    else:
-                        st.warning("Pendiente de procesar")
-                else:
-                    st.warning("No hay archivo cargado")
-
-                up = st.file_uploader(
-                    "Cargar o reemplazar Excel",
-                    type=["xlsx"],
-                    key="upload_top_admin",
-                )
-                if up is not None and st.button(
-                    "Guardar archivo",
-                    type="primary",
-                    use_container_width=True,
-                    key="save_top_admin",
-                ):
-                    save_uploaded_file(up)
-                    st.success("Archivo guardado.")
-                    st.rerun()
-
-                if ACTIVE_FILE.exists() and not cache_valid():
-                    if st.button(
-                        "Procesar archivo activo",
-                        type="primary",
-                        use_container_width=True,
-                        key="process_top_admin",
-                    ):
-                        try:
-                            process_excel(str(ACTIVE_FILE))
-                            st.success("Archivo procesado correctamente.")
-                            st.rerun()
-                        except Exception as exc:
-                            st.error("No fue posible procesar el archivo.")
-                            st.exception(exc)
-
-                if ACTIVE_FILE.exists() and st.button(
-                    "Borrar archivo persistido",
-                    use_container_width=True,
-                    key="delete_top_admin",
-                ):
-                    delete_active_file()
-                    st.rerun()
-        else:
-            st.markdown(
-                '<div class="portal-readonly-badge">Modo consulta</div>',
-                unsafe_allow_html=True,
-            )
+    selected = st.radio(
+        "Pestañas",
+        PAGES,
+        index=PAGES.index(current),
+        horizontal=True,
+        label_visibility="collapsed",
+        key="nav_v120_tabs",
+    )
 
     st.session_state["nav_page"] = selected
     return selected
@@ -4557,18 +4826,22 @@ apply_styles()
 if not login_sidebar():
     st.stop()
 
-render_header()
+if "active_app" not in st.session_state:
+    st.session_state["active_app"] = None
 
-# El menú siempre se muestra después de iniciar sesión. Así el administrador
-# puede cargar o procesar el archivo aunque todavía no exista caché.
+if not st.session_state.get("active_app"):
+    render_app_portal()
+    st.stop()
+
+render_header()
 page = nav_bar()
 
 if not ACTIVE_FILE.exists():
-    st.warning("Carga un archivo Excel desde **Administración** para iniciar.")
+    st.warning("El Administrador debe cargar el archivo desde el menú principal de aplicaciones.")
     st.stop()
 
 if not cache_valid():
-    st.warning("El archivo está cargado, pero aún no está procesado. Abre **Administración** y presiona **Procesar archivo activo**.")
+    st.warning("El archivo está cargado, pero aún no está procesado. Regresa al menú principal para procesarlo.")
     st.stop()
 
 op_all, co_all, diag_df = read_cache(ACTIVE_FILE.stat().st_mtime)
@@ -4591,4 +4864,7 @@ ROUTES = {
 
 ROUTES.get(page, lambda: page_resumen(op_all, co_all))()
 
-st.markdown('<div class="footer">CONFIDENCIAL | Price Shoes | Operaciones Ropa</div>', unsafe_allow_html=True)
+st.markdown(
+    '<div class="footer">CONFIDENCIAL | Price Shoes | Operaciones Ropa</div>',
+    unsafe_allow_html=True,
+)

@@ -1,12 +1,14 @@
-# Indicadores Cambios y Muertos v11.9
+# Indicadores Cambios y Muertos v12.0
 
-Correcciones:
-- Acceso realmente centrado y a pantalla completa.
-- Se muestra el logo Price Shoes en el acceso.
-- Se muestran Operaciones Ropa e Indicadores.
-- Se ocultan toolbar y menú de Streamlit durante el acceso.
-- Texto negro visible en los campos de usuario y contraseña.
-- Cabecera con margen superior para evitar que el título quede recortado.
-- Logo de cabecera integrado con el fondo mediante transparencia visual.
-- El menú Administración aparece antes de validar el archivo o el caché.
-- El administrador puede cargar, procesar o borrar el archivo aunque aún no haya datos procesados.
+Nueva estructura:
+
+1. Después de iniciar sesión se abre el Portal de aplicaciones de Operaciones Ropa.
+2. En el menú principal aparece la aplicación:
+   - Cambios y Muertos
+3. El Administrador puede cargar, procesar o borrar el Excel desde el menú principal.
+4. Al ingresar a Cambios y Muertos aparece:
+   - Encabezado Indicadores Cambios y Muertos
+   - Pestañas internas en barra azul
+   - Carrusel horizontal en móvil
+5. Se agregó botón para regresar al menú principal.
+6. La estructura queda preparada para agregar más aplicaciones en el futuro.
