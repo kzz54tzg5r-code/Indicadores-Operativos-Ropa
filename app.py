@@ -54,13 +54,32 @@ for p in [DATA_DIR, UPLOAD_DIR, CACHE_DIR, CONFIG_DIR, ASSETS_DIR]:
     p.mkdir(parents=True, exist_ok=True)
 
 MX_TZ = ZoneInfo("America/Mexico_City")
-APP_CACHE_VERSION = "v12.1"
+APP_CACHE_VERSION = "v12.2"
 AZUL = "#10245F"
 ROSA = "#EC007C"
 LAVANDA = "#F3F6FB"
 
 PROJECT_STORES = [
     "Arco Norte", "Ecatepec", "Miravalle", "Puebla Sur", "Vallejo",
+]
+
+# Pestañas internas del módulo Cambios y Muertos.
+# Esta constante se perdió al integrar la estructura tipo portal en v12.1,
+# lo que provocaba NameError al ejecutar nav_bar().
+PAGES = [
+    "Resumen",
+    "Por Día",
+    "Reporte Semanal",
+    "Reporte Mensual",
+    "Conversión",
+    "Recuperación Económica",
+    "Productividad",
+    "Recorridos",
+    "Ranking",
+    "Macro",
+    "Diagnóstico",
+    "Configuración",
+    "Usuarios",
 ]
 
 
