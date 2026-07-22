@@ -54,7 +54,7 @@ for p in [DATA_DIR, UPLOAD_DIR, CACHE_DIR, CONFIG_DIR, ASSETS_DIR]:
     p.mkdir(parents=True, exist_ok=True)
 
 MX_TZ = ZoneInfo("America/Mexico_City")
-APP_CACHE_VERSION = "v12.3"
+APP_CACHE_VERSION = "v12.4"
 AZUL = "#10245F"
 ROSA = "#EC007C"
 LAVANDA = "#F3F6FB"
@@ -2327,6 +2327,99 @@ html, body, [data-testid="stAppViewContainer"] {{
  .ps-app-grid{{grid-template-columns:1fr}}.ps-profile-row{{grid-template-columns:95px 1fr;font-size:12px}}.ps-module-title{{font-size:20px}}.ps-module-subtitle{{font-size:10px}}
 }}
 
+
+/* V12.4 — tarjeta clicable completa y menú administrativo de tres puntos */
+.ps-portal-top-spacer {{
+    height: 54px !important;
+}}
+.ps-portal-topbar-brand {{
+    padding-top: 18px !important;
+    padding-bottom: 14px !important;
+    overflow: visible !important;
+}}
+.ps-portal-logo,
+.ps-portal-logo img {{
+    overflow: visible !important;
+}}
+.ps-portal-logo img {{
+    object-fit: contain !important;
+    max-height: 105px !important;
+}}
+
+/* Convertir el botón de Streamlit en tarjeta de aplicación */
+.st-key-open_cambios_muertos_card button {{
+    min-height: 210px !important;
+    height: 210px !important;
+    padding: 34px 24px !important;
+    border: 1px solid #D8DEE9 !important;
+    border-radius: 0 !important;
+    border-bottom: 6px solid var(--portal-pink) !important;
+    background: #FFFFFF !important;
+    color: #3E3E3E !important;
+    box-shadow: 0 4px 0 rgba(0,0,0,.14) !important;
+    white-space: pre-line !important;
+    font-size: 16px !important;
+    font-weight: 700 !important;
+    line-height: 1.65 !important;
+    transition: transform .15s ease, box-shadow .15s ease, border-color .15s ease !important;
+}}
+.st-key-open_cambios_muertos_card button::first-line {{
+    color: var(--portal-blue) !important;
+    font-size: 36px !important;
+}}
+.st-key-open_cambios_muertos_card button:hover {{
+    transform: translateY(-2px) !important;
+    box-shadow: 0 10px 24px rgba(0,75,133,.16) !important;
+    border-color: var(--portal-blue) !important;
+}}
+.st-key-open_cambios_muertos_card button p {{
+    color: inherit !important;
+    font-size: inherit !important;
+    font-weight: inherit !important;
+}}
+
+/* Tres puntos alineados arriba a la derecha de la tarjeta */
+.st-key-open_cambios_muertos_card {{
+    position: relative !important;
+}}
+[data-testid="stPopover"]:has(button[aria-label="⋮"]) {{
+    margin-top: -220px !important;
+    margin-left: auto !important;
+    width: 46px !important;
+    position: relative !important;
+    z-index: 6 !important;
+}}
+[data-testid="stPopover"]:has(button[aria-label="⋮"]) > button,
+[data-testid="stPopover"] button:has(p:only-child) {{
+    min-width: 42px !important;
+    width: 42px !important;
+    height: 42px !important;
+    padding: 0 !important;
+    border: 0 !important;
+    background: transparent !important;
+    font-size: 28px !important;
+    color: var(--portal-blue) !important;
+    box-shadow: none !important;
+}}
+
+@media(max-width:768px) {{
+    .ps-portal-top-spacer {{
+        height: 34px !important;
+    }}
+    .ps-portal-topbar-brand {{
+        padding-top: 12px !important;
+    }}
+    .st-key-open_cambios_muertos_card button {{
+        min-height: 175px !important;
+        height: 175px !important;
+        padding: 26px 16px !important;
+        font-size: 14px !important;
+    }}
+    [data-testid="stPopover"]:has(button[aria-label="⋮"]) {{
+        margin-top: -184px !important;
+    }}
+}}
+
 </style>
 """,
         unsafe_allow_html=True,
@@ -4275,22 +4368,22 @@ def render_app_portal():
 
     with left:
         st.markdown(
-            f'''<section class="ps-profile-card">
+            f"""<section class="ps-profile-card">
                     <div class="ps-profile-title">Información de usuario</div>
                     <div class="ps-profile-row"><span>👤 Usuario</span><b>{nombre}</b></div>
                     <div class="ps-profile-row"><span>▣ Nómina</span><b>{nomina}</b></div>
                     <div class="ps-profile-row"><span>📍 Área</span><b>Comercial Operativo Ropa</b></div>
                     <div class="ps-profile-row"><span>🔐 Perfil</span><b>{permiso}</b></div>
-                </section>''',
+                </section>""",
             unsafe_allow_html=True,
         )
         st.markdown(
-            '''<section class="ps-portal-panel">
+            """<section class="ps-portal-panel">
                     <div class="ps-portal-panel-head">Comunicados</div>
                     <div class="ps-notice-row"><b>22/07/2026</b><span>Portal de indicadores operativos disponible.</span></div>
                     <div class="ps-notice-row"><b>Confidencial</b><span>Uso exclusivo de Price Shoes.</span></div>
                 </section>
-                <div class="ps-promo-head">Operaciones Ropa</div>''',
+                <div class="ps-promo-head">Operaciones Ropa</div>""",
             unsafe_allow_html=True,
         )
 
@@ -4301,91 +4394,101 @@ def render_app_portal():
             label_visibility="collapsed",
             key="portal_app_search",
         )
+
         show_main = not search or any(
             token in search.lower()
             for token in ["cambio", "muerto", "indicador", "recuperacion"]
         )
+
         if show_main:
-            st.markdown(
-                '''<div class="ps-app-grid">
-                    <div class="ps-app-card ps-app-card-main">
-                        <div class="ps-app-code">CYM</div>
-                        <div class="ps-app-icon">↻</div>
-                        <div class="ps-app-name">Cambios y Muertos</div>
-                        <div class="ps-app-desc">Recuperación · Productividad · Conversión</div>
-                    </div>
-                    <div class="ps-app-card ps-app-disabled">
+            app_col, future_col = st.columns(2, gap="medium")
+
+            with app_col:
+                # La tarjeta completa es el botón de acceso.
+                if st.button(
+                    "↻\n\nCambios y Muertos\n\nRecuperación · Productividad · Conversión",
+                    key="open_cambios_muertos_card",
+                    use_container_width=True,
+                ):
+                    st.session_state["active_app"] = "Cambios y Muertos"
+                    st.session_state["nav_page"] = "Resumen"
+                    st.rerun()
+
+                if permiso == "Administrador":
+                    with st.popover("⋮", use_container_width=False):
+                        st.markdown("### Cambios y Muertos")
+                        st.caption("Administración de la fuente de datos")
+
+                        meta = {}
+                        if META_FILE.exists():
+                            try:
+                                meta = json.loads(META_FILE.read_text(encoding="utf-8"))
+                            except Exception:
+                                meta = {}
+
+                        if ACTIVE_FILE.exists():
+                            st.success("Archivo cargado")
+                            st.caption(meta.get("nombre_original", ACTIVE_FILE.name))
+                            st.caption(meta.get("fecha_carga", ""))
+                            st.caption(
+                                "Estado: procesado"
+                                if cache_valid()
+                                else "Estado: pendiente de procesar"
+                            )
+                        else:
+                            st.warning("No hay archivo cargado")
+
+                        up = st.file_uploader(
+                            "Cargar o reemplazar Excel",
+                            type=["xlsx"],
+                            key="portal_upload_excel_v124",
+                        )
+
+                        if up is not None and st.button(
+                            "Guardar archivo",
+                            key="portal_save_excel_v124",
+                            type="primary",
+                            use_container_width=True,
+                        ):
+                            save_uploaded_file(up)
+                            st.success("Archivo guardado. Ahora procesa el archivo.")
+                            st.rerun()
+
+                        if ACTIVE_FILE.exists() and not cache_valid():
+                            if st.button(
+                                "Procesar archivo activo",
+                                key="portal_process_excel_v124",
+                                type="primary",
+                                use_container_width=True,
+                            ):
+                                try:
+                                    process_excel(str(ACTIVE_FILE))
+                                    st.success("Archivo procesado correctamente.")
+                                    st.rerun()
+                                except Exception as exc:
+                                    st.error("No fue posible procesar el archivo.")
+                                    st.exception(exc)
+
+                        if ACTIVE_FILE.exists() and st.button(
+                            "Borrar archivo persistido",
+                            key="portal_delete_excel_v124",
+                            use_container_width=True,
+                        ):
+                            delete_active_file()
+                            st.rerun()
+
+            with future_col:
+                st.markdown(
+                    """<div class="ps-app-card ps-app-disabled">
                         <div class="ps-app-code">PRX</div>
                         <div class="ps-app-icon">▤</div>
                         <div class="ps-app-name">Próximo indicador</div>
                         <div class="ps-app-desc">Espacio preparado para futuros reportes.</div>
-                    </div>
-                </div>''',
-                unsafe_allow_html=True,
-            )
-            if st.button(
-                "Ingresar a Cambios y Muertos",
-                key="open_cambios_muertos",
-                type="primary",
-                use_container_width=True,
-            ):
-                st.session_state["active_app"] = "Cambios y Muertos"
-                st.session_state["nav_page"] = "Resumen"
-                st.rerun()
+                    </div>""",
+                    unsafe_allow_html=True,
+                )
         else:
             st.info("No se encontraron aplicativos con ese criterio.")
-
-        if permiso == "Administrador":
-            with st.expander("⚙️ Administración de Cambios y Muertos", expanded=False):
-                st.markdown("#### Fuente de datos")
-                meta = {}
-                if META_FILE.exists():
-                    try:
-                        meta = json.loads(META_FILE.read_text(encoding="utf-8"))
-                    except Exception:
-                        meta = {}
-                if ACTIVE_FILE.exists():
-                    st.success("Archivo cargado")
-                    st.caption(meta.get("nombre_original", ACTIVE_FILE.name))
-                    st.caption(meta.get("fecha_carga", ""))
-                    st.caption("Estado: procesado" if cache_valid() else "Estado: pendiente de procesar")
-                else:
-                    st.warning("No hay archivo cargado")
-                up = st.file_uploader(
-                    "Cargar o reemplazar Excel",
-                    type=["xlsx"],
-                    key="portal_upload_excel",
-                )
-                if up is not None and st.button(
-                    "Guardar archivo",
-                    key="portal_save_excel",
-                    type="primary",
-                    use_container_width=True,
-                ):
-                    save_uploaded_file(up)
-                    st.success("Archivo guardado. Ahora procesa el archivo.")
-                    st.rerun()
-                if ACTIVE_FILE.exists() and not cache_valid():
-                    if st.button(
-                        "Procesar archivo activo",
-                        key="portal_process_excel",
-                        type="primary",
-                        use_container_width=True,
-                    ):
-                        try:
-                            process_excel(str(ACTIVE_FILE))
-                            st.success("Archivo procesado correctamente.")
-                            st.rerun()
-                        except Exception as exc:
-                            st.error("No fue posible procesar el archivo.")
-                            st.exception(exc)
-                if ACTIVE_FILE.exists() and st.button(
-                    "Borrar archivo persistido",
-                    key="portal_delete_excel",
-                    use_container_width=True,
-                ):
-                    delete_active_file()
-                    st.rerun()
 
 
 def nav_bar():
