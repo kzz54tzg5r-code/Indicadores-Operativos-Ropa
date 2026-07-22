@@ -54,7 +54,7 @@ for p in [DATA_DIR, UPLOAD_DIR, CACHE_DIR, CONFIG_DIR, ASSETS_DIR]:
     p.mkdir(parents=True, exist_ok=True)
 
 MX_TZ = ZoneInfo("America/Mexico_City")
-APP_CACHE_VERSION = "v12.0"
+APP_CACHE_VERSION = "v12.1"
 AZUL = "#10245F"
 ROSA = "#EC007C"
 LAVANDA = "#F3F6FB"
@@ -2276,6 +2276,36 @@ html, body, [data-testid="stAppViewContainer"] {{
     }}
 }}
 
+
+/* V12.1 — estructura inspirada en Portal Web Price Shoes */
+:root {{ --portal-blue:#004B85; --portal-dark:#01315A; --portal-light:#337AB7; --portal-pink:#DA0080; --portal-active:#EA0083; }}
+.ps-portal-top-spacer,.ps-module-spacer{{height:18px}}
+.ps-portal-topbar-brand{{display:flex;align-items:center;gap:18px;min-height:68px}}
+.ps-portal-logo,.ps-module-logo{{width:100px;min-width:100px;background:transparent!important}}
+.ps-portal-logo img,.ps-module-logo img{{width:100%!important;max-height:68px!important;object-fit:contain!important;background:transparent!important}}
+.ps-portal-system{{font-size:22px;font-weight:800;color:var(--portal-dark)}}
+.ps-portal-pinkbar{{margin:4px -1rem 18px;padding:8px 20px;background:var(--portal-pink);color:#fff;font-size:16px;font-weight:800}}
+.ps-profile-card,.ps-portal-panel{{background:#fff;border:1px solid #ccc;border-radius:10px;overflow:hidden;margin-bottom:20px}}
+.ps-profile-title,.ps-portal-panel-head{{padding:9px 15px;background:var(--portal-blue);color:#fff;font-size:16px;font-weight:800;text-align:center}}
+.ps-profile-row{{display:grid;grid-template-columns:125px 1fr;gap:12px;padding:10px 16px;border-bottom:1px solid #eee;color:var(--portal-dark)}}
+.ps-profile-row:last-child{{border-bottom:0}}.ps-profile-row span{{font-weight:700}}.ps-profile-row b{{font-weight:600;color:#333}}
+.ps-notice-row{{display:grid;grid-template-columns:95px 1fr;gap:10px;padding:12px 15px;border-bottom:1px solid #eee}}.ps-notice-row:last-child{{border:0}}
+.ps-promo-head{{padding:9px 15px;background:#3B9741;color:#fff;font-size:16px;font-weight:800;text-align:center}}
+.ps-app-grid{{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px;margin:14px 0}}
+.ps-app-card{{position:relative;min-height:145px;padding:24px 18px 18px;background:#fff;border:1px solid #e1e4e8;border-bottom:4px solid #ccc;text-align:center;box-shadow:0 4px 12px rgba(0,0,0,.04)}}
+.ps-app-card-main{{border-bottom-color:var(--portal-pink)}}.ps-app-disabled{{opacity:.58}}
+.ps-app-code{{position:absolute;left:14px;bottom:10px;color:var(--portal-blue);font-weight:900;font-size:13px}}
+.ps-app-icon{{color:var(--portal-blue);font-size:34px;font-weight:900}}.ps-app-name{{font-size:20px;font-weight:800;color:#454545;margin-top:4px}}.ps-app-desc{{font-size:12px;color:#777;margin-top:7px}}
+.ps-module-brand{{display:flex;align-items:center;gap:15px;min-height:78px;padding:10px 0}}.ps-module-title{{font-size:30px;line-height:1.05;font-weight:900;color:var(--portal-dark)}}.ps-module-subtitle{{margin-top:7px;color:#596174;font-weight:700}}
+.ps-module-pinkline{{height:5px;margin:2px -1rem 12px;background:var(--portal-pink)}}
+.st-key-nav_v120_tabs{{background:var(--portal-blue)!important;border-top:0!important;border-bottom:3px solid var(--portal-pink)!important}}
+.st-key-nav_v120_tabs label:has(input:checked){{background:var(--portal-light)!important;box-shadow:inset 0 -4px 0 #fff!important}}
+.ag-header,.ag-header-row,.ag-header-cell{{background:var(--portal-dark)!important;color:#fff!important}}.ag-header-cell-text{{color:#fff!important;font-weight:700!important}}
+@media(max-width:768px){{
+ .ps-portal-topbar-brand{{gap:10px}}.ps-portal-logo,.ps-module-logo{{width:70px;min-width:70px}}.ps-portal-system{{font-size:18px}}.ps-portal-pinkbar{{font-size:12px;padding:7px 10px}}
+ .ps-app-grid{{grid-template-columns:1fr}}.ps-profile-row{{grid-template-columns:95px 1fr;font-size:12px}}.ps-module-title{{font-size:20px}}.ps-module-subtitle{{font-size:10px}}
+}}
+
 </style>
 """,
         unsafe_allow_html=True,
@@ -2289,42 +2319,32 @@ def render_portal_header():
     permiso = user.get("permiso", "Consulta")
     nomina = user.get("nomina", "")
 
-    st.markdown('<div class="portal-header-spacer"></div>', unsafe_allow_html=True)
-    c_logo, c_user = st.columns([7.5, 2.5], vertical_alignment="center")
-
+    st.markdown('<div class="ps-portal-top-spacer"></div>', unsafe_allow_html=True)
+    c_logo, c_user = st.columns([7.8, 2.2], vertical_alignment="center")
     with c_logo:
         st.markdown(
-            f"""
-            <div class="portal-home-brand">
-                <div class="portal-home-logo">{logo_html()}</div>
-                <div>
-                    <div class="portal-home-title">Operaciones Ropa</div>
-                    <div class="portal-home-subtitle">Portal de aplicaciones e indicadores</div>
-                </div>
-            </div>
-            """,
+            f'''<div class="ps-portal-topbar-brand">
+                    <div class="ps-portal-logo">{logo_html()}</div>
+                    <div class="ps-portal-system">Operaciones Ropa</div>
+                </div>''',
             unsafe_allow_html=True,
         )
-
     with c_user:
         with st.popover(f"👤 {user_name}", use_container_width=True):
-            st.markdown(f"**Usuario:** {user_name}")
+            st.markdown(f"**{user_name}**")
             if nomina:
                 st.caption(f"Nómina: {nomina}")
-            st.caption(f"Permiso: {permiso}")
+            st.caption(f"Perfil: {permiso}")
             st.caption(f"Fecha: {now.strftime('%d/%m/%Y')}")
             if st.button("Cerrar sesión", key="logout_portal", use_container_width=True):
-                st.session_state.pop("user", None)
-                st.session_state.pop("active_app", None)
-                st.session_state.pop("nav_page", None)
+                for key in ["user", "active_app", "nav_page"]:
+                    st.session_state.pop(key, None)
                 st.rerun()
+    st.markdown(
+        '<div class="ps-portal-pinkbar">Corporativo · Comercial Operativo Ropa</div>',
+        unsafe_allow_html=True,
+    )
 
-        st.markdown(
-            f'<div class="portal-user-date">{now.strftime("%d/%m/%Y")} · {permiso}</div>',
-            unsafe_allow_html=True,
-        )
-
-    st.markdown('<div class="portal-pink-line"></div>', unsafe_allow_html=True)
 
 def render_header():
     now = datetime.now(MX_TZ)
@@ -2332,44 +2352,37 @@ def render_header():
     user_name = user.get("nombre", "Consulta")
     permiso = user.get("permiso", "Consulta")
 
-    st.markdown('<div class="portal-header-spacer"></div>', unsafe_allow_html=True)
-    c_back, c_brand, c_user = st.columns([0.7, 6.8, 2.5], vertical_alignment="center")
-
+    st.markdown('<div class="ps-module-spacer"></div>', unsafe_allow_html=True)
+    c_back, c_brand, c_user = st.columns([0.65, 7.15, 2.2], vertical_alignment="center")
     with c_back:
-        if st.button("←", key="back_to_apps", help="Volver al menú principal", use_container_width=True):
+        if st.button("⌂", key="back_to_apps", help="Volver al portal", use_container_width=True):
             st.session_state["active_app"] = None
             st.session_state["nav_page"] = "Resumen"
             st.rerun()
-
     with c_brand:
         st.markdown(
-            f"""
-            <div class="portal-main-brand">
-                <div class="portal-main-logo">{logo_html()}</div>
-                <div class="portal-main-copy">
-                    <div class="portal-main-title">Indicadores Cambios y Muertos</div>
-                    <div class="portal-main-subtitle">Recuperación · Productividad · Conversión</div>
-                </div>
-            </div>
-            """,
+            f'''<div class="ps-module-brand">
+                    <div class="ps-module-logo">{logo_html()}</div>
+                    <div>
+                        <div class="ps-module-title">Indicadores Cambios y Muertos</div>
+                        <div class="ps-module-subtitle">Recuperación · Productividad · Conversión</div>
+                    </div>
+                </div>''',
             unsafe_allow_html=True,
         )
-
     with c_user:
         with st.popover(f"👤 {user_name}", use_container_width=True):
-            st.caption(f"Permiso: {permiso}")
+            st.caption(f"Perfil: {permiso}")
             st.caption(f"Fecha: {now.strftime('%d/%m/%Y')}")
             if st.button("Cerrar sesión", key="logout_top", use_container_width=True):
-                st.session_state.pop("user", None)
-                st.session_state.pop("active_app", None)
-                st.session_state.pop("nav_page", None)
+                for key in ["user", "active_app", "nav_page"]:
+                    st.session_state.pop(key, None)
                 st.rerun()
         st.markdown(
             f'<div class="portal-user-date">{now.strftime("%d/%m/%Y")} · {permiso}</div>',
             unsafe_allow_html=True,
         )
-
-    st.markdown('<div class="portal-pink-line"></div>', unsafe_allow_html=True)
+    st.markdown('<div class="ps-module-pinkline"></div>', unsafe_allow_html=True)
 
 
 def save_uploaded_file(uploaded):
@@ -4228,47 +4241,74 @@ def sidebar_data_admin():
 def render_app_portal():
     user = st.session_state.get("user", {})
     permiso = user.get("permiso", "Consulta")
+    nombre = user.get("nombre", "Consulta")
+    nomina = user.get("nomina", "—")
 
     render_portal_header()
+    left, right = st.columns([3.25, 6.75], gap="large", vertical_alignment="top")
 
-    st.markdown(
-        """
-        <div class="portal-section-title">Aplicaciones</div>
-        <div class="portal-section-subtitle">
-            Selecciona el indicador que deseas consultar.
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-    app_col, admin_col = st.columns([7, 3], vertical_alignment="top")
-
-    with app_col:
+    with left:
         st.markdown(
-            """
-            <div class="app-tile">
-                <div class="app-tile-icon">↻</div>
-                <div class="app-tile-copy">
-                    <div class="app-tile-title">Cambios y Muertos</div>
-                    <div class="app-tile-subtitle">
-                        Recuperación, productividad y conversión de mercancía.
-                    </div>
-                </div>
-            </div>
-            """,
+            f'''<section class="ps-profile-card">
+                    <div class="ps-profile-title">Información de usuario</div>
+                    <div class="ps-profile-row"><span>👤 Usuario</span><b>{nombre}</b></div>
+                    <div class="ps-profile-row"><span>▣ Nómina</span><b>{nomina}</b></div>
+                    <div class="ps-profile-row"><span>📍 Área</span><b>Comercial Operativo Ropa</b></div>
+                    <div class="ps-profile-row"><span>🔐 Perfil</span><b>{permiso}</b></div>
+                </section>''',
             unsafe_allow_html=True,
         )
-        if st.button(
-            "Ingresar a Cambios y Muertos",
-            key="open_cambios_muertos",
-            type="primary",
-            use_container_width=True,
-        ):
-            st.session_state["active_app"] = "Cambios y Muertos"
-            st.session_state["nav_page"] = "Resumen"
-            st.rerun()
+        st.markdown(
+            '''<section class="ps-portal-panel">
+                    <div class="ps-portal-panel-head">Comunicados</div>
+                    <div class="ps-notice-row"><b>22/07/2026</b><span>Portal de indicadores operativos disponible.</span></div>
+                    <div class="ps-notice-row"><b>Confidencial</b><span>Uso exclusivo de Price Shoes.</span></div>
+                </section>
+                <div class="ps-promo-head">Operaciones Ropa</div>''',
+            unsafe_allow_html=True,
+        )
 
-    with admin_col:
+    with right:
+        search = st.text_input(
+            "Buscar aplicativo",
+            placeholder="Siglas o nombre de aplicativo",
+            label_visibility="collapsed",
+            key="portal_app_search",
+        )
+        show_main = not search or any(
+            token in search.lower()
+            for token in ["cambio", "muerto", "indicador", "recuperacion"]
+        )
+        if show_main:
+            st.markdown(
+                '''<div class="ps-app-grid">
+                    <div class="ps-app-card ps-app-card-main">
+                        <div class="ps-app-code">CYM</div>
+                        <div class="ps-app-icon">↻</div>
+                        <div class="ps-app-name">Cambios y Muertos</div>
+                        <div class="ps-app-desc">Recuperación · Productividad · Conversión</div>
+                    </div>
+                    <div class="ps-app-card ps-app-disabled">
+                        <div class="ps-app-code">PRX</div>
+                        <div class="ps-app-icon">▤</div>
+                        <div class="ps-app-name">Próximo indicador</div>
+                        <div class="ps-app-desc">Espacio preparado para futuros reportes.</div>
+                    </div>
+                </div>''',
+                unsafe_allow_html=True,
+            )
+            if st.button(
+                "Ingresar a Cambios y Muertos",
+                key="open_cambios_muertos",
+                type="primary",
+                use_container_width=True,
+            ):
+                st.session_state["active_app"] = "Cambios y Muertos"
+                st.session_state["nav_page"] = "Resumen"
+                st.rerun()
+        else:
+            st.info("No se encontraron aplicativos con ese criterio.")
+
         if permiso == "Administrador":
             with st.expander("⚙️ Administración de Cambios y Muertos", expanded=False):
                 st.markdown("#### Fuente de datos")
@@ -4278,24 +4318,18 @@ def render_app_portal():
                         meta = json.loads(META_FILE.read_text(encoding="utf-8"))
                     except Exception:
                         meta = {}
-
                 if ACTIVE_FILE.exists():
                     st.success("Archivo cargado")
                     st.caption(meta.get("nombre_original", ACTIVE_FILE.name))
                     st.caption(meta.get("fecha_carga", ""))
-                    if cache_valid():
-                        st.caption("Estado: procesado")
-                    else:
-                        st.warning("Estado: pendiente de procesar")
+                    st.caption("Estado: procesado" if cache_valid() else "Estado: pendiente de procesar")
                 else:
                     st.warning("No hay archivo cargado")
-
                 up = st.file_uploader(
                     "Cargar o reemplazar Excel",
                     type=["xlsx"],
                     key="portal_upload_excel",
                 )
-
                 if up is not None and st.button(
                     "Guardar archivo",
                     key="portal_save_excel",
@@ -4305,7 +4339,6 @@ def render_app_portal():
                     save_uploaded_file(up)
                     st.success("Archivo guardado. Ahora procesa el archivo.")
                     st.rerun()
-
                 if ACTIVE_FILE.exists() and not cache_valid():
                     if st.button(
                         "Procesar archivo activo",
@@ -4320,7 +4353,6 @@ def render_app_portal():
                         except Exception as exc:
                             st.error("No fue posible procesar el archivo.")
                             st.exception(exc)
-
                 if ACTIVE_FILE.exists() and st.button(
                     "Borrar archivo persistido",
                     key="portal_delete_excel",
@@ -4328,17 +4360,6 @@ def render_app_portal():
                 ):
                     delete_active_file()
                     st.rerun()
-        else:
-            st.info("El archivo de datos es administrado por un usuario Administrador.")
-
-# ============================================================
-# PÁGINAS
-# ============================================================
-PAGES = [
-    "Resumen", "Por Día", "Reporte Semanal", "Reporte Mensual", "Conversión",
-    "Recuperación Económica", "Productividad", "Recorridos", "Ranking", "Macro",
-    "Diagnóstico", "Configuración", "Usuarios",
-]
 
 
 def nav_bar():

@@ -1,14 +1,12 @@
-# Indicadores Cambios y Muertos v12.0
+# Indicadores Cambios y Muertos v12.1
 
-Nueva estructura:
+Rediseño inspirado en la estructura del Portal Web Price Shoes:
+- encabezado superior blanco y barra rosa corporativa;
+- perfil de usuario y comunicados;
+- buscador y mosaico de aplicaciones;
+- administración de archivo exclusiva para Administrador;
+- módulo Cambios y Muertos con botón de regreso y navegación interna;
+- colores corporativos #004B85, #01315A, #337AB7 y #DA0080;
+- logo transparente oficial incluido.
 
-1. Después de iniciar sesión se abre el Portal de aplicaciones de Operaciones Ropa.
-2. En el menú principal aparece la aplicación:
-   - Cambios y Muertos
-3. El Administrador puede cargar, procesar o borrar el Excel desde el menú principal.
-4. Al ingresar a Cambios y Muertos aparece:
-   - Encabezado Indicadores Cambios y Muertos
-   - Pestañas internas en barra azul
-   - Carrusel horizontal en móvil
-5. Se agregó botón para regresar al menú principal.
-6. La estructura queda preparada para agregar más aplicaciones en el futuro.
+No se reutilizan servicios, credenciales ni JavaScript interno del portal original.
