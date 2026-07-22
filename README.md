@@ -1,9 +1,10 @@
-# Indicadores Cambios y Muertos v12.5
+# Indicadores Cambios y Muertos v12.6
 
-Cambios:
-- El usuario se mantiene en una sola línea y deja de verse estirado.
-- El icono de Cambios y Muertos es más grande.
-- El menú de tres puntos está en la esquina superior derecha de la tarjeta.
-- La estructura queda lista para repetir el menú en futuros indicadores.
-- Dentro del módulo, el logo Price Shoes funciona como botón para volver al portal.
-- Se elimina el botón separado de regreso.
+Correcciones:
+- Solo se amplió el icono de Cambios y Muertos.
+- El título y subtítulo de la tarjeta regresaron a un tamaño normal.
+- Se eliminó la distorsión producida por la regla CSS `first-line`.
+- El nombre del usuario ahora permanece en una sola línea.
+- Se amplió la columna del usuario y se añadió elipsis únicamente si el nombre es demasiado largo.
+- Se conserva el menú de tres puntos en la esquina superior derecha.
+- El logo Price Shoes continúa funcionando como botón para volver al portal.

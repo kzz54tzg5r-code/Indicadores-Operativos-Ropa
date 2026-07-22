@@ -54,7 +54,7 @@ for p in [DATA_DIR, UPLOAD_DIR, CACHE_DIR, CONFIG_DIR, ASSETS_DIR]:
     p.mkdir(parents=True, exist_ok=True)
 
 MX_TZ = ZoneInfo("America/Mexico_City")
-APP_CACHE_VERSION = "v12.5"
+APP_CACHE_VERSION = "v12.6"
 AZUL = "#10245F"
 ROSA = "#EC007C"
 LAVANDA = "#F3F6FB"
@@ -2501,6 +2501,101 @@ div[data-testid="column"]:last-child [data-testid="stPopover"] button p {{
     }}
 }}
 
+
+/* V12.6 — corrección de icono y usuario */
+
+/* El icono crece sin modificar el tamaño de los textos de la tarjeta. */
+.st-key-open_cambios_muertos_card button {{
+    position: relative !important;
+    padding: 92px 22px 28px !important;
+    white-space: pre-line !important;
+    font-size: 18px !important;
+    line-height: 1.55 !important;
+}}
+.st-key-open_cambios_muertos_card button::before {{
+    content: "↻";
+    position: absolute;
+    top: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    color: var(--portal-blue);
+    font-size: 64px;
+    font-weight: 900;
+    line-height: 1;
+}}
+.st-key-open_cambios_muertos_card button p {{
+    font-size: 18px !important;
+    line-height: 1.55 !important;
+    font-weight: 750 !important;
+    white-space: pre-line !important;
+}}
+.st-key-open_cambios_muertos_card button p::first-line {{
+    font-size: 18px !important;
+    line-height: 1.55 !important;
+    color: inherit !important;
+    font-weight: 850 !important;
+}}
+
+/* Usuario de una sola línea y con ancho suficiente. */
+.st-key-portal_user_menu,
+.st-key-module_user_menu {{
+    width: 100% !important;
+    min-width: 0 !important;
+}}
+.st-key-portal_user_menu [data-testid="stPopover"],
+.st-key-module_user_menu [data-testid="stPopover"] {{
+    width: 100% !important;
+}}
+.st-key-portal_user_menu [data-testid="stPopover"] > button,
+.st-key-module_user_menu [data-testid="stPopover"] > button {{
+    width: 100% !important;
+    min-width: 0 !important;
+    height: 58px !important;
+    padding: 0 16px !important;
+    white-space: nowrap !important;
+    overflow: hidden !important;
+}}
+.st-key-portal_user_menu [data-testid="stPopover"] > button p,
+.st-key-module_user_menu [data-testid="stPopover"] > button p {{
+    width: 100% !important;
+    display: block !important;
+    white-space: nowrap !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    text-align: center !important;
+    font-size: 15px !important;
+    line-height: 1.2 !important;
+}}
+.st-key-module_user_menu .portal-user-date {{
+    white-space: nowrap !important;
+    text-align: right !important;
+    font-size: 11px !important;
+}}
+
+@media (max-width: 768px) {{
+    .st-key-open_cambios_muertos_card button {{
+        padding-top: 78px !important;
+        font-size: 15px !important;
+    }}
+    .st-key-open_cambios_muertos_card button::before {{
+        top: 16px;
+        font-size: 52px;
+    }}
+    .st-key-open_cambios_muertos_card button p,
+    .st-key-open_cambios_muertos_card button p::first-line {{
+        font-size: 15px !important;
+    }}
+    .st-key-portal_user_menu [data-testid="stPopover"] > button,
+    .st-key-module_user_menu [data-testid="stPopover"] > button {{
+        height: 50px !important;
+        padding: 0 10px !important;
+    }}
+    .st-key-portal_user_menu [data-testid="stPopover"] > button p,
+    .st-key-module_user_menu [data-testid="stPopover"] > button p {{
+        font-size: 13px !important;
+    }}
+}}
+
 </style>
 """,
         unsafe_allow_html=True,
@@ -2515,7 +2610,7 @@ def render_portal_header():
     nomina = user.get("nomina", "")
 
     st.markdown('<div class="ps-portal-top-spacer"></div>', unsafe_allow_html=True)
-    c_logo, c_user = st.columns([8.3, 1.7], vertical_alignment="center")
+    c_logo, c_user = st.columns([7.7, 2.3], vertical_alignment="center")
 
     with c_logo:
         st.markdown(
@@ -2527,16 +2622,17 @@ def render_portal_header():
         )
 
     with c_user:
-        with st.popover(f"👤 {user_name}", use_container_width=True):
-            st.markdown(f"**{user_name}**")
-            if nomina:
-                st.caption(f"Nómina: {nomina}")
-            st.caption(f"Perfil: {permiso}")
-            st.caption(f"Fecha: {now.strftime('%d/%m/%Y')}")
-            if st.button("Cerrar sesión", key="logout_portal", use_container_width=True):
-                for key in ["user", "active_app", "nav_page"]:
-                    st.session_state.pop(key, None)
-                st.rerun()
+        with st.container(key="portal_user_menu"):
+            with st.popover(f"👤 {user_name}", use_container_width=True):
+                st.markdown(f"**{user_name}**")
+                if nomina:
+                    st.caption(f"Nómina: {nomina}")
+                st.caption(f"Perfil: {permiso}")
+                st.caption(f"Fecha: {now.strftime('%d/%m/%Y')}")
+                if st.button("Cerrar sesión", key="logout_portal", use_container_width=True):
+                    for key in ["user", "active_app", "nav_page"]:
+                        st.session_state.pop(key, None)
+                    st.rerun()
 
     st.markdown(
         '<div class="ps-portal-pinkbar">Corporativo · Comercial Operativo Ropa</div>',
@@ -2551,7 +2647,7 @@ def render_header():
     permiso = user.get("permiso", "Consulta")
 
     st.markdown('<div class="ps-module-spacer"></div>', unsafe_allow_html=True)
-    c_logo, c_brand, c_user = st.columns([1.05, 7.25, 1.7], vertical_alignment="center")
+    c_logo, c_brand, c_user = st.columns([1.05, 6.65, 2.3], vertical_alignment="center")
 
     with c_logo:
         if st.button(" ", key="logo_home_btn", help="Volver al portal", use_container_width=True):
@@ -2600,18 +2696,19 @@ def render_header():
         )
 
     with c_user:
-        with st.popover(f"👤 {user_name}", use_container_width=True):
-            st.caption(f"Perfil: {permiso}")
-            st.caption(f"Fecha: {now.strftime('%d/%m/%Y')}")
-            if st.button("Cerrar sesión", key="logout_top", use_container_width=True):
-                for key in ["user", "active_app", "nav_page"]:
-                    st.session_state.pop(key, None)
-                st.rerun()
+        with st.container(key="module_user_menu"):
+            with st.popover(f"👤 {user_name}", use_container_width=True):
+                st.caption(f"Perfil: {permiso}")
+                st.caption(f"Fecha: {now.strftime('%d/%m/%Y')}")
+                if st.button("Cerrar sesión", key="logout_top", use_container_width=True):
+                    for key in ["user", "active_app", "nav_page"]:
+                        st.session_state.pop(key, None)
+                    st.rerun()
 
-        st.markdown(
-            f'<div class="portal-user-date">{now.strftime("%d/%m/%Y")} · {permiso}</div>',
-            unsafe_allow_html=True,
-        )
+            st.markdown(
+                f'<div class="portal-user-date">{now.strftime("%d/%m/%Y")} · {permiso}</div>',
+                unsafe_allow_html=True,
+            )
 
     st.markdown('<div class="ps-module-pinkline"></div>', unsafe_allow_html=True)
 
@@ -4587,7 +4684,7 @@ def render_app_portal():
                                     st.rerun()
 
                     if st.button(
-                        "↻\n\nCambios y Muertos\n\nRecuperación · Productividad · Conversión",
+                        "Cambios y Muertos\n\nRecuperación · Productividad · Conversión",
                         key="open_cambios_muertos_card",
                         use_container_width=True,
                     ):
