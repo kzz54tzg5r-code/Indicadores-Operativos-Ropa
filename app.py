@@ -54,7 +54,7 @@ for p in [DATA_DIR, UPLOAD_DIR, CACHE_DIR, CONFIG_DIR, ASSETS_DIR]:
     p.mkdir(parents=True, exist_ok=True)
 
 MX_TZ = ZoneInfo("America/Mexico_City")
-APP_CACHE_VERSION = "v12.2"
+APP_CACHE_VERSION = "v12.3"
 AZUL = "#10245F"
 ROSA = "#EC007C"
 LAVANDA = "#F3F6FB"
@@ -81,6 +81,8 @@ PAGES = [
     "Configuración",
     "Usuarios",
 ]
+
+REPORT_PAGES = PAGES.copy()
 
 
 # ============================================================
@@ -2038,7 +2040,7 @@ html, body, [data-testid="stAppViewContainer"] {{
     width: 100% !important;
     max-height: 120px !important;
     object-fit: contain !important;
-    filter: brightness(0) invert(1) !important;
+    filter: none !important;
 }}
 .login-portal-title {{
     color: #fff !important;
@@ -2182,7 +2184,7 @@ html, body, [data-testid="stAppViewContainer"] {{
 }}
 
 /* Pestañas internas de Cambios y Muertos */
-.st-key-nav_v120_tabs {{
+.st-key-nav_v123_tabs {{
     width:calc(100% + 2rem) !important;
     margin-left:-1rem !important;
     margin-right:-1rem !important;
@@ -2195,17 +2197,17 @@ html, body, [data-testid="stAppViewContainer"] {{
     scrollbar-width:none !important;
     -webkit-overflow-scrolling:touch !important;
 }}
-.st-key-nav_v120_tabs::-webkit-scrollbar {{
+.st-key-nav_v123_tabs::-webkit-scrollbar {{
     display:none !important;
 }}
-.st-key-nav_v120_tabs [role="radiogroup"] {{
+.st-key-nav_v123_tabs [role="radiogroup"] {{
     display:flex !important;
     flex-flow:row nowrap !important;
     width:max-content !important;
     min-width:100% !important;
     gap:0 !important;
 }}
-.st-key-nav_v120_tabs label {{
+.st-key-nav_v123_tabs label {{
     flex:0 0 auto !important;
     min-width:max-content !important;
     min-height:58px !important;
@@ -2219,18 +2221,18 @@ html, body, [data-testid="stAppViewContainer"] {{
     font-weight:850 !important;
     background:transparent !important;
 }}
-.st-key-nav_v120_tabs label:has(input:checked) {{
+.st-key-nav_v123_tabs label:has(input:checked) {{
     color:#FFFFFF !important;
     background:#142E73 !important;
     box-shadow:inset 0 -5px 0 var(--rosa) !important;
 }}
-.st-key-nav_v120_tabs label *,
-.st-key-nav_v120_tabs label:has(input:checked) * {{
+.st-key-nav_v123_tabs label *,
+.st-key-nav_v123_tabs label:has(input:checked) * {{
     color:inherit !important;
     font-weight:inherit !important;
 }}
-.st-key-nav_v120_tabs input,
-.st-key-nav_v120_tabs [data-baseweb="radio"] > div:first-child {{
+.st-key-nav_v123_tabs input,
+.st-key-nav_v123_tabs [data-baseweb="radio"] > div:first-child {{
     position:absolute !important;
     opacity:0 !important;
     width:1px !important;
@@ -2265,7 +2267,7 @@ html, body, [data-testid="stAppViewContainer"] {{
     .app-tile-title {{
         font-size:20px;
     }}
-    .st-key-nav_v120_tabs {{
+    .st-key-nav_v123_tabs {{
         width:calc(100% + 1rem) !important;
         margin-left:-.5rem !important;
         margin-right:-.5rem !important;
@@ -2273,12 +2275,12 @@ html, body, [data-testid="stAppViewContainer"] {{
         background:linear-gradient(135deg,#111A55,#24126E 55%,#3B146E) !important;
         scroll-snap-type:x proximity !important;
     }}
-    .st-key-nav_v120_tabs [role="radiogroup"] {{
+    .st-key-nav_v123_tabs [role="radiogroup"] {{
         gap:10px !important;
         padding:0 14px !important;
         min-width:max-content !important;
     }}
-    .st-key-nav_v120_tabs label {{
+    .st-key-nav_v123_tabs label {{
         min-width:145px !important;
         height:56px !important;
         min-height:56px !important;
@@ -2287,7 +2289,7 @@ html, body, [data-testid="stAppViewContainer"] {{
         background:rgba(255,255,255,.09) !important;
         scroll-snap-align:center !important;
     }}
-    .st-key-nav_v120_tabs label:has(input:checked) {{
+    .st-key-nav_v123_tabs label:has(input:checked) {{
         background:#FFFFFF !important;
         color:var(--azul) !important;
         border-color:#FFFFFF !important;
@@ -2317,8 +2319,8 @@ html, body, [data-testid="stAppViewContainer"] {{
 .ps-app-icon{{color:var(--portal-blue);font-size:34px;font-weight:900}}.ps-app-name{{font-size:20px;font-weight:800;color:#454545;margin-top:4px}}.ps-app-desc{{font-size:12px;color:#777;margin-top:7px}}
 .ps-module-brand{{display:flex;align-items:center;gap:15px;min-height:78px;padding:10px 0}}.ps-module-title{{font-size:30px;line-height:1.05;font-weight:900;color:var(--portal-dark)}}.ps-module-subtitle{{margin-top:7px;color:#596174;font-weight:700}}
 .ps-module-pinkline{{height:5px;margin:2px -1rem 12px;background:var(--portal-pink)}}
-.st-key-nav_v120_tabs{{background:var(--portal-blue)!important;border-top:0!important;border-bottom:3px solid var(--portal-pink)!important}}
-.st-key-nav_v120_tabs label:has(input:checked){{background:var(--portal-light)!important;box-shadow:inset 0 -4px 0 #fff!important}}
+.st-key-nav_v123_tabs{{background:var(--portal-blue)!important;border-top:0!important;border-bottom:3px solid var(--portal-pink)!important}}
+.st-key-nav_v123_tabs label:has(input:checked){{background:var(--portal-light)!important;box-shadow:inset 0 -4px 0 #fff!important}}
 .ag-header,.ag-header-row,.ag-header-cell{{background:var(--portal-dark)!important;color:#fff!important}}.ag-header-cell-text{{color:#fff!important;font-weight:700!important}}
 @media(max-width:768px){{
  .ps-portal-topbar-brand{{gap:10px}}.ps-portal-logo,.ps-module-logo{{width:70px;min-width:70px}}.ps-portal-system{{font-size:18px}}.ps-portal-pinkbar{{font-size:12px;padding:7px 10px}}
@@ -4167,10 +4169,15 @@ def login_sidebar():
         unsafe_allow_html=True,
     )
 
+    logo_path = ASSETS_DIR / "price_shoes_logo.png"
+    if logo_path.exists():
+        c1, c2, c3 = st.columns([1, 1.2, 1])
+        with c2:
+            st.image(str(logo_path), use_container_width=True)
+
     st.markdown(
-        f"""
+        """
         <div class="login-brand-card">
-            <div class="login-real-logo">{logo_html()}</div>
             <div class="login-portal-title">Operaciones Ropa</div>
             <div class="login-portal-subtitle">Indicadores</div>
         </div>
@@ -4382,21 +4389,30 @@ def render_app_portal():
 
 
 def nav_bar():
-    current = st.session_state.get("nav_page", PAGES[0])
-    if current not in PAGES:
-        current = PAGES[0]
+    # Lista local de respaldo: evita NameError aunque Streamlit conserve una
+    # versión parcial del módulo durante un reinicio.
+    pages = globals().get("REPORT_PAGES") or globals().get("PAGES") or [
+        "Resumen", "Por Día", "Reporte Semanal", "Reporte Mensual",
+        "Conversión", "Recuperación Económica", "Productividad",
+        "Recorridos", "Ranking", "Macro", "Diagnóstico",
+        "Configuración", "Usuarios",
+    ]
+
+    current = st.session_state.get("nav_page", pages[0])
+    if current not in pages:
+        current = pages[0]
 
     selected = st.radio(
         "Pestañas",
-        PAGES,
-        index=PAGES.index(current),
+        pages,
+        index=pages.index(current),
         horizontal=True,
         label_visibility="collapsed",
-        key="nav_v120_tabs",
+        key="nav_v123_tabs",
     )
-
     st.session_state["nav_page"] = selected
     return selected
+
 
 
 def reliable_data_horizon(op, co):

@@ -1,11 +1,7 @@
-# Indicadores Cambios y Muertos v12.2
+# v12.3
 
-Corrección aplicada:
-- Se restauró la constante `PAGES` utilizada por el menú interno.
-- Se elimina el error `NameError: PAGES is not defined`.
-- Se conservan el portal de aplicaciones, la administración del Excel y todas las pestañas del módulo Cambios y Muertos.
-
-Actualización:
-1. Sustituye los archivos del repositorio.
-2. Reinicia Streamlit Cloud.
-3. No es necesario reprocesar el Excel por esta corrección.
+Correcciones:
+- El menú ya no depende exclusivamente de la variable global PAGES.
+- Se agregó REPORT_PAGES y una lista local de respaldo dentro de nav_bar.
+- Se corrigió el logo del acceso usando st.image directamente desde assets.
+- Se conservan Operaciones Ropa e Indicadores en la pantalla de acceso.
