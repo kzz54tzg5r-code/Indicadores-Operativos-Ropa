@@ -1,9 +1,9 @@
-# Indicadores Cambios y Muertos v12.4
+# Indicadores Cambios y Muertos v12.5
 
 Cambios:
-- La tarjeta completa de Cambios y Muertos funciona como acceso.
-- Se eliminó el botón inferior “Ingresar a Cambios y Muertos”.
-- Para Administrador aparece un menú de tres puntos sobre la tarjeta.
-- Desde los tres puntos se puede cargar, reemplazar, procesar o borrar el Excel.
-- Se aumentó el margen superior para que el logo no quede recortado.
-- Se conserva la tarjeta de próximo indicador para futuras aplicaciones.
+- El usuario se mantiene en una sola línea y deja de verse estirado.
+- El icono de Cambios y Muertos es más grande.
+- El menú de tres puntos está en la esquina superior derecha de la tarjeta.
+- La estructura queda lista para repetir el menú en futuros indicadores.
+- Dentro del módulo, el logo Price Shoes funciona como botón para volver al portal.
+- Se elimina el botón separado de regreso.

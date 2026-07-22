@@ -54,7 +54,7 @@ for p in [DATA_DIR, UPLOAD_DIR, CACHE_DIR, CONFIG_DIR, ASSETS_DIR]:
     p.mkdir(parents=True, exist_ok=True)
 
 MX_TZ = ZoneInfo("America/Mexico_City")
-APP_CACHE_VERSION = "v12.4"
+APP_CACHE_VERSION = "v12.5"
 AZUL = "#10245F"
 ROSA = "#EC007C"
 LAVANDA = "#F3F6FB"
@@ -2420,6 +2420,87 @@ html, body, [data-testid="stAppViewContainer"] {{
     }}
 }}
 
+
+/* V12.5 — usuario compacto, icono grande, menú superior y logo navegable */
+
+div[data-testid="column"]:last-child [data-testid="stPopover"] button {{
+    min-width: 190px !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    white-space: nowrap !important;
+}}
+div[data-testid="column"]:last-child [data-testid="stPopover"] button p {{
+    white-space: nowrap !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    font-size: 15px !important;
+}}
+
+.st-key-app_card_shell {{
+    position: relative !important;
+    width: 100% !important;
+}}
+.st-key-app_admin_menu {{
+    position: absolute !important;
+    top: 8px !important;
+    right: 8px !important;
+    z-index: 20 !important;
+    width: 46px !important;
+}}
+.st-key-app_admin_menu [data-testid="stPopover"] {{
+    width: 46px !important;
+}}
+.st-key-app_admin_menu [data-testid="stPopover"] > button {{
+    width: 42px !important;
+    min-width: 42px !important;
+    height: 42px !important;
+    min-height: 42px !important;
+    padding: 0 !important;
+    border: 0 !important;
+    border-radius: 50% !important;
+    background: rgba(255,255,255,.94) !important;
+    color: var(--portal-blue) !important;
+    font-size: 28px !important;
+    line-height: 1 !important;
+    box-shadow: 0 3px 10px rgba(0,0,0,.12) !important;
+}}
+.st-key-app_admin_menu [data-testid="stPopover"] > button:hover {{
+    background: #F2F6FC !important;
+}}
+
+.st-key-open_cambios_muertos_card button {{
+    padding-top: 24px !important;
+}}
+.st-key-open_cambios_muertos_card button p {{
+    white-space: pre-line !important;
+    line-height: 1.7 !important;
+}}
+.st-key-open_cambios_muertos_card button p::first-line {{
+    font-size: 58px !important;
+    line-height: 1 !important;
+    color: var(--portal-blue) !important;
+    font-weight: 900 !important;
+}}
+
+.st-key-logo_home_btn button {{
+    cursor: pointer !important;
+}}
+
+.st-key-back_to_apps {{
+    display: none !important;
+}}
+
+@media(max-width:768px) {{
+    div[data-testid="column"]:last-child [data-testid="stPopover"] button {{
+        min-width: 135px !important;
+    }}
+    .st-key-open_cambios_muertos_card button p::first-line {{
+        font-size: 46px !important;
+    }}
+}}
+
 </style>
 """,
         unsafe_allow_html=True,
@@ -2434,15 +2515,17 @@ def render_portal_header():
     nomina = user.get("nomina", "")
 
     st.markdown('<div class="ps-portal-top-spacer"></div>', unsafe_allow_html=True)
-    c_logo, c_user = st.columns([7.8, 2.2], vertical_alignment="center")
+    c_logo, c_user = st.columns([8.3, 1.7], vertical_alignment="center")
+
     with c_logo:
         st.markdown(
-            f'''<div class="ps-portal-topbar-brand">
+            f"""<div class="ps-portal-topbar-brand">
                     <div class="ps-portal-logo">{logo_html()}</div>
                     <div class="ps-portal-system">Operaciones Ropa</div>
-                </div>''',
+                </div>""",
             unsafe_allow_html=True,
         )
+
     with c_user:
         with st.popover(f"👤 {user_name}", use_container_width=True):
             st.markdown(f"**{user_name}**")
@@ -2454,6 +2537,7 @@ def render_portal_header():
                 for key in ["user", "active_app", "nav_page"]:
                     st.session_state.pop(key, None)
                 st.rerun()
+
     st.markdown(
         '<div class="ps-portal-pinkbar">Corporativo · Comercial Operativo Ropa</div>',
         unsafe_allow_html=True,
@@ -2467,23 +2551,54 @@ def render_header():
     permiso = user.get("permiso", "Consulta")
 
     st.markdown('<div class="ps-module-spacer"></div>', unsafe_allow_html=True)
-    c_back, c_brand, c_user = st.columns([0.65, 7.15, 2.2], vertical_alignment="center")
-    with c_back:
-        if st.button("⌂", key="back_to_apps", help="Volver al portal", use_container_width=True):
+    c_logo, c_brand, c_user = st.columns([1.05, 7.25, 1.7], vertical_alignment="center")
+
+    with c_logo:
+        if st.button(" ", key="logo_home_btn", help="Volver al portal", use_container_width=True):
             st.session_state["active_app"] = None
             st.session_state["nav_page"] = "Resumen"
             st.rerun()
+
+        logo = ASSETS_DIR / "price_shoes_logo.png"
+        if logo.exists():
+            data = base64.b64encode(logo.read_bytes()).decode("utf-8")
+            st.markdown(
+                f"""
+                <style>
+                .st-key-logo_home_btn button {{
+                    min-height: 92px !important;
+                    height: 92px !important;
+                    border: 0 !important;
+                    background:
+                        transparent
+                        url("data:image/png;base64,{data}")
+                        center / contain no-repeat !important;
+                    box-shadow: none !important;
+                    padding: 0 !important;
+                }}
+                .st-key-logo_home_btn button:hover {{
+                    transform: scale(1.03);
+                    background-color: transparent !important;
+                }}
+                .st-key-logo_home_btn button p {{
+                    font-size: 0 !important;
+                }}
+                </style>
+                """,
+                unsafe_allow_html=True,
+            )
+
     with c_brand:
         st.markdown(
-            f'''<div class="ps-module-brand">
-                    <div class="ps-module-logo">{logo_html()}</div>
+            """<div class="ps-module-brand">
                     <div>
                         <div class="ps-module-title">Indicadores Cambios y Muertos</div>
                         <div class="ps-module-subtitle">Recuperación · Productividad · Conversión</div>
                     </div>
-                </div>''',
+                </div>""",
             unsafe_allow_html=True,
         )
+
     with c_user:
         with st.popover(f"👤 {user_name}", use_container_width=True):
             st.caption(f"Perfil: {permiso}")
@@ -2492,10 +2607,12 @@ def render_header():
                 for key in ["user", "active_app", "nav_page"]:
                     st.session_state.pop(key, None)
                 st.rerun()
+
         st.markdown(
             f'<div class="portal-user-date">{now.strftime("%d/%m/%Y")} · {permiso}</div>',
             unsafe_allow_html=True,
         )
+
     st.markdown('<div class="ps-module-pinkline"></div>', unsafe_allow_html=True)
 
 
@@ -4404,78 +4521,79 @@ def render_app_portal():
             app_col, future_col = st.columns(2, gap="medium")
 
             with app_col:
-                # La tarjeta completa es el botón de acceso.
-                if st.button(
-                    "↻\n\nCambios y Muertos\n\nRecuperación · Productividad · Conversión",
-                    key="open_cambios_muertos_card",
-                    use_container_width=True,
-                ):
-                    st.session_state["active_app"] = "Cambios y Muertos"
-                    st.session_state["nav_page"] = "Resumen"
-                    st.rerun()
+                with st.container(key="app_card_shell"):
+                    if permiso == "Administrador":
+                        with st.container(key="app_admin_menu"):
+                            with st.popover("⋮", use_container_width=False):
+                                st.markdown("### Cambios y Muertos")
+                                st.caption("Administración de la fuente de datos")
 
-                if permiso == "Administrador":
-                    with st.popover("⋮", use_container_width=False):
-                        st.markdown("### Cambios y Muertos")
-                        st.caption("Administración de la fuente de datos")
-
-                        meta = {}
-                        if META_FILE.exists():
-                            try:
-                                meta = json.loads(META_FILE.read_text(encoding="utf-8"))
-                            except Exception:
                                 meta = {}
+                                if META_FILE.exists():
+                                    try:
+                                        meta = json.loads(META_FILE.read_text(encoding="utf-8"))
+                                    except Exception:
+                                        meta = {}
 
-                        if ACTIVE_FILE.exists():
-                            st.success("Archivo cargado")
-                            st.caption(meta.get("nombre_original", ACTIVE_FILE.name))
-                            st.caption(meta.get("fecha_carga", ""))
-                            st.caption(
-                                "Estado: procesado"
-                                if cache_valid()
-                                else "Estado: pendiente de procesar"
-                            )
-                        else:
-                            st.warning("No hay archivo cargado")
+                                if ACTIVE_FILE.exists():
+                                    st.success("Archivo cargado")
+                                    st.caption(meta.get("nombre_original", ACTIVE_FILE.name))
+                                    st.caption(meta.get("fecha_carga", ""))
+                                    st.caption(
+                                        "Estado: procesado"
+                                        if cache_valid()
+                                        else "Estado: pendiente de procesar"
+                                    )
+                                else:
+                                    st.warning("No hay archivo cargado")
 
-                        up = st.file_uploader(
-                            "Cargar o reemplazar Excel",
-                            type=["xlsx"],
-                            key="portal_upload_excel_v124",
-                        )
+                                up = st.file_uploader(
+                                    "Cargar o reemplazar Excel",
+                                    type=["xlsx"],
+                                    key="portal_upload_excel_v125",
+                                )
 
-                        if up is not None and st.button(
-                            "Guardar archivo",
-                            key="portal_save_excel_v124",
-                            type="primary",
-                            use_container_width=True,
-                        ):
-                            save_uploaded_file(up)
-                            st.success("Archivo guardado. Ahora procesa el archivo.")
-                            st.rerun()
-
-                        if ACTIVE_FILE.exists() and not cache_valid():
-                            if st.button(
-                                "Procesar archivo activo",
-                                key="portal_process_excel_v124",
-                                type="primary",
-                                use_container_width=True,
-                            ):
-                                try:
-                                    process_excel(str(ACTIVE_FILE))
-                                    st.success("Archivo procesado correctamente.")
+                                if up is not None and st.button(
+                                    "Guardar archivo",
+                                    key="portal_save_excel_v125",
+                                    type="primary",
+                                    use_container_width=True,
+                                ):
+                                    save_uploaded_file(up)
+                                    st.success("Archivo guardado. Ahora procesa el archivo.")
                                     st.rerun()
-                                except Exception as exc:
-                                    st.error("No fue posible procesar el archivo.")
-                                    st.exception(exc)
 
-                        if ACTIVE_FILE.exists() and st.button(
-                            "Borrar archivo persistido",
-                            key="portal_delete_excel_v124",
-                            use_container_width=True,
-                        ):
-                            delete_active_file()
-                            st.rerun()
+                                if ACTIVE_FILE.exists() and not cache_valid():
+                                    if st.button(
+                                        "Procesar archivo activo",
+                                        key="portal_process_excel_v125",
+                                        type="primary",
+                                        use_container_width=True,
+                                    ):
+                                        try:
+                                            process_excel(str(ACTIVE_FILE))
+                                            st.success("Archivo procesado correctamente.")
+                                            st.rerun()
+                                        except Exception as exc:
+                                            st.error("No fue posible procesar el archivo.")
+                                            st.exception(exc)
+
+                                if ACTIVE_FILE.exists() and st.button(
+                                    "Borrar archivo persistido",
+                                    key="portal_delete_excel_v125",
+                                    use_container_width=True,
+                                ):
+                                    delete_active_file()
+                                    st.rerun()
+
+                    if st.button(
+                        "↻\n\nCambios y Muertos\n\nRecuperación · Productividad · Conversión",
+                        key="open_cambios_muertos_card",
+                        use_container_width=True,
+                    ):
+                        st.session_state["active_app"] = "Cambios y Muertos"
+                        st.session_state["nav_page"] = "Resumen"
+                        st.rerun()
 
             with future_col:
                 st.markdown(
