@@ -9,6 +9,7 @@ import unicodedata
 from datetime import datetime, date
 from pathlib import Path
 from zoneinfo import ZoneInfo
+from urllib.parse import quote
 
 import numpy as np
 import pandas as pd
@@ -21,7 +22,6 @@ from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.graphics.shapes import Drawing, String, PolyLine, Circle, Rect, Line
 from reportlab.graphics.charts.barcharts import VerticalBarChart
 import streamlit as st
-import streamlit.components.v1 as components
 from openpyxl import load_workbook
 
 try:
@@ -54,7 +54,7 @@ for p in [DATA_DIR, UPLOAD_DIR, CACHE_DIR, CONFIG_DIR, ASSETS_DIR]:
     p.mkdir(parents=True, exist_ok=True)
 
 MX_TZ = ZoneInfo("America/Mexico_City")
-APP_CACHE_VERSION = "v11.5"
+APP_CACHE_VERSION = "v11.6"
 AZUL = "#10245F"
 ROSA = "#EC007C"
 LAVANDA = "#F3F6FB"
@@ -1677,6 +1677,42 @@ html, body, [data-testid="stAppViewContainer"] {{
 .st-key-nav_v114_carousel,
 .st-key-nav_v113_carousel {{
     display: none !important;
+}}
+
+
+/* V11.6 — CARRUSEL CLICABLE SIN IFRAME */
+.ps-carousel-title {{ display:none; }}
+.ps-carousel-shell {{
+  width:calc(100% + 3.2rem); margin-left:-1.6rem; margin-right:-1.6rem; margin-bottom:22px;
+  background:linear-gradient(135deg,#111A55 0%,#24126E 55%,#3B146E 100%);
+  border-top:4px solid var(--rosa); border-bottom:1px solid rgba(255,255,255,.14);
+  overflow-x:auto; overflow-y:hidden; -webkit-overflow-scrolling:touch; scrollbar-width:none;
+  overscroll-behavior-x:contain; touch-action:pan-x;
+}}
+.ps-carousel-shell::-webkit-scrollbar {{ display:none; }}
+.ps-carousel-track {{ display:flex; flex-flow:row nowrap; align-items:stretch; gap:0; width:max-content; min-width:100%; min-height:58px; padding:0 1.6rem; }}
+.ps-carousel-card {{
+  flex:0 0 auto; min-width:max-content; min-height:58px; padding:0 18px; display:flex; align-items:center; justify-content:center;
+  color:rgba(255,255,255,.76)!important; text-decoration:none!important; font-weight:850; white-space:nowrap;
+  background:transparent; border-radius:0; box-shadow:none; cursor:pointer; -webkit-tap-highlight-color:transparent; user-select:none;
+}}
+.ps-carousel-card:hover {{ color:#fff!important; background:rgba(255,255,255,.06); }}
+.ps-carousel-card.active {{ color:#fff!important; background:#142E73; box-shadow:inset 0 -5px 0 var(--rosa); }}
+@media (max-width:768px) {{
+  .ps-carousel-title {{ display:flex; align-items:center; justify-content:space-between; margin:8px 2px 7px; color:#5B6476; font-size:12px; font-weight:850; }}
+  .ps-carousel-arrow {{ color:var(--rosa); font-size:18px; font-weight:900; }}
+  .ps-carousel-shell {{ width:calc(100% + 1rem); margin-left:-.5rem; margin-right:-.5rem; margin-bottom:18px; padding:10px 0 12px; scroll-snap-type:x proximity; scroll-padding-inline:18px; }}
+  .ps-carousel-track {{ gap:10px; min-width:max-content; padding:0 14px; min-height:58px; }}
+  .ps-carousel-card {{
+    flex:0 0 154px; width:154px; min-width:154px; max-width:190px; height:58px; min-height:58px; padding:0 15px;
+    border-radius:14px; border:1px solid rgba(255,255,255,.22); background:rgba(255,255,255,.09);
+    color:rgba(255,255,255,.80)!important; text-align:center; white-space:normal; line-height:1.08; font-size:13px;
+    scroll-snap-align:center; box-shadow:0 5px 13px rgba(0,0,0,.14); transform:scale(.92); opacity:.78;
+  }}
+  .ps-carousel-card.active {{
+    background:#fff; color:var(--azul)!important; border-color:#fff;
+    box-shadow:0 7px 18px rgba(0,0,0,.22), inset 0 -5px 0 var(--rosa); transform:scale(1); opacity:1;
+  }}
 }}
 
 </style>
@@ -3519,184 +3555,39 @@ PAGES = [
 
 
 def nav_bar():
-    """Menú tipo carrusel inspirado en el ejemplo móvil enviado.
-
-    En móvil:
-    - tarjeta activa centrada y más grande;
-    - tarjetas laterales parcialmente visibles;
-    - desplazamiento horizontal con el dedo;
-    - sin círculos de radio ni saltos de línea.
-
-    En computadora:
-    - pestañas horizontales compactas sobre fondo azul.
-    """
+    """Carrusel horizontal clicable sin iframe."""
     raw_page = st.query_params.get("report", "")
     if isinstance(raw_page, list):
         raw_page = raw_page[0] if raw_page else ""
-
     page = raw_page if raw_page in PAGES else st.session_state.get("nav_page", PAGES[0])
     if page not in PAGES:
         page = PAGES[0]
     st.session_state["nav_page"] = page
 
-    pages_json = json.dumps(PAGES, ensure_ascii=False)
-    selected_json = json.dumps(page, ensure_ascii=False)
+    items = []
+    for item in PAGES:
+        active = " active" if item == page else ""
+        href = f"?report={quote(item)}"
+        items.append(
+            f'<a class="ps-carousel-card{active}" href="{href}" target="_self">{item}</a>'
+        )
 
-    carousel_html = f"""
-<!doctype html>
-<html lang="es">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
-<style>
-:root {{
-    --azul: {AZUL};
-    --rosa: {ROSA};
-    --azul-activo: #142E73;
-}}
-* {{
-    box-sizing: border-box;
-}}
-html, body {{
-    margin: 0;
-    padding: 0;
-    background: transparent;
-    overflow: hidden;
-    font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-}}
-.nav-shell {{
-    width: 100%;
-    background: linear-gradient(135deg, #101D5A 0%, #25106B 58%, #42136F 100%);
-    border-top: 4px solid var(--rosa);
-    border-bottom: 1px solid rgba(255,255,255,.14);
-    overflow: hidden;
-}}
-.nav-track {{
-    display: flex;
-    flex-flow: row nowrap;
-    align-items: center;
-    gap: 10px;
-    width: 100%;
-    overflow-x: auto;
-    overflow-y: hidden;
-    padding: 10px 18px 12px;
-    scroll-snap-type: x mandatory;
-    scroll-padding-inline: calc(50% - 82px);
-    overscroll-behavior-x: contain;
-    -webkit-overflow-scrolling: touch;
-    scrollbar-width: none;
-    touch-action: pan-x;
-}}
-.nav-track::-webkit-scrollbar {{
-    display: none;
-}}
-.nav-card {{
-    appearance: none;
-    border: 1px solid rgba(255,255,255,.23);
-    outline: none;
-    flex: 0 0 154px;
-    width: 154px;
-    height: 62px;
-    padding: 0 13px;
-    border-radius: 14px;
-    background: rgba(255,255,255,.09);
-    color: rgba(255,255,255,.78);
-    font-size: 13px;
-    line-height: 1.08;
-    font-weight: 800;
-    text-align: center;
-    white-space: normal;
-    scroll-snap-align: center;
-    box-shadow: 0 5px 14px rgba(0,0,0,.16);
-    transform: scale(.91);
-    opacity: .75;
-    transition: transform .2s ease, opacity .2s ease, background .2s ease, color .2s ease;
-    cursor: pointer;
-}}
-.nav-card.active {{
-    background: #FFFFFF;
-    color: var(--azul);
-    border-color: #FFFFFF;
-    transform: scale(1);
-    opacity: 1;
-    box-shadow:
-        0 8px 20px rgba(0,0,0,.24),
-        inset 0 -5px 0 var(--rosa);
-}}
-.nav-card:active {{
-    transform: scale(.97);
-}}
-@media (min-width: 769px) {{
-    .nav-track {{
-        justify-content: flex-start;
-        gap: 0;
-        padding: 0 24px;
-        min-height: 58px;
-        scroll-snap-type: none;
-    }}
-    .nav-card {{
-        flex: 0 0 auto;
-        width: auto;
-        height: 58px;
-        min-width: max-content;
-        padding: 0 18px;
-        border: 0;
-        border-radius: 0;
-        background: transparent;
-        color: rgba(255,255,255,.76);
-        box-shadow: none;
-        transform: none;
-        opacity: 1;
-        white-space: nowrap;
-    }}
-    .nav-card.active {{
-        background: var(--azul-activo);
-        color: #FFFFFF;
-        transform: none;
-        box-shadow: inset 0 -5px 0 var(--rosa);
-    }}
-}}
-</style>
-</head>
-<body>
-<div class="nav-shell">
-    <div id="track" class="nav-track" aria-label="Reportes"></div>
-</div>
-<script>
-const pages = {pages_json};
-const selected = {selected_json};
-const track = document.getElementById("track");
-
-function goToReport(page) {{
-    const url = new URL(window.parent.location.href);
-    url.searchParams.set("report", page);
-    window.parent.location.href = url.toString();
-}}
-
-pages.forEach((page) => {{
-    const button = document.createElement("button");
-    button.type = "button";
-    button.className = "nav-card" + (page === selected ? " active" : "");
-    button.textContent = page;
-    button.setAttribute("aria-current", page === selected ? "page" : "false");
-    button.addEventListener("click", () => goToReport(page));
-    track.appendChild(button);
-}});
-
-function centerSelected() {{
-    const active = track.querySelector(".active");
-    if (!active) return;
-    const left = active.offsetLeft - (track.clientWidth - active.offsetWidth) / 2;
-    track.scrollTo({{ left: Math.max(0, left), behavior: "instant" }});
-}}
-
-requestAnimationFrame(centerSelected);
-window.addEventListener("resize", centerSelected);
-</script>
-</body>
-</html>
-"""
-    components.html(carousel_html, height=92, scrolling=False)
+    st.markdown(
+        """
+        <div class="ps-carousel-title">
+            <span>Desliza para cambiar reporte</span>
+            <span class="ps-carousel-arrow">↔</span>
+        </div>
+        <nav class="ps-carousel-shell" aria-label="Reportes">
+            <div class="ps-carousel-track">
+        """
+        + "".join(items)
+        + """
+            </div>
+        </nav>
+        """,
+        unsafe_allow_html=True,
+    )
     return page
 
 
