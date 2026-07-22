@@ -54,7 +54,7 @@ for p in [DATA_DIR, UPLOAD_DIR, CACHE_DIR, CONFIG_DIR, ASSETS_DIR]:
     p.mkdir(parents=True, exist_ok=True)
 
 MX_TZ = ZoneInfo("America/Mexico_City")
-APP_CACHE_VERSION = "v11.7"
+APP_CACHE_VERSION = "v11.8"
 AZUL = "#10245F"
 ROSA = "#EC007C"
 LAVANDA = "#F3F6FB"
@@ -1881,6 +1881,129 @@ html, body, [data-testid="stAppViewContainer"] {{
     }}
 }}
 
+
+/* V11.8 — Portal corporativo, login completo y menú superior */
+.login-fullscreen-bg {{
+    position: fixed;
+    inset: 0;
+    z-index: -1;
+    background:
+        linear-gradient(rgba(0,25,28,.82), rgba(0,36,31,.92)),
+        radial-gradient(circle at 50% 20%, rgba(255,255,255,.08), transparent 38%),
+        linear-gradient(145deg,#071F2A,#003B31);
+}}
+.login-brand-zone {{
+    max-width: 650px;
+    margin: 5vh auto 0;
+    text-align: center;
+    color: #fff;
+}}
+.login-portal-title {{
+    font-size: 40px !important;
+    margin-top: 20px;
+}}
+.login-portal-subtitle {{
+    font-size: 25px !important;
+    font-weight: 800;
+    margin-top: 4px;
+}}
+[data-testid="stForm"]:has(input[aria-label="Usuario o correo"]) {{
+    max-width: 650px !important;
+    margin: 25px auto 0 !important;
+    padding: 28px 38px 34px !important;
+    border-radius: 18px !important;
+    background: rgba(0,39,34,.90) !important;
+    border: 1px solid rgba(255,255,255,.18) !important;
+    box-shadow: 0 18px 50px rgba(0,0,0,.30) !important;
+}}
+[data-testid="stForm"]:has(input[aria-label="Usuario o correo"]) label,
+[data-testid="stForm"]:has(input[aria-label="Usuario o correo"]) p {{
+    color: #fff !important;
+    font-weight: 800 !important;
+}}
+[data-testid="stForm"]:has(input[aria-label="Usuario o correo"]) input {{
+    color: #111827 !important;
+    background: #fff !important;
+    -webkit-text-fill-color: #111827 !important;
+}}
+[data-testid="stForm"]:has(input[aria-label="Usuario o correo"]) input::placeholder {{
+    color: #667085 !important;
+    opacity: 1 !important;
+}}
+.portal-main-brand {{
+    display: flex;
+    align-items: center;
+    gap: 18px;
+    min-height: 88px;
+}}
+.portal-main-logo {{
+    width: 110px;
+    min-width: 110px;
+}}
+.portal-main-title {{
+    color: var(--azul);
+    font-weight: 900;
+    font-size: 31px;
+    line-height: 1.05;
+}}
+.portal-main-subtitle {{
+    color: #596174;
+    font-weight: 700;
+    font-size: 14px;
+    margin-top: 8px;
+}}
+.portal-user-date {{
+    text-align: right;
+    color: #71798A;
+    font-size: 11px;
+    margin-top: 4px;
+}}
+.portal-pink-line {{
+    height: 5px;
+    background: var(--rosa);
+    margin: 2px -1rem 14px;
+}}
+.portal-readonly-badge {{
+    border: 1px solid #D5DCEA;
+    background: #fff;
+    border-radius: 8px;
+    padding: 10px 14px;
+    color: #596174;
+    text-align: center;
+    font-weight: 750;
+}}
+@media (max-width: 768px) {{
+    .login-brand-zone {{
+        margin-top: 2vh;
+        padding: 0 14px;
+    }}
+    .login-portal-title {{
+        font-size: 28px !important;
+    }}
+    .login-portal-subtitle {{
+        font-size: 19px !important;
+    }}
+    [data-testid="stForm"]:has(input[aria-label="Usuario o correo"]) {{
+        margin: 18px 10px 0 !important;
+        padding: 22px 18px 26px !important;
+    }}
+    .portal-main-brand {{
+        gap: 10px;
+        min-height: 66px;
+    }}
+    .portal-main-logo {{
+        width: 72px;
+        min-width: 72px;
+    }}
+    .portal-main-title {{
+        font-size: 21px;
+    }}
+    .portal-main-subtitle {{
+        font-size: 10px;
+        margin-top: 4px;
+    }}
+}}
+
 </style>
 """,
         unsafe_allow_html=True,
@@ -1889,32 +2012,46 @@ html, body, [data-testid="stAppViewContainer"] {{
 
 def render_header():
     now = datetime.now(MX_TZ)
-    user_name = st.session_state.get("user", {}).get("nombre", "Consulta")
-    st.markdown(
-        f"""
-<div class="ps-top-line"></div>
-<div class="ps-header">
-    <div class="ps-header-left">
-        <div class="ps-logo-wrap">{logo_html()}</div>
-        <div class="ps-header-sep"></div>
-        <div>
-            <div class="ps-title">Indicadores Cambios y Muertos</div>
-            <div class="ps-subtitle">Recuperación · Productividad · Conversión</div>
-        </div>
-    </div>
-    <div class="ps-header-right">
-        <div class="ps-meta"><div class="ps-meta-label">FECHA</div><div class="ps-meta-value">🗓️ {now.strftime('%d/%m/%Y')}</div></div>
-        <div class="ps-meta"><div class="ps-meta-label">USUARIO</div><div class="ps-meta-value">👑 {user_name}</div></div>
-    </div>
-</div>
-""",
-        unsafe_allow_html=True,
-    )
+    user = st.session_state.get("user", {})
+    user_name = user.get("nombre", "Consulta")
+    nomina = user.get("nomina", "")
+    permiso = user.get("permiso", "Consulta")
+
+    c_brand, c_user = st.columns([7.5, 2.5], vertical_alignment="center")
+
+    with c_brand:
+        st.markdown(
+            f"""
+            <div class="portal-main-brand">
+                <div class="portal-main-logo">{logo_html()}</div>
+                <div class="portal-main-copy">
+                    <div class="portal-main-title">Indicadores Cambios y Muertos</div>
+                    <div class="portal-main-subtitle">Recuperación · Productividad · Conversión</div>
+                </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+    with c_user:
+        with st.popover(f"👤 {user_name}", use_container_width=True):
+            st.markdown(f"**Usuario:** {user_name}")
+            if nomina:
+                st.caption(f"Nómina: {nomina}")
+            st.caption(f"Permiso: {permiso}")
+            st.caption(f"Fecha: {now.strftime('%d/%m/%Y')}")
+            if st.button("Cerrar sesión", key="logout_top", use_container_width=True):
+                st.session_state.pop("user", None)
+                st.session_state.pop("nav_page", None)
+                st.rerun()
+        st.markdown(
+            f'<div class="portal-user-date">{now.strftime("%d/%m/%Y")} · {permiso}</div>',
+            unsafe_allow_html=True,
+        )
+
+    st.markdown('<div class="portal-pink-line"></div>', unsafe_allow_html=True)
 
 
-# ============================================================
-# ARCHIVOS Y CACHE
-# ============================================================
 def save_uploaded_file(uploaded):
     ACTIVE_FILE.write_bytes(uploaded.getbuffer())
     META_FILE.write_text(
@@ -2994,15 +3131,17 @@ def kpis(res):
     st.markdown(html, unsafe_allow_html=True)
 
 
-def combined_chart(df, title):
+def combined_chart(df, title, income_column="Total"):
     if df is None or df.empty:
         return
 
     chart_df = df.copy()
-    for c in ["Total", "Habilitadas", "Ubicadas"]:
+    for c in [income_column, "Habilitadas", "Ubicadas"]:
+        if c not in chart_df.columns:
+            chart_df[c] = 0
         chart_df[c] = pd.to_numeric(chart_df[c], errors="coerce").fillna(0)
 
-    raw_max = max(float(chart_df[c].max()) for c in ["Total", "Habilitadas", "Ubicadas"])
+    raw_max = max(float(chart_df[c].max()) for c in [income_column, "Habilitadas", "Ubicadas"])
     ymax = raw_max * 1.55 if raw_max > 0 else 10
     leader_gap = max(ymax * 0.075, 30)
 
@@ -3010,7 +3149,7 @@ def combined_chart(df, title):
 
     fig.add_trace(go.Scatter(
         x=chart_df["Tienda"],
-        y=chart_df["Total"],
+        y=chart_df[income_column],
         mode="lines+markers",
         name="Total ingresos",
         line=dict(color="#43A5FF", width=4),
@@ -3044,7 +3183,7 @@ def combined_chart(df, title):
 
     for tienda, total, habilitadas, ubicadas in zip(
         chart_df["Tienda"],
-        chart_df["Total"],
+        chart_df[income_column],
         chart_df["Habilitadas"],
         chart_df["Ubicadas"],
     ):
@@ -3640,23 +3779,15 @@ def generic_pdf_button(title, subtitle, df, kpi_values=None, file_name=None, key
 
 def login_sidebar():
     if "user" in st.session_state:
-        user = st.session_state.user
-        st.sidebar.markdown("## 🔐 Acceso")
-        st.sidebar.success(f"Sesión activa: {user['nombre']}")
-        st.sidebar.caption(f"Permiso: {user['permiso']}")
-        if st.sidebar.button("Cerrar sesión"):
-            del st.session_state["user"]
-            st.rerun()
         return True
 
     st.markdown(
         """
-        <div class="login-portal-shell">
-            <div class="login-portal-overlay"></div>
-            <div class="login-portal-brand">
+        <div class="login-fullscreen-bg">
+            <div class="login-brand-zone">
                 <div class="login-portal-logo">Price<br>Shoes</div>
-                <div class="login-portal-title">Portal Web</div>
-                <div class="login-portal-subtitle">Indicadores Operaciones Ropa</div>
+                <div class="login-portal-title">Operaciones Ropa</div>
+                <div class="login-portal-subtitle">Indicadores</div>
             </div>
         </div>
         """,
@@ -3664,14 +3795,28 @@ def login_sidebar():
     )
 
     with st.form("login_portal_form", clear_on_submit=False):
-        nom = st.text_input("Usuario o correo", key="login_user")
-        pwd = st.text_input("Contraseña", type="password", key="login_password")
-        submitted = st.form_submit_button("Iniciar sesión", type="primary", use_container_width=True)
+        nom = st.text_input(
+            "Usuario o correo",
+            key="login_user",
+            placeholder="Ingresa tu usuario o nómina",
+        )
+        pwd = st.text_input(
+            "Contraseña",
+            type="password",
+            key="login_password",
+            placeholder="Ingresa tu contraseña",
+        )
+        submitted = st.form_submit_button(
+            "Iniciar sesión",
+            type="primary",
+            use_container_width=True,
+        )
 
     if submitted:
         user = get_user(nom, pwd)
         if user:
             st.session_state.user = user
+            st.session_state["nav_page"] = "Resumen"
             st.rerun()
         else:
             st.error("Usuario o contraseña incorrectos.")
@@ -3739,27 +3884,87 @@ PAGES = [
 
 
 def nav_bar():
-    """Menú horizontal nativo de Streamlit.
-
-    Se usa st.radio para conservar la sesión. Los enlaces con query params
-    recargaban la aplicación y Safari solicitaba iniciar sesión nuevamente.
-    """
     current = st.session_state.get("nav_page", PAGES[0])
     if current not in PAGES:
         current = PAGES[0]
 
-    st.markdown(
-        '<div class="ps-carousel-title"><span>Desliza para cambiar reporte</span><span class="ps-carousel-arrow">↔</span></div>',
-        unsafe_allow_html=True,
-    )
-    selected = st.radio(
-        "Reportes",
-        PAGES,
-        index=PAGES.index(current),
-        horizontal=True,
-        label_visibility="collapsed",
-        key="nav_session_safe",
-    )
+    user = st.session_state.get("user", {})
+    permiso = user.get("permiso", "Consulta")
+
+    menu_col, admin_col = st.columns([7, 3], vertical_alignment="bottom")
+
+    with menu_col:
+        selected = st.selectbox(
+            "Indicador / reporte",
+            PAGES,
+            index=PAGES.index(current),
+            key="nav_portal_select",
+        )
+
+    with admin_col:
+        if permiso == "Administrador":
+            with st.popover("⚙️ Administración", use_container_width=True):
+                st.markdown("### Fuente de datos")
+                meta = {}
+                if META_FILE.exists():
+                    try:
+                        meta = json.loads(META_FILE.read_text(encoding="utf-8"))
+                    except Exception:
+                        meta = {}
+
+                if ACTIVE_FILE.exists():
+                    st.success("Archivo cargado")
+                    st.caption(meta.get("nombre_original", ACTIVE_FILE.name))
+                    if cache_valid():
+                        st.caption("Archivo procesado")
+                    else:
+                        st.warning("Pendiente de procesar")
+                else:
+                    st.warning("No hay archivo cargado")
+
+                up = st.file_uploader(
+                    "Cargar o reemplazar Excel",
+                    type=["xlsx"],
+                    key="upload_top_admin",
+                )
+                if up is not None and st.button(
+                    "Guardar archivo",
+                    type="primary",
+                    use_container_width=True,
+                    key="save_top_admin",
+                ):
+                    save_uploaded_file(up)
+                    st.success("Archivo guardado.")
+                    st.rerun()
+
+                if ACTIVE_FILE.exists() and not cache_valid():
+                    if st.button(
+                        "Procesar archivo activo",
+                        type="primary",
+                        use_container_width=True,
+                        key="process_top_admin",
+                    ):
+                        try:
+                            process_excel(str(ACTIVE_FILE))
+                            st.success("Archivo procesado correctamente.")
+                            st.rerun()
+                        except Exception as exc:
+                            st.error("No fue posible procesar el archivo.")
+                            st.exception(exc)
+
+                if ACTIVE_FILE.exists() and st.button(
+                    "Borrar archivo persistido",
+                    use_container_width=True,
+                    key="delete_top_admin",
+                ):
+                    delete_active_file()
+                    st.rerun()
+        else:
+            st.markdown(
+                '<div class="portal-readonly-badge">Modo consulta</div>',
+                unsafe_allow_html=True,
+            )
+
     st.session_state["nav_page"] = selected
     return selected
 
@@ -4009,7 +4214,7 @@ def page_por_dia(op, co):
     kpis(resumen)
     download_pdf_button("Descargar PDF", "Por Dia", f"Fecha: {pd.to_datetime(d_ts).strftime('%Y-%m-%d')}", resumen, df, key="pdf_por_dia")
     panel("Tabla por tienda - Por Día", df, height=360)
-    combined_chart(df, "Ingreso vs Habilitado vs Ubicado por tienda")
+    combined_chart(df, "Ingreso vs Habilitado vs Ubicado por tienda", income_column="Ingresos periodo")
 
 
 def page_semanal(op, co):
@@ -4078,7 +4283,7 @@ def page_mensual(op, co):
         key=f"pdf_mes_{m}",
     )
     panel(f"Tabla por tienda - Mes {m}", df, height=360)
-    combined_chart(df, f"Ingreso vs Habilitado vs Ubicado - Mes {m}")
+    combined_chart(df, f"Ingreso vs Habilitado vs Ubicado - Mes {m}", income_column="Ingresos periodo")
 
 
 def page_conversion(op, co):
@@ -4227,20 +4432,18 @@ def page_usuarios():
 # MAIN
 # ============================================================
 apply_styles()
-render_header()
 
 if not login_sidebar():
-    st.caption("Acceso exclusivo para usuarios autorizados de Price Shoes | Operaciones Ropa.")
     st.stop()
 
-sidebar_data_admin()
+render_header()
 
 if not ACTIVE_FILE.exists():
-    st.warning("Carga un archivo Excel desde el panel lateral para iniciar.")
+    st.warning("Carga un archivo Excel desde el menú **Administración** para iniciar.")
     st.stop()
 
 if not cache_valid():
-    st.warning("El archivo está cargado, pero aún no está procesado. Presiona **Procesar archivo activo** en el panel lateral.")
+    st.warning("El archivo está cargado, pero aún no está procesado. Abre **Administración** y presiona **Procesar archivo activo**.")
     st.stop()
 
 op_all, co_all, diag_df = read_cache(ACTIVE_FILE.stat().st_mtime)
