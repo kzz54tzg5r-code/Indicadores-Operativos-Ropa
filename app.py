@@ -54,7 +54,7 @@ for p in [DATA_DIR, UPLOAD_DIR, CACHE_DIR, CONFIG_DIR, ASSETS_DIR]:
     p.mkdir(parents=True, exist_ok=True)
 
 MX_TZ = ZoneInfo("America/Mexico_City")
-APP_CACHE_VERSION = "v11.8"
+APP_CACHE_VERSION = "v11.9"
 AZUL = "#10245F"
 ROSA = "#EC007C"
 LAVANDA = "#F3F6FB"
@@ -2004,6 +2004,94 @@ html, body, [data-testid="stAppViewContainer"] {{
     }}
 }}
 
+
+/* V11.9 — corrección de acceso, cabecera y administración */
+.login-brand-card {{
+    text-align: center;
+    color: #fff;
+    margin: 0 auto 18px;
+}}
+.login-real-logo {{
+    width: 180px;
+    margin: 0 auto 8px;
+}}
+.login-real-logo img {{
+    width: 100% !important;
+    max-height: 120px !important;
+    object-fit: contain !important;
+    filter: brightness(0) invert(1) !important;
+}}
+.login-portal-title {{
+    color: #fff !important;
+    font-size: 40px !important;
+    font-weight: 900 !important;
+    line-height: 1.05 !important;
+    margin-top: 8px !important;
+}}
+.login-portal-subtitle {{
+    color: #fff !important;
+    font-size: 24px !important;
+    font-weight: 800 !important;
+    margin-top: 4px !important;
+}}
+[data-testid="stForm"]:has(input[aria-label="Usuario o correo"]) {{
+    width: 100% !important;
+    max-width: 760px !important;
+    margin: 0 auto !important;
+    padding: 28px 38px 34px !important;
+    border-radius: 18px !important;
+    background: rgba(0,55,47,.94) !important;
+    border: 1px solid rgba(255,255,255,.20) !important;
+    box-shadow: 0 20px 55px rgba(0,0,0,.35) !important;
+}}
+[data-testid="stForm"]:has(input[aria-label="Usuario o correo"]) input {{
+    color: #111827 !important;
+    -webkit-text-fill-color: #111827 !important;
+    background: #fff !important;
+}}
+.portal-header-spacer {{
+    height: 28px;
+}}
+.portal-main-brand {{
+    padding-top: 12px !important;
+    padding-bottom: 12px !important;
+    overflow: visible !important;
+}}
+.portal-main-logo {{
+    background: transparent !important;
+    border: 0 !important;
+    overflow: visible !important;
+}}
+.portal-main-logo img {{
+    background: transparent !important;
+    mix-blend-mode: multiply !important;
+    object-fit: contain !important;
+}}
+.portal-main-title,
+.portal-main-subtitle {{
+    overflow: visible !important;
+}}
+[data-testid="stPopover"] button {{
+    min-height: 46px !important;
+}}
+@media (max-width:768px) {{
+    .login-real-logo {{
+        width: 135px;
+    }}
+    .login-portal-title {{
+        font-size: 30px !important;
+    }}
+    .login-portal-subtitle {{
+        font-size: 20px !important;
+    }}
+    [data-testid="stForm"]:has(input[aria-label="Usuario o correo"]) {{
+        padding: 22px 18px 26px !important;
+    }}
+    .portal-header-spacer {{
+        height: 16px;
+    }}
+}}
+
 </style>
 """,
         unsafe_allow_html=True,
@@ -2017,7 +2105,8 @@ def render_header():
     nomina = user.get("nomina", "")
     permiso = user.get("permiso", "Consulta")
 
-    c_brand, c_user = st.columns([7.5, 2.5], vertical_alignment="center")
+    st.markdown('<div class="portal-header-spacer"></div>', unsafe_allow_html=True)
+    c_brand, c_user = st.columns([7.4, 2.6], vertical_alignment="center")
 
     with c_brand:
         st.markdown(
@@ -3781,14 +3870,46 @@ def login_sidebar():
     if "user" in st.session_state:
         return True
 
+    # Ocultar elementos de Streamlit durante el acceso para que realmente
+    # ocupe toda la pantalla útil.
     st.markdown(
         """
-        <div class="login-fullscreen-bg">
-            <div class="login-brand-zone">
-                <div class="login-portal-logo">Price<br>Shoes</div>
-                <div class="login-portal-title">Operaciones Ropa</div>
-                <div class="login-portal-subtitle">Indicadores</div>
-            </div>
+        <style>
+        header[data-testid="stHeader"],
+        [data-testid="stToolbar"],
+        [data-testid="stDecoration"],
+        #MainMenu,
+        footer {
+            display: none !important;
+        }
+        [data-testid="stAppViewContainer"] {
+            background:
+                linear-gradient(rgba(0,27,28,.78), rgba(0,43,36,.92)),
+                radial-gradient(circle at 50% 18%, rgba(255,255,255,.10), transparent 34%),
+                linear-gradient(145deg,#061F29,#003D33) !important;
+        }
+        [data-testid="stMain"] {
+            min-height: 100vh !important;
+        }
+        .block-container {
+            max-width: 760px !important;
+            min-height: 100vh !important;
+            padding: 5vh 1rem 2rem !important;
+            display: flex !important;
+            flex-direction: column !important;
+            justify-content: center !important;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    st.markdown(
+        f"""
+        <div class="login-brand-card">
+            <div class="login-real-logo">{logo_html()}</div>
+            <div class="login-portal-title">Operaciones Ropa</div>
+            <div class="login-portal-subtitle">Indicadores</div>
         </div>
         """,
         unsafe_allow_html=True,
@@ -4438,8 +4559,12 @@ if not login_sidebar():
 
 render_header()
 
+# El menú siempre se muestra después de iniciar sesión. Así el administrador
+# puede cargar o procesar el archivo aunque todavía no exista caché.
+page = nav_bar()
+
 if not ACTIVE_FILE.exists():
-    st.warning("Carga un archivo Excel desde el menú **Administración** para iniciar.")
+    st.warning("Carga un archivo Excel desde **Administración** para iniciar.")
     st.stop()
 
 if not cache_valid():
@@ -4447,8 +4572,6 @@ if not cache_valid():
     st.stop()
 
 op_all, co_all, diag_df = read_cache(ACTIVE_FILE.stat().st_mtime)
-
-page = nav_bar()
 
 ROUTES = {
     "Resumen": lambda: page_resumen(op_all, co_all),
