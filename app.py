@@ -54,7 +54,7 @@ for p in [DATA_DIR, UPLOAD_DIR, CACHE_DIR, CONFIG_DIR, ASSETS_DIR]:
     p.mkdir(parents=True, exist_ok=True)
 
 MX_TZ = ZoneInfo("America/Mexico_City")
-APP_CACHE_VERSION = "v12.6"
+APP_CACHE_VERSION = "v12.7"
 AZUL = "#10245F"
 ROSA = "#EC007C"
 LAVANDA = "#F3F6FB"
@@ -353,6 +353,10 @@ def logo_html():
 # ============================================================
 # USUARIOS
 # ============================================================
+def normalize_permission(value):
+    return "Administrador" if str(value).strip() == "Administrador" else "Consulta"
+
+
 def init_db():
     con = sqlite3.connect(DB_FILE)
     cur = con.cursor()
@@ -374,6 +378,8 @@ def init_db():
             "INSERT INTO usuarios VALUES (?,?,?,?,?,?)",
             ("admin", "Administrador", "Administrador", hash_password("admin123"), 1, datetime.now(MX_TZ).isoformat()),
         )
+    # Cualquier permiso histórico distinto de Administrador se convierte en Consulta.
+    cur.execute("UPDATE usuarios SET permiso='Consulta' WHERE permiso <> 'Administrador'")
     con.commit()
     con.close()
 
@@ -381,15 +387,19 @@ def init_db():
 def get_user(nomina, password):
     con = sqlite3.connect(DB_FILE)
     cur = con.cursor()
-    cur.execute("SELECT nomina,nombre,permiso FROM usuarios WHERE nomina=? AND password_hash=? AND activo=1", (nomina, hash_password(password)))
+    cur.execute(
+        "SELECT nomina,nombre,permiso FROM usuarios WHERE nomina=? AND password_hash=? AND activo=1",
+        (nomina, hash_password(password)),
+    )
     row = cur.fetchone()
     con.close()
     if not row:
         return None
-    return {"nomina": row[0], "nombre": row[1], "permiso": row[2]}
+    return {"nomina": row[0], "nombre": row[1], "permiso": normalize_permission(row[2])}
 
 
 def upsert_user(nomina, nombre, permiso, password):
+    permiso = normalize_permission(permiso)
     con = sqlite3.connect(DB_FILE)
     cur = con.cursor()
     cur.execute(
@@ -406,7 +416,6 @@ def upsert_user(nomina, nombre, permiso, password):
     )
     con.commit()
     con.close()
-
 
 def delete_user(nomina):
     if nomina == "admin":
@@ -2596,6 +2605,24 @@ div[data-testid="column"]:last-child [data-testid="stPopover"] button p {{
     }}
 }}
 
+
+/* V12.7 — administración modal y permisos simplificados */
+.st-key-app_admin_menu [data-testid="stPopover"] [data-testid="stPopoverBody"] button {{
+    width: 100% !important;
+    justify-content: flex-start !important;
+    white-space: nowrap !important;
+}}
+[data-testid="stDialog"] [data-testid="stFileUploader"] {{
+    border: 1px dashed #9AA9C2 !important;
+    border-radius: 12px !important;
+    padding: 12px !important;
+    background: #F7F9FC !important;
+}}
+[data-testid="stDialog"] h2,
+[data-testid="stDialog"] h3 {{
+    color: var(--portal-blue) !important;
+}}
+
 </style>
 """,
         unsafe_allow_html=True,
@@ -2713,6 +2740,30 @@ def render_header():
     st.markdown('<div class="ps-module-pinkline"></div>', unsafe_allow_html=True)
 
 
+def read_file_history():
+    if not FILE_HISTORY.exists():
+        return []
+    try:
+        data = json.loads(FILE_HISTORY.read_text(encoding="utf-8"))
+        return data if isinstance(data, list) else []
+    except Exception:
+        return []
+
+
+def append_file_history(action, filename="", status="", details=""):
+    user = st.session_state.get("user", {})
+    rows = read_file_history()
+    rows.insert(0, {
+        "Fecha": datetime.now(MX_TZ).strftime("%Y-%m-%d %H:%M:%S"),
+        "Usuario": user.get("nombre", user.get("nomina", "Sistema")),
+        "Acción": action,
+        "Archivo": filename,
+        "Estado": status,
+        "Detalle": details,
+    })
+    FILE_HISTORY.write_text(json.dumps(rows[:100], ensure_ascii=False, indent=2), encoding="utf-8")
+
+
 def save_uploaded_file(uploaded):
     ACTIVE_FILE.write_bytes(uploaded.getbuffer())
     META_FILE.write_text(
@@ -2728,6 +2779,7 @@ def save_uploaded_file(uploaded):
         encoding="utf-8",
     )
     clear_cache_files()
+    append_file_history("Carga", uploaded.name, "Guardado", "Pendiente de procesar")
 
 
 def clear_cache_files():
@@ -2740,6 +2792,13 @@ def clear_cache_files():
 
 
 def delete_active_file():
+    filename = ACTIVE_FILE.name
+    if META_FILE.exists():
+        try:
+            filename = json.loads(META_FILE.read_text(encoding="utf-8")).get("nombre_original", filename)
+        except Exception:
+            pass
+    append_file_history("Eliminación", filename, "Eliminado", "Archivo activo y caché eliminados")
     if ACTIVE_FILE.exists():
         ACTIVE_FILE.unlink()
     if META_FILE.exists():
@@ -3290,6 +3349,13 @@ def process_excel(file_path):
     co = normalize_commercial_df(co)
     write_cache(op, co, diag)
     progress.progress(1.0, text="Archivo procesado correctamente.")
+    filename = ACTIVE_FILE.name
+    if META_FILE.exists():
+        try:
+            filename = json.loads(META_FILE.read_text(encoding="utf-8")).get("nombre_original", filename)
+        except Exception:
+            pass
+    append_file_history("Procesamiento", filename, "Procesado", f"Operación: {len(op):,} registros | Comercial: {len(co):,} registros")
     op = normalize_operation_df(op)
     co = normalize_commercial_df(co)
     return op, co, diag
@@ -4571,6 +4637,102 @@ def sidebar_data_admin():
     )
 
 
+@st.dialog("Administración · Cambios y Muertos", width="large")
+def file_admin_dialog(action="status"):
+    if st.session_state.get("user", {}).get("permiso") != "Administrador":
+        st.error("Acceso exclusivo para Administrador.")
+        return
+
+    meta = {}
+    if META_FILE.exists():
+        try:
+            meta = json.loads(META_FILE.read_text(encoding="utf-8"))
+        except Exception:
+            meta = {}
+
+    filename = meta.get("nombre_original", ACTIVE_FILE.name if ACTIVE_FILE.exists() else "")
+    loaded = ACTIVE_FILE.exists()
+    processed = cache_valid() if loaded else False
+
+    if action in {"upload", "replace"}:
+        st.subheader("Cargar o reemplazar archivo")
+        st.caption("Selecciona el archivo Excel que alimentará Cambios y Muertos.")
+        uploaded = st.file_uploader(
+            "Archivo Excel",
+            type=["xlsx"],
+            key="dialog_excel_upload_v127",
+        )
+        c1, c2 = st.columns(2)
+        with c1:
+            if st.button("Solo guardar", use_container_width=True, disabled=uploaded is None):
+                save_uploaded_file(uploaded)
+                st.success("Archivo guardado. Quedó pendiente de procesar.")
+                st.session_state["file_admin_action"] = "status"
+                st.rerun()
+        with c2:
+            if st.button("Guardar y procesar", type="primary", use_container_width=True, disabled=uploaded is None):
+                try:
+                    save_uploaded_file(uploaded)
+                    process_excel(str(ACTIVE_FILE))
+                    st.success("Archivo cargado y procesado correctamente.")
+                    st.session_state["file_admin_action"] = None
+                    st.rerun()
+                except Exception as exc:
+                    st.error("No fue posible procesar el archivo.")
+                    st.exception(exc)
+
+    elif action == "process":
+        st.subheader("Procesar archivo")
+        if not loaded:
+            st.warning("Primero debes cargar un archivo.")
+        else:
+            st.info(f"Archivo activo: **{filename}**")
+            if st.button("Procesar ahora", type="primary", use_container_width=True):
+                try:
+                    process_excel(str(ACTIVE_FILE))
+                    st.success("Archivo procesado correctamente.")
+                    st.session_state["file_admin_action"] = None
+                    st.rerun()
+                except Exception as exc:
+                    st.error("No fue posible procesar el archivo.")
+                    st.exception(exc)
+
+    elif action == "history":
+        st.subheader("Historial de archivos")
+        rows = read_file_history()
+        if rows:
+            st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True, height=360)
+        else:
+            st.info("Todavía no hay movimientos registrados.")
+
+    elif action == "delete":
+        st.subheader("Eliminar archivo activo")
+        if not loaded:
+            st.info("No hay archivo activo.")
+        else:
+            st.warning(f"Se eliminará **{filename}** y su caché procesado.")
+            confirm = st.checkbox("Confirmo que deseo eliminarlo", key="confirm_delete_v127")
+            if st.button("Eliminar definitivamente", type="primary", use_container_width=True, disabled=not confirm):
+                delete_active_file()
+                st.session_state["file_admin_action"] = None
+                st.rerun()
+
+    else:
+        st.subheader("Estado de la fuente de datos")
+        if not loaded:
+            st.warning("No hay archivo cargado.")
+        else:
+            st.success("Archivo activo")
+            st.write(f"**Nombre:** {filename}")
+            st.write(f"**Fecha de carga:** {meta.get('fecha_carga', '—')}")
+            st.write(f"**Estado:** {'Procesado' if processed else 'Pendiente de procesar'}")
+            st.write(f"**Tamaño:** {ACTIVE_FILE.stat().st_size / (1024*1024):.1f} MB")
+
+    if st.button("Cerrar", use_container_width=True, key=f"close_admin_dialog_{action}"):
+        st.session_state["file_admin_action"] = None
+        st.rerun()
+
+
 def render_app_portal():
     user = st.session_state.get("user", {})
     permiso = user.get("permiso", "Consulta")
@@ -4622,65 +4784,21 @@ def render_app_portal():
                     if permiso == "Administrador":
                         with st.container(key="app_admin_menu"):
                             with st.popover("⋮", use_container_width=False):
-                                st.markdown("### Cambios y Muertos")
-                                st.caption("Administración de la fuente de datos")
-
-                                meta = {}
-                                if META_FILE.exists():
-                                    try:
-                                        meta = json.loads(META_FILE.read_text(encoding="utf-8"))
-                                    except Exception:
-                                        meta = {}
-
-                                if ACTIVE_FILE.exists():
-                                    st.success("Archivo cargado")
-                                    st.caption(meta.get("nombre_original", ACTIVE_FILE.name))
-                                    st.caption(meta.get("fecha_carga", ""))
-                                    st.caption(
-                                        "Estado: procesado"
-                                        if cache_valid()
-                                        else "Estado: pendiente de procesar"
-                                    )
-                                else:
-                                    st.warning("No hay archivo cargado")
-
-                                up = st.file_uploader(
-                                    "Cargar o reemplazar Excel",
-                                    type=["xlsx"],
-                                    key="portal_upload_excel_v125",
-                                )
-
-                                if up is not None and st.button(
-                                    "Guardar archivo",
-                                    key="portal_save_excel_v125",
-                                    type="primary",
-                                    use_container_width=True,
-                                ):
-                                    save_uploaded_file(up)
-                                    st.success("Archivo guardado. Ahora procesa el archivo.")
+                                st.markdown("### Administración")
+                                if st.button("📂 Cargar / cambiar archivo", use_container_width=True, key="menu_upload_v127"):
+                                    st.session_state["file_admin_action"] = "upload"
                                     st.rerun()
-
-                                if ACTIVE_FILE.exists() and not cache_valid():
-                                    if st.button(
-                                        "Procesar archivo activo",
-                                        key="portal_process_excel_v125",
-                                        type="primary",
-                                        use_container_width=True,
-                                    ):
-                                        try:
-                                            process_excel(str(ACTIVE_FILE))
-                                            st.success("Archivo procesado correctamente.")
-                                            st.rerun()
-                                        except Exception as exc:
-                                            st.error("No fue posible procesar el archivo.")
-                                            st.exception(exc)
-
-                                if ACTIVE_FILE.exists() and st.button(
-                                    "Borrar archivo persistido",
-                                    key="portal_delete_excel_v125",
-                                    use_container_width=True,
-                                ):
-                                    delete_active_file()
+                                if st.button("⚙️ Procesar archivo", use_container_width=True, key="menu_process_v127"):
+                                    st.session_state["file_admin_action"] = "process"
+                                    st.rerun()
+                                if st.button("🕘 Historial", use_container_width=True, key="menu_history_v127"):
+                                    st.session_state["file_admin_action"] = "history"
+                                    st.rerun()
+                                if st.button("ℹ️ Información", use_container_width=True, key="menu_info_v127"):
+                                    st.session_state["file_admin_action"] = "status"
+                                    st.rerun()
+                                if st.button("🗑️ Eliminar archivo", use_container_width=True, key="menu_delete_v127"):
+                                    st.session_state["file_admin_action"] = "delete"
                                     st.rerun()
 
                     if st.button(
@@ -4705,16 +4823,18 @@ def render_app_portal():
         else:
             st.info("No se encontraron aplicativos con ese criterio.")
 
+    action = st.session_state.get("file_admin_action")
+    if action:
+        file_admin_dialog(action)
 
 def nav_bar():
-    # Lista local de respaldo: evita NameError aunque Streamlit conserve una
-    # versión parcial del módulo durante un reinicio.
-    pages = globals().get("REPORT_PAGES") or globals().get("PAGES") or [
+    base_pages = [
         "Resumen", "Por Día", "Reporte Semanal", "Reporte Mensual",
         "Conversión", "Recuperación Económica", "Productividad",
-        "Recorridos", "Ranking", "Macro", "Diagnóstico",
-        "Configuración", "Usuarios",
+        "Recorridos", "Ranking", "Macro",
     ]
+    permiso = st.session_state.get("user", {}).get("permiso", "Consulta")
+    pages = base_pages + (["Diagnóstico", "Configuración", "Usuarios"] if permiso == "Administrador" else [])
 
     current = st.session_state.get("nav_page", pages[0])
     if current not in pages:
@@ -4726,11 +4846,10 @@ def nav_bar():
         index=pages.index(current),
         horizontal=True,
         label_visibility="collapsed",
-        key="nav_v123_tabs",
+        key="nav_v127_tabs",
     )
     st.session_state["nav_page"] = selected
     return selected
-
 
 
 def reliable_data_horizon(op, co):

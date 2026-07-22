@@ -1,10 +1,11 @@
-# Indicadores Cambios y Muertos v12.6
+# Indicadores Cambios y Muertos v12.7
 
-Correcciones:
-- Solo se amplió el icono de Cambios y Muertos.
-- El título y subtítulo de la tarjeta regresaron a un tamaño normal.
-- Se eliminó la distorsión producida por la regla CSS `first-line`.
-- El nombre del usuario ahora permanece en una sola línea.
-- Se amplió la columna del usuario y se añadió elipsis únicamente si el nombre es demasiado largo.
-- Se conserva el menú de tres puntos en la esquina superior derecha.
-- El logo Price Shoes continúa funcionando como botón para volver al portal.
+Cambios principales:
+- Solo existen los permisos Administrador y Consulta.
+- Los permisos históricos distintos de Administrador se convierten automáticamente en Consulta.
+- Consulta no ve Diagnóstico, Configuración ni Usuarios.
+- El menú de tres puntos abre acciones administrativas estables.
+- La carga del Excel se realiza en una ventana modal, no dentro del popover.
+- Opciones: cargar/cambiar, procesar, historial, información y eliminar.
+- Se puede guardar el archivo o guardarlo y procesarlo en un solo paso.
+- Se registra historial de cargas, procesamientos y eliminaciones.
