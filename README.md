@@ -1,3 +1,8 @@
-# v11.6
+# v11.7
 
-Se reemplazó el carrusel dentro de iframe por enlaces HTML clicables en el DOM principal. Esto corrige Safari móvil, donde las pestañas no respondían al toque.
+- Login tipo Portal Web inspirado en la referencia.
+- Menú nativo de Streamlit: conserva la sesión al cambiar de pestaña.
+- Carrusel horizontal en móvil y barra horizontal en PC.
+- PDF: agrega “Indicadores Cambios y Muertos” con tipografía Helvetica, igual a la fecha.
+
+No es necesario reprocesar el Excel.

@@ -54,7 +54,7 @@ for p in [DATA_DIR, UPLOAD_DIR, CACHE_DIR, CONFIG_DIR, ASSETS_DIR]:
     p.mkdir(parents=True, exist_ok=True)
 
 MX_TZ = ZoneInfo("America/Mexico_City")
-APP_CACHE_VERSION = "v11.6"
+APP_CACHE_VERSION = "v11.7"
 AZUL = "#10245F"
 ROSA = "#EC007C"
 LAVANDA = "#F3F6FB"
@@ -1715,6 +1715,172 @@ html, body, [data-testid="stAppViewContainer"] {{
   }}
 }}
 
+
+/* V11.7 — MENÚ NATIVO SIN PÉRDIDA DE SESIÓN */
+.ps-carousel-title {{
+    display:none;
+}}
+.st-key-nav_session_safe {{
+    width: calc(100% + 3.2rem) !important;
+    margin-left: -1.6rem !important;
+    margin-right: -1.6rem !important;
+    margin-bottom: 22px !important;
+    padding: 0 1.6rem !important;
+    background: var(--azul) !important;
+    border-top: 4px solid var(--rosa) !important;
+    overflow-x: auto !important;
+    overflow-y: hidden !important;
+    -webkit-overflow-scrolling: touch !important;
+    scrollbar-width: none !important;
+}}
+.st-key-nav_session_safe::-webkit-scrollbar {{ display:none !important; }}
+.st-key-nav_session_safe [role="radiogroup"] {{
+    display:flex !important;
+    flex-flow:row nowrap !important;
+    width:max-content !important;
+    min-width:100% !important;
+    gap:0 !important;
+}}
+.st-key-nav_session_safe label {{
+    flex:0 0 auto !important;
+    min-width:max-content !important;
+    min-height:58px !important;
+    padding:0 18px !important;
+    display:flex !important;
+    align-items:center !important;
+    justify-content:center !important;
+    white-space:nowrap !important;
+    color:rgba(255,255,255,.78) !important;
+    background:transparent !important;
+    border-radius:0 !important;
+    font-weight:850 !important;
+}}
+.st-key-nav_session_safe label:has(input:checked) {{
+    color:#fff !important;
+    background:#142E73 !important;
+    box-shadow:inset 0 -5px 0 var(--rosa) !important;
+}}
+.st-key-nav_session_safe label * {{ color:inherit !important; font-weight:inherit !important; }}
+.st-key-nav_session_safe input,
+.st-key-nav_session_safe [data-baseweb="radio"] > div:first-child {{
+    position:absolute !important;
+    opacity:0 !important;
+    width:1px !important;
+    height:1px !important;
+}}
+
+/* PORTAL DE ACCESO ESTILO PRICE SHOES */
+[data-testid="stSidebar"]:has(.login-portal-shell) {{ display:none !important; }}
+.login-portal-shell {{
+    position:relative;
+    max-width:760px;
+    min-height:290px;
+    margin:50px auto 0;
+    border-radius:24px 24px 0 0;
+    overflow:hidden;
+    background:
+      linear-gradient(rgba(3,25,20,.78),rgba(3,25,20,.86)),
+      radial-gradient(circle at 50% 15%,rgba(236,0,126,.20),transparent 38%),
+      linear-gradient(135deg,#10245F,#063A2D);
+    box-shadow:0 20px 55px rgba(16,36,95,.20);
+}}
+.login-portal-brand {{
+    position:relative;
+    z-index:2;
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    padding:44px 20px 28px;
+    color:#fff;
+}}
+.login-portal-logo {{
+    width:150px;
+    height:92px;
+    border:3px solid #fff;
+    border-radius:50%;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    text-align:center;
+    font-family:Georgia,serif;
+    font-size:34px;
+    line-height:.72;
+    font-weight:900;
+    text-shadow:0 2px 5px rgba(0,0,0,.45);
+}}
+.login-portal-title {{ margin-top:18px; font-size:30px; font-weight:900; }}
+.login-portal-subtitle {{ margin-top:5px; font-size:13px; opacity:.8; }}
+[data-testid="stForm"]:has(input[aria-label="Usuario o correo"]) {{
+    max-width:760px;
+    margin:0 auto 40px;
+    padding:0 150px 36px;
+    background:#08251F;
+    border-radius:0 0 24px 24px;
+    border:0 !important;
+    box-shadow:0 20px 55px rgba(16,36,95,.20);
+}}
+[data-testid="stForm"]:has(input[aria-label="Usuario o correo"]) label {{ color:#fff !important; }}
+[data-testid="stForm"]:has(input[aria-label="Usuario o correo"]) input {{
+    color:#fff !important;
+    background:transparent !important;
+    border:0 !important;
+    border-bottom:1px solid rgba(255,255,255,.7) !important;
+    border-radius:0 !important;
+}}
+[data-testid="stForm"]:has(input[aria-label="Usuario o correo"]) button {{
+    margin-top:12px !important;
+    background:var(--rosa) !important;
+    color:#fff !important;
+    border-radius:0 !important;
+    min-height:52px !important;
+    font-weight:900 !important;
+}}
+@media(max-width:768px) {{
+    .ps-carousel-title {{
+        display:flex;
+        align-items:center;
+        justify-content:space-between;
+        margin:8px 2px 7px;
+        color:#5B6476;
+        font-size:12px;
+        font-weight:850;
+    }}
+    .ps-carousel-arrow {{ color:var(--rosa); font-size:18px; }}
+    .st-key-nav_session_safe {{
+        width:calc(100% + 1rem) !important;
+        margin-left:-.5rem !important;
+        margin-right:-.5rem !important;
+        padding:10px 0 12px !important;
+        background:linear-gradient(135deg,#111A55,#24126E 55%,#3B146E) !important;
+        scroll-snap-type:x proximity !important;
+    }}
+    .st-key-nav_session_safe [role="radiogroup"] {{ gap:10px !important; padding:0 14px !important; min-width:max-content !important; }}
+    .st-key-nav_session_safe label {{
+        min-width:154px !important;
+        width:154px !important;
+        min-height:58px !important;
+        border:1px solid rgba(255,255,255,.22) !important;
+        border-radius:14px !important;
+        background:rgba(255,255,255,.09) !important;
+        color:rgba(255,255,255,.8) !important;
+        scroll-snap-align:center !important;
+    }}
+    .st-key-nav_session_safe label:has(input:checked) {{
+        background:#fff !important;
+        color:var(--azul) !important;
+        border-color:#fff !important;
+        box-shadow:0 7px 18px rgba(0,0,0,.22), inset 0 -5px 0 var(--rosa) !important;
+    }}
+    .login-portal-shell {{ margin:20px auto 0; min-height:230px; border-radius:18px 18px 0 0; }}
+    .login-portal-brand {{ padding:28px 14px 22px; }}
+    .login-portal-logo {{ width:118px; height:72px; font-size:27px; }}
+    .login-portal-title {{ font-size:25px; }}
+    [data-testid="stForm"]:has(input[aria-label="Usuario o correo"]) {{
+        padding:0 24px 28px;
+        border-radius:0 0 18px 18px;
+    }}
+}}
+
 </style>
 """,
         unsafe_allow_html=True,
@@ -3200,9 +3366,10 @@ def build_pdf_report(title, subtitle, kpi_values, df):
     logo_path = ASSETS_DIR / "price_shoes_logo.png"
     logo = RLImage(str(logo_path), width=58, height=34) if logo_path.exists() else Paragraph("<b>Price Shoes</b>", styles["Normal"])
     title_block = Paragraph(
-        f"<font color='#1D1259' size='17'><b>{title}</b></font><br/>"
-        f"<font color='#5B6476' size='8'>{subtitle}</font>",
-        ParagraphStyle("pdf_header", parent=styles["Normal"], leading=18),
+        f"<font name='Helvetica-Bold' color='#1D1259' size='13'>Indicadores Cambios y Muertos</font><br/>"
+        f"<font name='Helvetica-Bold' color='#1D1259' size='10'>{title}</font>"
+        f"<font name='Helvetica' color='#5B6476' size='8'> | {subtitle}</font>",
+        ParagraphStyle("pdf_header", parent=styles["Normal"], leading=14),
     )
     header = Table([[logo, title_block]], colWidths=[72, 650], rowHeights=[40])
     header.setStyle(TableStyle([
@@ -3342,9 +3509,10 @@ def build_generic_table_pdf(title, subtitle, df, kpi_values=None):
     logo_path = ASSETS_DIR / "price_shoes_logo.png"
     logo = RLImage(str(logo_path), width=58, height=34) if logo_path.exists() else Paragraph("<b>Price Shoes</b>", styles["Normal"])
     header_text = Paragraph(
-        f"<font color='#1D1259' size='17'><b>{title}</b></font><br/>"
-        f"<font color='#5B6476' size='8'>{subtitle}</font>",
-        ParagraphStyle("generic_header", parent=styles["Normal"], leading=18),
+        f"<font name='Helvetica-Bold' color='#1D1259' size='13'>Indicadores Cambios y Muertos</font><br/>"
+        f"<font name='Helvetica-Bold' color='#1D1259' size='10'>{title}</font>"
+        f"<font name='Helvetica' color='#5B6476' size='8'> | {subtitle}</font>",
+        ParagraphStyle("generic_header", parent=styles["Normal"], leading=14),
     )
     header = Table([[logo, header_text]], colWidths=[72, 650], rowHeights=[40])
     header.setStyle(TableStyle([
@@ -3471,9 +3639,9 @@ def generic_pdf_button(title, subtitle, df, kpi_values=None, file_name=None, key
     )
 
 def login_sidebar():
-    st.sidebar.markdown("## 🔐 Acceso")
     if "user" in st.session_state:
         user = st.session_state.user
+        st.sidebar.markdown("## 🔐 Acceso")
         st.sidebar.success(f"Sesión activa: {user['nombre']}")
         st.sidebar.caption(f"Permiso: {user['permiso']}")
         if st.sidebar.button("Cerrar sesión"):
@@ -3481,16 +3649,32 @@ def login_sidebar():
             st.rerun()
         return True
 
-    st.sidebar.info("Para visualizar la información, inicia sesión con un usuario autorizado.")
-    nom = st.sidebar.text_input("Nómina / Usuario")
-    pwd = st.sidebar.text_input("Contraseña", type="password")
-    if st.sidebar.button("Iniciar sesión", type="primary", width="stretch"):
+    st.markdown(
+        """
+        <div class="login-portal-shell">
+            <div class="login-portal-overlay"></div>
+            <div class="login-portal-brand">
+                <div class="login-portal-logo">Price<br>Shoes</div>
+                <div class="login-portal-title">Portal Web</div>
+                <div class="login-portal-subtitle">Indicadores Operaciones Ropa</div>
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    with st.form("login_portal_form", clear_on_submit=False):
+        nom = st.text_input("Usuario o correo", key="login_user")
+        pwd = st.text_input("Contraseña", type="password", key="login_password")
+        submitted = st.form_submit_button("Iniciar sesión", type="primary", use_container_width=True)
+
+    if submitted:
         user = get_user(nom, pwd)
         if user:
             st.session_state.user = user
             st.rerun()
         else:
-            st.sidebar.error("Usuario o contraseña incorrectos.")
+            st.error("Usuario o contraseña incorrectos.")
     return False
 
 
@@ -3555,40 +3739,29 @@ PAGES = [
 
 
 def nav_bar():
-    """Carrusel horizontal clicable sin iframe."""
-    raw_page = st.query_params.get("report", "")
-    if isinstance(raw_page, list):
-        raw_page = raw_page[0] if raw_page else ""
-    page = raw_page if raw_page in PAGES else st.session_state.get("nav_page", PAGES[0])
-    if page not in PAGES:
-        page = PAGES[0]
-    st.session_state["nav_page"] = page
+    """Menú horizontal nativo de Streamlit.
 
-    items = []
-    for item in PAGES:
-        active = " active" if item == page else ""
-        href = f"?report={quote(item)}"
-        items.append(
-            f'<a class="ps-carousel-card{active}" href="{href}" target="_self">{item}</a>'
-        )
+    Se usa st.radio para conservar la sesión. Los enlaces con query params
+    recargaban la aplicación y Safari solicitaba iniciar sesión nuevamente.
+    """
+    current = st.session_state.get("nav_page", PAGES[0])
+    if current not in PAGES:
+        current = PAGES[0]
 
     st.markdown(
-        """
-        <div class="ps-carousel-title">
-            <span>Desliza para cambiar reporte</span>
-            <span class="ps-carousel-arrow">↔</span>
-        </div>
-        <nav class="ps-carousel-shell" aria-label="Reportes">
-            <div class="ps-carousel-track">
-        """
-        + "".join(items)
-        + """
-            </div>
-        </nav>
-        """,
+        '<div class="ps-carousel-title"><span>Desliza para cambiar reporte</span><span class="ps-carousel-arrow">↔</span></div>',
         unsafe_allow_html=True,
     )
-    return page
+    selected = st.radio(
+        "Reportes",
+        PAGES,
+        index=PAGES.index(current),
+        horizontal=True,
+        label_visibility="collapsed",
+        key="nav_session_safe",
+    )
+    st.session_state["nav_page"] = selected
+    return selected
 
 
 def reliable_data_horizon(op, co):
@@ -4057,18 +4230,7 @@ apply_styles()
 render_header()
 
 if not login_sidebar():
-    st.markdown(
-        """
-<div style="max-width:760px;margin:70px auto;background:#FFF;border-radius:24px;padding:42px;border:1px solid #DDE4F0;box-shadow:0 16px 44px rgba(16,36,95,.08);">
-<h1 style="color:#1D1259;margin-top:0;">Acceso al Sistema</h1>
-<p style="font-size:18px;color:#5B6476;">Indicadores Operaciones Ropa</p>
-<div style="background:#EAF1FF;border:1px solid #D6E4FF;border-radius:16px;padding:22px;color:#10245F;font-weight:800;font-size:18px;">
-Para visualizar la información, inicia sesión con un usuario autorizado. Si aún no cuentas con acceso, solicita al Administrador del sistema la creación de tu usuario.
-</div>
-</div>
-""",
-        unsafe_allow_html=True,
-    )
+    st.caption("Acceso exclusivo para usuarios autorizados de Price Shoes | Operaciones Ropa.")
     st.stop()
 
 sidebar_data_admin()
