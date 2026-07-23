@@ -56,7 +56,7 @@ for p in [DATA_DIR, UPLOAD_DIR, CACHE_DIR, CONFIG_DIR, ASSETS_DIR]:
     p.mkdir(parents=True, exist_ok=True)
 
 MX_TZ = ZoneInfo("America/Mexico_City")
-APP_CACHE_VERSION = "v12.7"
+APP_CACHE_VERSION = "v12.8"
 AZUL = "#10245F"
 ROSA = "#EC007C"
 LAVANDA = "#F3F6FB"
@@ -2598,6 +2598,19 @@ div[data-testid="column"]:last-child [data-testid="stPopover"] button p {{
     }}
 }}
 
+
+/* V12.8 — diálogo modal para administración de archivos */
+div[data-testid="stDialog"] [data-testid="stFileUploader"] {{
+    margin-top: 12px !important;
+}}
+div[data-testid="stDialog"] [data-testid="stAlert"] {{
+    margin-bottom: 12px !important;
+}}
+div[data-testid="stDialog"] button[kind="primary"] {{
+    background: var(--portal-pink) !important;
+    border-color: var(--portal-pink) !important;
+}}
+
 </style>
 """,
         unsafe_allow_html=True,
@@ -4573,6 +4586,102 @@ def sidebar_data_admin():
     )
 
 
+@st.dialog("Administración de Cambios y Muertos", width="large")
+def file_admin_dialog():
+    """Carga, procesa, reemplaza o elimina el archivo desde una ventana modal."""
+    meta = {}
+    if META_FILE.exists():
+        try:
+            meta = json.loads(META_FILE.read_text(encoding="utf-8"))
+        except Exception:
+            meta = {}
+
+    if ACTIVE_FILE.exists():
+        st.success("Archivo activo")
+        st.write(f"**Nombre:** {meta.get('nombre_original', ACTIVE_FILE.name)}")
+        if meta.get("fecha_carga"):
+            st.caption(f"Cargado: {meta.get('fecha_carga')}")
+        if cache_valid():
+            st.caption("Estado: Procesado")
+        else:
+            st.warning("Estado: Pendiente de procesar")
+    else:
+        st.warning("No hay archivo cargado")
+
+    uploaded = st.file_uploader(
+        "Selecciona un archivo Excel",
+        type=["xlsx"],
+        key="modal_upload_excel_v128",
+        help="El archivo sustituirá al archivo activo cuando confirmes la carga.",
+    )
+
+    col_cancel, col_action = st.columns(2)
+
+    with col_cancel:
+        if st.button("Cerrar", key="modal_close_v128", use_container_width=True):
+            st.rerun()
+
+    with col_action:
+        if uploaded is not None:
+            if st.button(
+                "Guardar y procesar",
+                key="modal_save_process_v128",
+                type="primary",
+                use_container_width=True,
+            ):
+                try:
+                    save_uploaded_file(uploaded)
+                    process_excel(str(ACTIVE_FILE))
+                    append_file_history(
+                        "Carga",
+                        uploaded.name,
+                        "Procesado",
+                        "Archivo guardado y procesado correctamente",
+                    )
+                    st.success("Archivo guardado y procesado correctamente.")
+                    st.rerun()
+                except Exception as exc:
+                    st.error("No fue posible procesar el archivo.")
+                    st.exception(exc)
+        elif ACTIVE_FILE.exists() and not cache_valid():
+            if st.button(
+                "Procesar archivo activo",
+                key="modal_process_active_v128",
+                type="primary",
+                use_container_width=True,
+            ):
+                try:
+                    process_excel(str(ACTIVE_FILE))
+                    append_file_history(
+                        "Proceso",
+                        meta.get("nombre_original", ACTIVE_FILE.name),
+                        "Procesado",
+                        "Archivo activo procesado correctamente",
+                    )
+                    st.success("Archivo procesado correctamente.")
+                    st.rerun()
+                except Exception as exc:
+                    st.error("No fue posible procesar el archivo.")
+                    st.exception(exc)
+
+    if ACTIVE_FILE.exists():
+        st.divider()
+        if st.button(
+            "Eliminar archivo activo",
+            key="modal_delete_active_v128",
+            use_container_width=True,
+        ):
+            file_name = meta.get("nombre_original", ACTIVE_FILE.name)
+            delete_active_file()
+            append_file_history(
+                "Eliminación",
+                file_name,
+                "Eliminado",
+                "Archivo activo eliminado",
+            )
+            st.success("Archivo eliminado.")
+            st.rerun()
+
 def render_app_portal():
     user = st.session_state.get("user", {})
     permiso = user.get("permiso", "Consulta")
@@ -4627,63 +4736,22 @@ def render_app_portal():
                                 st.markdown("### Cambios y Muertos")
                                 st.caption("Administración de la fuente de datos")
 
-                                meta = {}
-                                if META_FILE.exists():
-                                    try:
-                                        meta = json.loads(META_FILE.read_text(encoding="utf-8"))
-                                    except Exception:
-                                        meta = {}
-
                                 if ACTIVE_FILE.exists():
-                                    st.success("Archivo cargado")
-                                    st.caption(meta.get("nombre_original", ACTIVE_FILE.name))
-                                    st.caption(meta.get("fecha_carga", ""))
                                     st.caption(
-                                        "Estado: procesado"
+                                        "Archivo procesado"
                                         if cache_valid()
-                                        else "Estado: pendiente de procesar"
+                                        else "Archivo pendiente de procesar"
                                     )
                                 else:
-                                    st.warning("No hay archivo cargado")
+                                    st.caption("Sin archivo cargado")
 
-                                up = st.file_uploader(
-                                    "Cargar o reemplazar Excel",
-                                    type=["xlsx"],
-                                    key="portal_upload_excel_v125",
-                                )
-
-                                if up is not None and st.button(
-                                    "Guardar archivo",
-                                    key="portal_save_excel_v125",
+                                if st.button(
+                                    "📂 Administrar archivo",
+                                    key="open_file_modal_v128",
                                     type="primary",
                                     use_container_width=True,
                                 ):
-                                    save_uploaded_file(up)
-                                    st.success("Archivo guardado. Ahora procesa el archivo.")
-                                    st.rerun()
-
-                                if ACTIVE_FILE.exists() and not cache_valid():
-                                    if st.button(
-                                        "Procesar archivo activo",
-                                        key="portal_process_excel_v125",
-                                        type="primary",
-                                        use_container_width=True,
-                                    ):
-                                        try:
-                                            process_excel(str(ACTIVE_FILE))
-                                            st.success("Archivo procesado correctamente.")
-                                            st.rerun()
-                                        except Exception as exc:
-                                            st.error("No fue posible procesar el archivo.")
-                                            st.exception(exc)
-
-                                if ACTIVE_FILE.exists() and st.button(
-                                    "Borrar archivo persistido",
-                                    key="portal_delete_excel_v125",
-                                    use_container_width=True,
-                                ):
-                                    delete_active_file()
-                                    st.rerun()
+                                    file_admin_dialog()
 
                     if st.button(
                         "Cambios y Muertos\n\nRecuperación · Productividad · Conversión",

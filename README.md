@@ -1,8 +1,13 @@
-# Indicadores Cambios y Muertos v12.7
+# Indicadores Cambios y Muertos v12.8
 
-Corrección aplicada:
-- Se definió correctamente `FILE_HISTORY`.
-- El historial se guarda en `data/file_history.json`.
-- Si el historial no existe o está dañado, la aplicación continúa normalmente.
-- Un error al escribir el historial ya no bloquea la carga ni el procesamiento del Excel.
-- Se mantienen únicamente los permisos Administrador y Consulta.
+Correcciones:
+- La carga del archivo vuelve a realizarse mediante una ventana modal.
+- El menú de tres puntos abre la opción “Administrar archivo”.
+- Dentro del modal se puede:
+  - seleccionar un Excel;
+  - guardar y procesar en una sola acción;
+  - procesar el archivo activo;
+  - eliminar el archivo activo;
+  - cerrar el modal.
+- El historial no bloquea la carga ni el procesamiento.
+- Permisos disponibles: Administrador y Consulta.
