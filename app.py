@@ -56,7 +56,7 @@ for p in [DATA_DIR, UPLOAD_DIR, CACHE_DIR, CONFIG_DIR, ASSETS_DIR]:
     p.mkdir(parents=True, exist_ok=True)
 
 MX_TZ = ZoneInfo("America/Mexico_City")
-APP_CACHE_VERSION = "v13.0"
+APP_CACHE_VERSION = "v13.1"
 AZUL = "#10245F"
 ROSA = "#EC007C"
 LAVANDA = "#F3F6FB"
@@ -2643,6 +2643,22 @@ body:has(input[aria-label="Usuario o correo"]) .block-container {{
     }}
 }}
 
+
+/* V13.1 — modal de carga en dos pasos */
+div[data-testid="stDialog"] {{
+    max-width: 980px !important;
+}}
+div[data-testid="stDialog"] [data-testid="stFileUploader"] {{
+    margin-top: 8px !important;
+}}
+div[data-testid="stDialog"] [data-testid="stFileUploaderDropzone"] {{
+    min-height: 94px !important;
+    padding: 12px !important;
+}}
+div[data-testid="stDialog"] button[kind="primary"] {{
+    min-height: 46px !important;
+}}
+
 </style>
 """,
         unsafe_allow_html=True,
@@ -3132,12 +3148,24 @@ def read_plantilla(file_path):
 
 
 def read_monthly_dev(file_path, progress=None):
-    """Lector comercial por bloques con fecha normalizada y tienda homologada antes de agrupar."""
+    """Lector comercial optimizado por bloques.
+
+    Evita cargar cada hoja completa en memoria. Lee únicamente:
+    Tienda, ID, Color y las columnas comerciales detectadas.
+    """
     wb = load_workbook(file_path, read_only=True, data_only=True)
     monthly_sheets = [
         s for s in wb.sheetnames
-        if norm_text(s) not in ["RESULTADOS PRODUCTIVIDAD", "RESULTADOS PRODUCTIVIDAD 2", "RESULTADOS POR CHECKLIST", "PLANTILLA"]
-        and re.search(r"(ABRIL|MAYO|JUNIO|JULIO|AGOSTO|SEPT|OCT|NOV|DIC|ENERO|FEBR|MARZO|26|25)", norm_text(s))
+        if norm_text(s) not in [
+            "RESULTADOS PRODUCTIVIDAD",
+            "RESULTADOS PRODUCTIVIDAD 2",
+            "RESULTADOS POR CHECKLIST",
+            "PLANTILLA",
+        ]
+        and re.search(
+            r"(ABRIL|MAYO|JUNIO|JULIO|AGOSTO|SEPT|OCT|NOV|DIC|ENERO|FEBR|MARZO|26|25)",
+            norm_text(s),
+        )
     ]
 
     all_records = []
@@ -3147,40 +3175,69 @@ def read_monthly_dev(file_path, progress=None):
 
     for idx_sheet, sheet_name in enumerate(monthly_sheets, start=1):
         if progress:
-            progress.progress(min(idx_sheet / total_sheets, 0.95), text=f"Leyendo comercial: {sheet_name}")
+            progress.progress(
+                0.35 + (idx_sheet - 1) / total_sheets * 0.48,
+                text=f"Leyendo información comercial: {sheet_name}",
+            )
 
         ws = wb[sheet_name]
-        rows = list(ws.iter_rows(values_only=True))
-        if len(rows) < 3:
-            diag_rows.append({"Tipo": "Resumen", "Hoja": sheet_name, "Estado": "Hoja sin datos", "Registros": 0, "Dev Pzs": 0})
+
+        # Solo inspeccionar las primeras 30 filas para ubicar encabezados.
+        top_raw = list(
+            ws.iter_rows(
+                min_row=1,
+                max_row=min(30, ws.max_row or 30),
+                values_only=True,
+            )
+        )
+        if len(top_raw) < 3:
+            diag_rows.append({
+                "Tipo": "Resumen",
+                "Hoja": sheet_name,
+                "Estado": "Hoja sin datos",
+                "Registros": 0,
+                "Dev Pzs": 0,
+            })
             continue
 
-        max_cols = max(len(r) for r in rows[:30])
-        top_rows = [list(r) + [None] * (max_cols - len(r)) for r in rows[:30]]
+        max_cols = max(len(r) for r in top_raw)
+        top_rows = [list(r) + [None] * (max_cols - len(r)) for r in top_raw]
 
         header_idx = None
         tienda_col = None
         for ridx, row in enumerate(top_rows):
-            tienda_cols = [i for i, v in enumerate(row) if norm_text(v) in ["TIENDA", "TIENDAS"]]
-            has_dev = any(("DEV" in norm_text(v) and "PZS" in norm_text(v)) for v in row)
+            tienda_cols = [
+                i for i, value in enumerate(row)
+                if norm_text(value) in ["TIENDA", "TIENDAS"]
+            ]
+            has_dev = any(
+                "DEV" in norm_text(value) and "PZS" in norm_text(value)
+                for value in row
+            )
             if tienda_cols and has_dev:
                 header_idx = ridx
                 tienda_col = tienda_cols[0]
                 break
 
         if header_idx is None or tienda_col is None:
-            diag_rows.append({"Tipo": "Resumen", "Hoja": sheet_name, "Estado": "No encontró Tienda/Tiendas + Dev Pzs", "Registros": 0, "Dev Pzs": 0})
+            diag_rows.append({
+                "Tipo": "Resumen",
+                "Hoja": sheet_name,
+                "Estado": "No encontró Tienda/Tiendas + Dev Pzs",
+                "Registros": 0,
+                "Dev Pzs": 0,
+            })
             continue
 
-        header_row = list(rows[header_idx]) + [None] * (max_cols - len(rows[header_idx]))
-        date_row = list(rows[header_idx - 1]) + [None] * (max_cols - len(rows[header_idx - 1])) if header_idx > 0 else [None] * max_cols
+        header_row = top_rows[header_idx]
+        date_row = top_rows[header_idx - 1] if header_idx > 0 else [None] * max_cols
 
-        # Identificador comercial del artículo. Se utiliza ID, no SKU.
         id_aliases = {
             "ID", "ID ARTICULO", "ID ARTÍCULO", "ID MODELO",
-            "MODELO ID", "MODELO", "CODIGO", "CÓDIGO"
+            "MODELO ID", "MODELO", "CODIGO", "CÓDIGO",
         }
         color_aliases = {"COLOR", "COLOUR"}
+
         id_col = next(
             (i for i, value in enumerate(header_row) if norm_text(value) in id_aliases),
             None,
@@ -3192,48 +3249,98 @@ def read_monthly_dev(file_path, progress=None):
 
         date_by_col = {}
         current_date = pd.NaT
-        for c in range(max_cols):
-            d = parse_date(date_row[c])
-            if pd.notna(d):
-                current_date = d
-            date_by_col[c] = current_date
+        for col_idx in range(max_cols):
+            parsed_date = parse_date(date_row[col_idx])
+            if pd.notna(parsed_date):
+                current_date = parsed_date
+            date_by_col[col_idx] = current_date
 
         blocks = {}
-        for c, h in enumerate(header_row):
-            hnorm = norm_text(h)
-            fecha = date_by_col.get(c, pd.NaT)
+        for col_idx, header in enumerate(header_row):
+            header_norm = norm_text(header)
+            fecha = date_by_col.get(col_idx, pd.NaT)
             if pd.isna(fecha):
                 continue
-            fecha = pd.to_datetime(fecha).normalize()
 
-            if "DEV" in hnorm and "PZS" in hnorm:
-                blocks.setdefault(fecha, {})["dev_col"] = c
-            elif ("VENTA" in hnorm or "VENTAS" in hnorm) and ("PZS" in hnorm or "NETA" in hnorm) and "$" not in str(h):
-                blocks.setdefault(fecha, {})["vta_pzs_col"] = c
-            elif ("VENTA" in hnorm or "NETA" in hnorm) and ("$" in str(h) or "IMP" in hnorm or " EN " in f" {hnorm} "):
-                blocks.setdefault(fecha, {})["vta_imp_col"] = c
+            fecha = pd.to_datetime(fecha).normalize()
+            if "DEV" in header_norm and "PZS" in header_norm:
+                blocks.setdefault(fecha, {})["dev_col"] = col_idx
+            elif (
+                ("VENTA" in header_norm or "VENTAS" in header_norm)
+                and ("PZS" in header_norm or "NETA" in header_norm)
+                and "$" not in str(header)
+            ):
+                blocks.setdefault(fecha, {})["vta_pzs_col"] = col_idx
+            elif (
+                ("VENTA" in header_norm or "NETA" in header_norm)
+                and (
+                    "$" in str(header)
+                    or "IMP" in header_norm
+                    or " EN " in f" {header_norm} "
+                )
+            ):
+                blocks.setdefault(fecha, {})["vta_imp_col"] = col_idx
 
         blocks = {fecha: cols for fecha, cols in blocks.items() if cols}
-
         if not blocks:
             diag_rows.append({
-                "Tipo": "Resumen", "Hoja": sheet_name, "Estado": "No encontró bloques comerciales",
-                "Fila encabezado": header_idx + 1, "Col Tienda": excel_col_name(tienda_col) if "excel_col_name" in globals() else tienda_col + 1,
-                "Registros": 0, "Dev Pzs": 0
+                "Tipo": "Resumen",
+                "Hoja": sheet_name,
+                "Estado": "No encontró bloques comerciales",
+                "Fila encabezado": header_idx + 1,
+                "Registros": 0,
+                "Dev Pzs": 0,
             })
             continue
 
-        for fecha, cols in sorted(blocks.items(), key=lambda x: x[0]):
+        for fecha, cols in sorted(blocks.items(), key=lambda item: item[0]):
             diag_rows.append({
                 "Tipo": "Columnas detectadas",
                 "Hoja": sheet_name,
-                "Fecha": pd.to_datetime(fecha).strftime("%Y-%m-%d"),
+                "Fecha": fecha.strftime("%Y-%m-%d"),
                 "Fila encabezado": header_idx + 1,
-                "Col Tienda": excel_col_name(tienda_col) if "excel_col_name" in globals() else tienda_col + 1,
-                "Col Ventas Pzs": excel_col_name(cols["vta_pzs_col"]) if "vta_pzs_col" in cols and "excel_col_name" in globals() else cols.get("vta_pzs_col", ""),
-                "Col Dev Pzs": excel_col_name(cols["dev_col"]) if "dev_col" in cols and "excel_col_name" in globals() else cols.get("dev_col", ""),
-                "Col Venta $": excel_col_name(cols["vta_imp_col"]) if "vta_imp_col" in cols and "excel_col_name" in globals() else cols.get("vta_imp_col", ""),
+                "Col Tienda": excel_col_name(tienda_col),
+                "Col ID": excel_col_name(id_col) if id_col is not None else "",
+                "Col Ventas Pzs": (
+                    excel_col_name(cols["vta_pzs_col"])
+                    if "vta_pzs_col" in cols else ""
+                ),
+                "Col Dev Pzs": (
+                    excel_col_name(cols["dev_col"])
+                    if "dev_col" in cols else ""
+                ),
+                "Col Venta $": (
+                    excel_col_name(cols["vta_imp_col"])
+                    if "vta_imp_col" in cols else ""
+                ),
             })
+
+        # Solo conservar columnas realmente necesarias.
+        required_cols = {tienda_col}
+        if id_col is not None:
+            required_cols.add(id_col)
+        if color_col is not None:
+            required_cols.add(color_col)
+        for cols in blocks.values():
+            required_cols.update(cols.values())
+
+        min_col = min(required_cols) + 1
+        max_col = max(required_cols) + 1
+
+        # Ajustar índices al rango reducido de lectura.
+        def local_index(original_index):
+            return original_index - (min_col - 1)
+
+        local_tienda = local_index(tienda_col)
+        local_id = local_index(id_col) if id_col is not None else None
+        local_color = local_index(color_col) if color_col is not None else None
+        local_blocks = {
+            fecha: {
+                key: local_index(col_idx)
+                for key, col_idx in cols.items()
+            }
+            for fecha, cols in blocks.items()
+        }
 
         acc = {}
         sheet_dev = 0.0
@@ -3243,33 +3350,55 @@ def read_monthly_dev(file_path, progress=None):
         tiendas = set()
         samples_per_sheet = 0
 
-        for excel_row_num, raw in enumerate(rows[header_idx + 1:], start=header_idx + 2):
-            row = list(raw) + [None] * (max_cols - len(raw))
-            if tienda_col >= len(row):
-                continue
+        row_iterator = ws.iter_rows(
+            min_row=header_idx + 2,
+            max_row=ws.max_row,
+            min_col=min_col,
+            max_col=max_col,
+            values_only=True,
+        )
 
-            raw_tienda = row[tienda_col]
+        for excel_row_num, row in enumerate(row_iterator, start=header_idx + 2):
+            raw_tienda = row[local_tienda] if local_tienda < len(row) else None
             tienda = canon_store(raw_tienda)
             if not tienda:
                 continue
             tiendas.add(tienda)
 
-            raw_id = row[id_col] if id_col is not None and id_col < len(row) else ""
+            raw_id = (
+                row[local_id]
+                if local_id is not None and local_id < len(row)
+                else ""
+            )
             item_id = str(raw_id).strip()
             if item_id.lower() in {"none", "nan"}:
                 item_id = ""
 
-            raw_color = row[color_col] if color_col is not None and color_col < len(row) else ""
+            raw_color = (
+                row[local_color]
+                if local_color is not None and local_color < len(row)
+                else ""
+            )
             color = str(raw_color).strip()
             if color.lower() in {"none", "nan"}:
                 color = ""
 
-            for fecha, cols in blocks.items():
-                fecha_norm = pd.to_datetime(fecha).normalize()
-
-                dev_raw = row[cols["dev_col"]] if "dev_col" in cols and cols["dev_col"] < len(row) else None
-                vta_raw = row[cols["vta_pzs_col"]] if "vta_pzs_col" in cols and cols["vta_pzs_col"] < len(row) else None
-                imp_raw = row[cols["vta_imp_col"]] if "vta_imp_col" in cols and cols["vta_imp_col"] < len(row) else None
+            for fecha, cols in local_blocks.items():
+                dev_raw = (
+                    row[cols["dev_col"]]
+                    if "dev_col" in cols and cols["dev_col"] < len(row)
+                    else None
+                )
+                vta_raw = (
+                    row[cols["vta_pzs_col"]]
+                    if "vta_pzs_col" in cols and cols["vta_pzs_col"] < len(row)
+                    else None
+                )
+                imp_raw = (
+                    row[cols["vta_imp_col"]]
+                    if "vta_imp_col" in cols and cols["vta_imp_col"] < len(row)
+                    else None
+                )
 
                 dev = safe_num(dev_raw)
                 vta_pzs = safe_num(vta_raw)
@@ -3278,12 +3407,14 @@ def read_monthly_dev(file_path, progress=None):
                 if dev == 0 and vta_pzs == 0 and vta_imp == 0:
                     continue
 
-                key = (sheet_name, fecha_norm, tienda, item_id, color)
-                if key not in acc:
-                    acc[key] = {"Dev_Pzs": 0.0, "Vta_Pzs": 0.0, "Vta_Imp": 0.0}
-                acc[key]["Dev_Pzs"] += dev
-                acc[key]["Vta_Pzs"] += vta_pzs
-                acc[key]["Vta_Imp"] += vta_imp
+                key = (sheet_name, fecha, tienda, item_id, color)
+                values = acc.setdefault(
+                    key,
+                    {"Dev_Pzs": 0.0, "Vta_Pzs": 0.0, "Vta_Imp": 0.0},
+                )
+                values["Dev_Pzs"] += dev
+                values["Vta_Pzs"] += vta_pzs
+                values["Vta_Imp"] += vta_imp
 
                 sheet_dev += dev
                 sheet_vta_pzs += vta_pzs
@@ -3291,14 +3422,22 @@ def read_monthly_dev(file_path, progress=None):
                 lecturas += 1
 
                 raw_norm = norm_text(raw_tienda)
-                if samples_per_sheet < 350 and (dev != 0 or "MIRAVALLE" in raw_norm or "GUADALAJARA" in raw_norm or "ATEMAJAC" in raw_norm):
+                if (
+                    samples_per_sheet < 80
+                    and (
+                        dev != 0
+                        or "MIRAVALLE" in raw_norm
+                        or "GUADALAJARA" in raw_norm
+                        or "ATEMAJAC" in raw_norm
+                    )
+                ):
                     sample_rows.append({
                         "Hoja": sheet_name,
                         "Fila Excel": excel_row_num,
-                        "Fecha": fecha_norm.strftime("%Y-%m-%d"),
+                        "Fecha": fecha.strftime("%Y-%m-%d"),
                         "Tienda cruda": str(raw_tienda),
                         "Tienda homologada": tienda,
-                        "Col Dev": excel_col_name(cols["dev_col"]) if "dev_col" in cols and "excel_col_name" in globals() else cols.get("dev_col", ""),
+                        "ID": item_id,
                         "Dev crudo": str(dev_raw),
                         "Dev num": dev,
                         "Ventas crudo": str(vta_raw),
@@ -3308,17 +3447,15 @@ def read_monthly_dev(file_path, progress=None):
                     })
                     samples_per_sheet += 1
 
-        for (hoja, fecha, tienda, item_id, color), vals in acc.items():
-            fecha = pd.to_datetime(fecha).normalize()
-            tienda = canon_store(tienda)
+        for (hoja, fecha, tienda, item_id, color), values in acc.items():
             all_records.append({
                 "Hoja": hoja,
                 "Fecha": fecha,
                 "Fecha_txt": fecha.strftime("%Y-%m-%d"),
                 "Tienda": tienda,
-                "Dev_Pzs": vals["Dev_Pzs"],
-                "Vta_Pzs": vals["Vta_Pzs"],
-                "Vta_Imp": vals["Vta_Imp"],
+                "Dev_Pzs": values["Dev_Pzs"],
+                "Vta_Pzs": values["Vta_Pzs"],
+                "Vta_Imp": values["Vta_Imp"],
                 "Costo_Dev": 0.0,
                 "ID": item_id,
                 "Color": color,
@@ -3330,8 +3467,8 @@ def read_monthly_dev(file_path, progress=None):
             "Estado": "OK",
             "Fila encabezado": header_idx + 1,
             "Fila fechas": header_idx,
-            "Col Tienda": excel_col_name(tienda_col) if "excel_col_name" in globals() else tienda_col + 1,
-            "Col ID": excel_col_name(id_col) if id_col is not None and "excel_col_name" in globals() else (id_col + 1 if id_col is not None else ""),
+            "Col Tienda": excel_col_name(tienda_col),
+            "Col ID": excel_col_name(id_col) if id_col is not None else "",
             "Fechas detectadas": len(blocks),
             "Registros agrupados": len(acc),
             "Lecturas con valor": lecturas,
@@ -3341,15 +3478,25 @@ def read_monthly_dev(file_path, progress=None):
             "Venta $": sheet_vta_imp,
         })
 
+        # Liberar la hoja de lectura antes de continuar.
+        del acc
+
     wb.close()
 
     co = pd.DataFrame(all_records)
     if not co.empty:
-        co["Fecha"] = co["Fecha"].apply(parse_date)
+        co["Fecha"] = pd.to_datetime(co["Fecha"], errors="coerce")
+        co = co[co["Fecha"].notna()]
         co["Fecha_txt"] = co["Fecha"].dt.strftime("%Y-%m-%d")
         co["Tienda"] = co["Tienda"].map(canon_store)
-        # Reagrupar después de homologar para unir Guadalajara Miravalle -> Miravalle y Guadalajara -> Atemajac.
-        co = co.groupby(["Hoja", "Fecha", "Fecha_txt", "Tienda", "ID", "Color"], as_index=False)[["Dev_Pzs", "Vta_Pzs", "Vta_Imp", "Costo_Dev"]].sum()
+        co = (
+            co.groupby(
+                ["Hoja", "Fecha", "Fecha_txt", "Tienda", "ID", "Color"],
+                as_index=False,
+                dropna=False,
+            )[["Dev_Pzs", "Vta_Pzs", "Vta_Imp", "Costo_Dev"]]
+            .sum()
+        )
         iso = co["Fecha"].dt.isocalendar()
         co["Año ISO"] = iso.year.astype(int)
         co["Semana ISO"] = iso.week.astype(int)
@@ -3361,27 +3508,31 @@ def read_monthly_dev(file_path, progress=None):
         samples.insert(0, "Tipo", "Muestra lectura")
         diag = pd.concat([diag, samples], ignore_index=True, sort=False)
 
-    co = normalize_commercial_df(co)
     return co, diag
 
 
-
 def process_excel(file_path):
-    progress = st.progress(0, text="Iniciando procesamiento...")
-    progress.progress(0.10, text="Leyendo Resultados productividad y Resultados productividad 2...")
+    progress = st.progress(0, text="Preparando archivo...")
+
+    progress.progress(
+        0.08,
+        text="Leyendo Resultados productividad y Resultados productividad 2...",
+    )
     op, diag_op = read_operation_sheet(file_path)
 
-    progress.progress(0.25, text="Leyendo Plantilla...")
+    progress.progress(0.22, text="Leyendo plantilla de colaboradores...")
     plantilla = read_plantilla(file_path)
     op = apply_nombre_map(op, plantilla)
 
-    progress.progress(0.35, text="Leyendo hojas mensuales Dev Pzs...")
+    progress.progress(0.35, text="Leyendo hojas comerciales...")
     co, diag_co = read_monthly_dev(file_path, progress=progress)
 
-    progress.progress(0.90, text="Guardando cache optimizado...")
-    diag = pd.concat([diag_op, diag_co], ignore_index=True)
+    progress.progress(0.88, text="Normalizando información...")
+    op = normalize_operation_df(op)
+    co = normalize_commercial_df(co)
 
-    # Validación de fechas operativas para detectar inversiones mes/día.
+    diag = pd.concat([diag_op, diag_co], ignore_index=True, sort=False)
+
     if op is not None and not op.empty and "Fecha" in op.columns:
         fechas_op = pd.to_datetime(op["Fecha"], errors="coerce").dropna()
         if not fechas_op.empty:
@@ -3393,15 +3544,13 @@ def process_excel(file_path):
                 "Fecha mínima": fechas_op.min().strftime("%Y-%m-%d"),
                 "Fecha máxima": fechas_op.max().strftime("%Y-%m-%d"),
             }])
-            diag = pd.concat([diag_fecha, diag], ignore_index=True)
-    op = normalize_operation_df(op)
-    co = normalize_commercial_df(co)
-    write_cache(op, co, diag)
-    progress.progress(1.0, text="Archivo procesado correctamente.")
-    op = normalize_operation_df(op)
-    co = normalize_commercial_df(co)
-    return op, co, diag
+            diag = pd.concat([diag_fecha, diag], ignore_index=True, sort=False)
 
+    progress.progress(0.94, text="Guardando caché optimizado...")
+    write_cache(op, co, diag)
+
+    progress.progress(1.0, text="Archivo procesado correctamente.")
+    return op, co, diag
 
 
 def split_operation(op):
@@ -4680,8 +4829,9 @@ def sidebar_data_admin():
 
 
 @st.dialog("Administración de Cambios y Muertos", width="large")
+@st.dialog("Administración de Cambios y Muertos", width="large")
 def file_admin_dialog():
-    """Carga, procesa, reemplaza o elimina el archivo desde una ventana modal."""
+    """Carga y procesamiento separados para dar respuesta inmediata."""
     meta = {}
     if META_FILE.exists():
         try:
@@ -4690,78 +4840,89 @@ def file_admin_dialog():
             meta = {}
 
     if ACTIVE_FILE.exists():
-        st.success("Archivo activo")
+        st.success("Archivo guardado")
         st.write(f"**Nombre:** {meta.get('nombre_original', ACTIVE_FILE.name)}")
         if meta.get("fecha_carga"):
             st.caption(f"Cargado: {meta.get('fecha_carga')}")
         if cache_valid():
-            st.caption("Estado: Procesado")
+            st.caption("Estado: Procesado y disponible")
         else:
-            st.warning("Estado: Pendiente de procesar")
+            st.warning("Estado: Guardado, pendiente de procesar")
     else:
         st.warning("No hay archivo cargado")
 
     uploaded = st.file_uploader(
         "Selecciona un archivo Excel",
         type=["xlsx"],
-        key="modal_upload_excel_v128",
-        help="El archivo sustituirá al archivo activo cuando confirmes la carga.",
+        key="modal_upload_excel_v131",
+        help="Primero se guarda el archivo y después se procesa.",
     )
 
-    col_cancel, col_action = st.columns(2)
+    if uploaded is not None:
+        st.caption(
+            f"Archivo seleccionado: {uploaded.name} · "
+            f"{uploaded.size / (1024 * 1024):,.1f} MB"
+        )
+        if st.button(
+            "1. Guardar archivo",
+            key="modal_save_only_v131",
+            type="primary",
+            use_container_width=True,
+        ):
+            try:
+                with st.spinner("Guardando archivo..."):
+                    save_uploaded_file(uploaded)
+                append_file_history(
+                    "Carga",
+                    uploaded.name,
+                    "Guardado",
+                    "Archivo guardado; pendiente de procesamiento",
+                )
+                st.success("Archivo guardado. Ya puedes procesarlo.")
+                st.rerun()
+            except Exception as exc:
+                st.error("No fue posible guardar el archivo.")
+                st.exception(exc)
 
-    with col_cancel:
-        if st.button("Cerrar", key="modal_close_v128", use_container_width=True):
+    if ACTIVE_FILE.exists() and not cache_valid():
+        st.divider()
+        st.info(
+            "El archivo ya está guardado. El procesamiento puede tardar "
+            "porque se revisan las hojas operativas y comerciales."
+        )
+        if st.button(
+            "2. Procesar archivo activo",
+            key="modal_process_active_v131",
+            type="primary",
+            use_container_width=True,
+        ):
+            try:
+                process_excel(str(ACTIVE_FILE))
+                append_file_history(
+                    "Proceso",
+                    meta.get("nombre_original", ACTIVE_FILE.name),
+                    "Procesado",
+                    "Archivo procesado correctamente",
+                )
+                st.success("Archivo procesado correctamente.")
+                st.rerun()
+            except Exception as exc:
+                st.error("No fue posible procesar el archivo.")
+                st.exception(exc)
+
+    col_close, col_delete = st.columns(2)
+    with col_close:
+        if st.button(
+            "Cerrar",
+            key="modal_close_v131",
+            use_container_width=True,
+        ):
             st.rerun()
 
-    with col_action:
-        if uploaded is not None:
-            if st.button(
-                "Guardar y procesar",
-                key="modal_save_process_v128",
-                type="primary",
-                use_container_width=True,
-            ):
-                try:
-                    save_uploaded_file(uploaded)
-                    process_excel(str(ACTIVE_FILE))
-                    append_file_history(
-                        "Carga",
-                        uploaded.name,
-                        "Procesado",
-                        "Archivo guardado y procesado correctamente",
-                    )
-                    st.success("Archivo guardado y procesado correctamente.")
-                    st.rerun()
-                except Exception as exc:
-                    st.error("No fue posible procesar el archivo.")
-                    st.exception(exc)
-        elif ACTIVE_FILE.exists() and not cache_valid():
-            if st.button(
-                "Procesar archivo activo",
-                key="modal_process_active_v128",
-                type="primary",
-                use_container_width=True,
-            ):
-                try:
-                    process_excel(str(ACTIVE_FILE))
-                    append_file_history(
-                        "Proceso",
-                        meta.get("nombre_original", ACTIVE_FILE.name),
-                        "Procesado",
-                        "Archivo activo procesado correctamente",
-                    )
-                    st.success("Archivo procesado correctamente.")
-                    st.rerun()
-                except Exception as exc:
-                    st.error("No fue posible procesar el archivo.")
-                    st.exception(exc)
-
-    if ACTIVE_FILE.exists():
-        st.divider()
-        if st.button(
+    with col_delete:
+        if ACTIVE_FILE.exists() and st.button(
             "Eliminar archivo activo",
-            key="modal_delete_active_v128",
+            key="modal_delete_active_v131",
             use_container_width=True,
         ):
             file_name = meta.get("nombre_original", ACTIVE_FILE.name)
@@ -4774,6 +4935,7 @@ def file_admin_dialog():
             )
             st.success("Archivo eliminado.")
             st.rerun()
+
 
 def render_app_portal():
     user = st.session_state.get("user", {})
