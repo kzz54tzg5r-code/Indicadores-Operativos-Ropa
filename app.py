@@ -56,7 +56,7 @@ for p in [DATA_DIR, UPLOAD_DIR, CACHE_DIR, CONFIG_DIR, ASSETS_DIR]:
     p.mkdir(parents=True, exist_ok=True)
 
 MX_TZ = ZoneInfo("America/Mexico_City")
-APP_CACHE_VERSION = "v12.9"
+APP_CACHE_VERSION = "v13.0-fifo"
 AZUL = "#10245F"
 ROSA = "#EC007C"
 LAVANDA = "#F3F6FB"
@@ -2852,32 +2852,52 @@ def normalize_selected_date(x):
     return d.date() if pd.notna(d) else date.today()
 
 def normalize_commercial_df(co):
-    """Normaliza fecha y tienda comercial antes de usar en reportes."""
+    """Normaliza el detalle comercial sin perder SKU, color, descripción ni costo."""
     if co is None or co.empty:
         return co
     co = co.copy()
 
     if "Fecha" in co.columns:
         co["Fecha"] = co["Fecha"].apply(parse_date)
-        co = co[co["Fecha"].notna()]
+        co = co[co["Fecha"].notna()].copy()
+        co["Fecha"] = pd.to_datetime(co["Fecha"]).dt.normalize()
         co["Fecha_txt"] = co["Fecha"].dt.strftime("%Y-%m-%d")
 
     if "Tienda" in co.columns:
         co["Tienda"] = co["Tienda"].map(canon_store)
-        co = co[co["Tienda"].astype(str).str.len() > 0]
+        co = co[co["Tienda"].astype(str).str.len() > 0].copy()
+
+    for c in ["ID", "Color", "Descripción"]:
+        if c not in co.columns:
+            co[c] = ""
+        co[c] = co[c].fillna("").astype(str).str.strip()
+
+    # SKU auditable: ID + color. Si no hay ID, conserva una llave de respaldo.
+    co["SKU"] = np.where(
+        co["ID"].ne(""),
+        co["ID"] + np.where(co["Color"].ne(""), " / " + co["Color"], ""),
+        np.where(co["Descripción"].ne(""), co["Descripción"], "SIN SKU"),
+    )
 
     for c in ["Dev_Pzs", "Vta_Pzs", "Vta_Imp", "Costo_Dev"]:
         if c not in co.columns:
-            co[c] = 0
-        co[c] = pd.to_numeric(co[c], errors="coerce").fillna(0)
+            co[c] = 0.0
+        co[c] = pd.to_numeric(co[c], errors="coerce").fillna(0.0)
 
-    group_cols = [c for c in ["Hoja", "Fecha", "Fecha_txt", "Tienda", "ID", "Color"] if c in co.columns]
+    group_cols = [c for c in [
+        "Hoja", "Fecha", "Fecha_txt", "Tienda", "ID", "Color", "SKU", "Descripción"
+    ] if c in co.columns]
     if "Fecha" in group_cols and "Tienda" in group_cols:
-        co = co.groupby(group_cols, as_index=False)[["Dev_Pzs", "Vta_Pzs", "Vta_Imp", "Costo_Dev"]].sum()
-        co["Semana ISO"] = co["Fecha"].dt.isocalendar().week.astype(int)
+        co = co.groupby(group_cols, as_index=False, dropna=False)[
+            ["Dev_Pzs", "Vta_Pzs", "Vta_Imp", "Costo_Dev"]
+        ].sum()
+        iso = co["Fecha"].dt.isocalendar()
+        co["Año ISO"] = iso.year.astype(int)
+        co["Semana ISO"] = iso.week.astype(int)
         co["Mes"] = co["Fecha"].dt.to_period("M").astype(str)
 
     return co
+
 
 def write_cache(op, co, diag):
     paths = cache_paths()
@@ -3130,7 +3150,7 @@ def read_plantilla(file_path):
 
 
 def read_monthly_dev(file_path, progress=None):
-    """Lector comercial por bloques con fecha normalizada y tienda homologada antes de agrupar."""
+    """Lee devoluciones y ventas diarias preservando SKU/color/costo para FIFO semanal."""
     wb = load_workbook(file_path, read_only=True, data_only=True)
     monthly_sheets = [
         s for s in wb.sheetnames
@@ -3138,9 +3158,7 @@ def read_monthly_dev(file_path, progress=None):
         and re.search(r"(ABRIL|MAYO|JUNIO|JULIO|AGOSTO|SEPT|OCT|NOV|DIC|ENERO|FEBR|MARZO|26|25)", norm_text(s))
     ]
 
-    all_records = []
-    diag_rows = []
-    sample_rows = []
+    all_records, diag_rows, sample_rows = [], [], []
     total_sheets = max(1, len(monthly_sheets))
 
     for idx_sheet, sheet_name in enumerate(monthly_sheets, start=1):
@@ -3150,190 +3168,108 @@ def read_monthly_dev(file_path, progress=None):
         ws = wb[sheet_name]
         rows = list(ws.iter_rows(values_only=True))
         if len(rows) < 3:
-            diag_rows.append({"Tipo": "Resumen", "Hoja": sheet_name, "Estado": "Hoja sin datos", "Registros": 0, "Dev Pzs": 0})
+            diag_rows.append({"Tipo":"Resumen","Hoja":sheet_name,"Estado":"Hoja sin datos","Registros":0,"Dev Pzs":0})
             continue
 
         max_cols = max(len(r) for r in rows[:30])
         top_rows = [list(r) + [None] * (max_cols - len(r)) for r in rows[:30]]
-
-        header_idx = None
-        tienda_col = None
+        header_idx = tienda_col = None
         for ridx, row in enumerate(top_rows):
-            tienda_cols = [i for i, v in enumerate(row) if norm_text(v) in ["TIENDA", "TIENDAS"]]
+            tienda_cols = [i for i,v in enumerate(row) if norm_text(v) in ["TIENDA","TIENDAS"]]
             has_dev = any(("DEV" in norm_text(v) and "PZS" in norm_text(v)) for v in row)
             if tienda_cols and has_dev:
-                header_idx = ridx
-                tienda_col = tienda_cols[0]
+                header_idx, tienda_col = ridx, tienda_cols[0]
                 break
-
-        if header_idx is None or tienda_col is None:
-            diag_rows.append({"Tipo": "Resumen", "Hoja": sheet_name, "Estado": "No encontró Tienda/Tiendas + Dev Pzs", "Registros": 0, "Dev Pzs": 0})
+        if header_idx is None:
+            diag_rows.append({"Tipo":"Resumen","Hoja":sheet_name,"Estado":"No encontró Tienda + Dev Pzs","Registros":0,"Dev Pzs":0})
             continue
 
-        header_row = list(rows[header_idx]) + [None] * (max_cols - len(rows[header_idx]))
-        date_row = list(rows[header_idx - 1]) + [None] * (max_cols - len(rows[header_idx - 1])) if header_idx > 0 else [None] * max_cols
+        header_row = list(rows[header_idx]) + [None] * (max_cols-len(rows[header_idx]))
+        date_row = list(rows[header_idx-1]) + [None] * (max_cols-len(rows[header_idx-1])) if header_idx>0 else [None]*max_cols
+        header_norm = [norm_text(x) for x in header_row]
 
-        date_by_col = {}
-        current_date = pd.NaT
+        def first_col(candidates):
+            for cand in candidates:
+                for i,h in enumerate(header_norm):
+                    if h == cand or cand in h:
+                        return i
+            return None
+
+        id_col = first_col(["ID ART", "ID ARTICULO", "ART PADRE"])
+        color_col = first_col(["COLOR"])
+        modelo_col = first_col(["MODELO"])
+        marca_col = first_col(["MARCA PRICE", "MARCA"])
+        categoria_col = first_col(["CATEGORIA"])
+        costo_unit_col = first_col(["PRECIO MAYOREO", "COSTO DEV", "COSTO"])
+
+        date_by_col, current_date = {}, pd.NaT
         for c in range(max_cols):
             d = parse_date(date_row[c])
-            if pd.notna(d):
-                current_date = d
+            if pd.notna(d): current_date = d
             date_by_col[c] = current_date
 
         blocks = {}
-        for c, h in enumerate(header_row):
-            hnorm = norm_text(h)
-            fecha = date_by_col.get(c, pd.NaT)
-            if pd.isna(fecha):
-                continue
-            fecha = pd.to_datetime(fecha).normalize()
-
+        for c,h in enumerate(header_row):
+            hnorm=norm_text(h); fecha=date_by_col.get(c,pd.NaT)
+            if pd.isna(fecha): continue
+            fecha=pd.to_datetime(fecha).normalize()
             if "DEV" in hnorm and "PZS" in hnorm:
-                blocks.setdefault(fecha, {})["dev_col"] = c
+                blocks.setdefault(fecha,{})["dev_col"]=c
             elif ("VENTA" in hnorm or "VENTAS" in hnorm) and ("PZS" in hnorm or "NETA" in hnorm) and "$" not in str(h):
-                blocks.setdefault(fecha, {})["vta_pzs_col"] = c
+                blocks.setdefault(fecha,{})["vta_pzs_col"]=c
             elif ("VENTA" in hnorm or "NETA" in hnorm) and ("$" in str(h) or "IMP" in hnorm or " EN " in f" {hnorm} "):
-                blocks.setdefault(fecha, {})["vta_imp_col"] = c
-
-        blocks = {fecha: cols for fecha, cols in blocks.items() if cols}
-
+                blocks.setdefault(fecha,{})["vta_imp_col"]=c
+        blocks={f:c for f,c in blocks.items() if c}
         if not blocks:
-            diag_rows.append({
-                "Tipo": "Resumen", "Hoja": sheet_name, "Estado": "No encontró bloques comerciales",
-                "Fila encabezado": header_idx + 1, "Col Tienda": excel_col_name(tienda_col) if "excel_col_name" in globals() else tienda_col + 1,
-                "Registros": 0, "Dev Pzs": 0
-            })
+            diag_rows.append({"Tipo":"Resumen","Hoja":sheet_name,"Estado":"No encontró bloques comerciales","Registros":0,"Dev Pzs":0})
             continue
 
-        for fecha, cols in sorted(blocks.items(), key=lambda x: x[0]):
-            diag_rows.append({
-                "Tipo": "Columnas detectadas",
-                "Hoja": sheet_name,
-                "Fecha": pd.to_datetime(fecha).strftime("%Y-%m-%d"),
-                "Fila encabezado": header_idx + 1,
-                "Col Tienda": excel_col_name(tienda_col) if "excel_col_name" in globals() else tienda_col + 1,
-                "Col Ventas Pzs": excel_col_name(cols["vta_pzs_col"]) if "vta_pzs_col" in cols and "excel_col_name" in globals() else cols.get("vta_pzs_col", ""),
-                "Col Dev Pzs": excel_col_name(cols["dev_col"]) if "dev_col" in cols and "excel_col_name" in globals() else cols.get("dev_col", ""),
-                "Col Venta $": excel_col_name(cols["vta_imp_col"]) if "vta_imp_col" in cols and "excel_col_name" in globals() else cols.get("vta_imp_col", ""),
-            })
-
-        acc = {}
-        sheet_dev = 0.0
-        sheet_vta_pzs = 0.0
-        sheet_vta_imp = 0.0
-        lecturas = 0
-        tiendas = set()
-        samples_per_sheet = 0
-
-        for excel_row_num, raw in enumerate(rows[header_idx + 1:], start=header_idx + 2):
-            row = list(raw) + [None] * (max_cols - len(raw))
-            if tienda_col >= len(row):
-                continue
-
-            raw_tienda = row[tienda_col]
-            tienda = canon_store(raw_tienda)
-            if not tienda:
-                continue
+        acc={}; sheet_dev=sheet_vta_pzs=sheet_vta_imp=sheet_cost=0.0; lecturas=0; tiendas=set(); samples_per_sheet=0
+        for excel_row_num,raw in enumerate(rows[header_idx+1:],start=header_idx+2):
+            row=list(raw)+[None]*(max_cols-len(raw))
+            tienda=canon_store(row[tienda_col] if tienda_col < len(row) else None)
+            if not tienda: continue
             tiendas.add(tienda)
+            raw_id = row[id_col] if id_col is not None and id_col < len(row) else ""
+            sku_id = str(raw_id).strip() if raw_id is not None else ""
+            color = str(row[color_col]).strip() if color_col is not None and row[color_col] is not None else ""
+            modelo = str(row[modelo_col]).strip() if modelo_col is not None and row[modelo_col] is not None else ""
+            marca = str(row[marca_col]).strip() if marca_col is not None and row[marca_col] is not None else ""
+            categoria = str(row[categoria_col]).strip() if categoria_col is not None and row[categoria_col] is not None else ""
+            descripcion = " ".join(x for x in [marca, modelo, categoria] if x and x != "-").strip()
+            costo_unit = safe_num(row[costo_unit_col]) if costo_unit_col is not None and costo_unit_col < len(row) else 0.0
 
-            for fecha, cols in blocks.items():
-                fecha_norm = pd.to_datetime(fecha).normalize()
-
-                dev_raw = row[cols["dev_col"]] if "dev_col" in cols and cols["dev_col"] < len(row) else None
-                vta_raw = row[cols["vta_pzs_col"]] if "vta_pzs_col" in cols and cols["vta_pzs_col"] < len(row) else None
-                imp_raw = row[cols["vta_imp_col"]] if "vta_imp_col" in cols and cols["vta_imp_col"] < len(row) else None
-
-                dev = safe_num(dev_raw)
-                vta_pzs = safe_num(vta_raw)
-                vta_imp = safe_num(imp_raw)
-
-                if dev == 0 and vta_pzs == 0 and vta_imp == 0:
-                    continue
-
-                key = (sheet_name, fecha_norm, tienda)
+            for fecha,cols in blocks.items():
+                fecha_norm=pd.to_datetime(fecha).normalize()
+                dev_raw=row[cols["dev_col"]] if "dev_col" in cols and cols["dev_col"]<len(row) else None
+                vta_raw=row[cols["vta_pzs_col"]] if "vta_pzs_col" in cols and cols["vta_pzs_col"]<len(row) else None
+                imp_raw=row[cols["vta_imp_col"]] if "vta_imp_col" in cols and cols["vta_imp_col"]<len(row) else None
+                dev=max(safe_num(dev_raw),0.0); vta=max(safe_num(vta_raw),0.0); imp=max(safe_num(imp_raw),0.0)
+                if dev==0 and vta==0 and imp==0: continue
+                key=(sheet_name,fecha_norm,tienda,sku_id,color,descripcion)
                 if key not in acc:
-                    acc[key] = {"Dev_Pzs": 0.0, "Vta_Pzs": 0.0, "Vta_Imp": 0.0}
+                    acc[key]={"Dev_Pzs":0.0,"Vta_Pzs":0.0,"Vta_Imp":0.0,"Costo_Dev":0.0}
                 acc[key]["Dev_Pzs"] += dev
-                acc[key]["Vta_Pzs"] += vta_pzs
-                acc[key]["Vta_Imp"] += vta_imp
+                acc[key]["Vta_Pzs"] += vta
+                acc[key]["Vta_Imp"] += imp
+                acc[key]["Costo_Dev"] += dev*costo_unit
+                sheet_dev += dev; sheet_vta_pzs += vta; sheet_vta_imp += imp; sheet_cost += dev*costo_unit; lecturas += 1
 
-                sheet_dev += dev
-                sheet_vta_pzs += vta_pzs
-                sheet_vta_imp += vta_imp
-                lecturas += 1
-
-                raw_norm = norm_text(raw_tienda)
-                if samples_per_sheet < 350 and (dev != 0 or "MIRAVALLE" in raw_norm or "GUADALAJARA" in raw_norm or "ATEMAJAC" in raw_norm):
-                    sample_rows.append({
-                        "Hoja": sheet_name,
-                        "Fila Excel": excel_row_num,
-                        "Fecha": fecha_norm.strftime("%Y-%m-%d"),
-                        "Tienda cruda": str(raw_tienda),
-                        "Tienda homologada": tienda,
-                        "Col Dev": excel_col_name(cols["dev_col"]) if "dev_col" in cols and "excel_col_name" in globals() else cols.get("dev_col", ""),
-                        "Dev crudo": str(dev_raw),
-                        "Dev num": dev,
-                        "Ventas crudo": str(vta_raw),
-                        "Ventas num": vta_pzs,
-                        "Venta $ crudo": str(imp_raw),
-                        "Venta $ num": vta_imp,
-                    })
+                if samples_per_sheet < 100 and dev != 0:
+                    sample_rows.append({"Tipo":"Muestra lectura","Hoja":sheet_name,"Fila Excel":excel_row_num,"Fecha":fecha_norm.strftime('%Y-%m-%d'),"Tienda":tienda,"ID":sku_id,"Color":color,"Descripción":descripcion,"Dev num":dev,"Venta num":vta,"Venta $":imp,"Costo unit":costo_unit})
                     samples_per_sheet += 1
 
-        for (hoja, fecha, tienda), vals in acc.items():
-            fecha = pd.to_datetime(fecha).normalize()
-            tienda = canon_store(tienda)
-            all_records.append({
-                "Hoja": hoja,
-                "Fecha": fecha,
-                "Fecha_txt": fecha.strftime("%Y-%m-%d"),
-                "Tienda": tienda,
-                "Dev_Pzs": vals["Dev_Pzs"],
-                "Vta_Pzs": vals["Vta_Pzs"],
-                "Vta_Imp": vals["Vta_Imp"],
-                "Costo_Dev": 0.0,
-                "ID": "",
-                "Color": "",
-            })
-
-        diag_rows.append({
-            "Tipo": "Resumen",
-            "Hoja": sheet_name,
-            "Estado": "OK",
-            "Fila encabezado": header_idx + 1,
-            "Fila fechas": header_idx,
-            "Col Tienda": excel_col_name(tienda_col) if "excel_col_name" in globals() else tienda_col + 1,
-            "Fechas detectadas": len(blocks),
-            "Registros agrupados": len(acc),
-            "Lecturas con valor": lecturas,
-            "Tiendas detectadas": len(tiendas),
-            "Dev Pzs": sheet_dev,
-            "Venta Pzs": sheet_vta_pzs,
-            "Venta $": sheet_vta_imp,
-        })
+        for (hoja,fecha,tienda,sku_id,color,descripcion),vals in acc.items():
+            all_records.append({"Hoja":hoja,"Fecha":fecha,"Fecha_txt":fecha.strftime('%Y-%m-%d'),"Tienda":tienda,"ID":sku_id,"Color":color,"Descripción":descripcion,**vals})
+        diag_rows.append({"Tipo":"Resumen","Hoja":sheet_name,"Estado":"OK","Registros agrupados":len(acc),"Lecturas con valor":lecturas,"Tiendas detectadas":len(tiendas),"Dev Pzs":sheet_dev,"Venta Pzs":sheet_vta_pzs,"Venta $":sheet_vta_imp,"Costo Dev":sheet_cost})
 
     wb.close()
-
-    co = pd.DataFrame(all_records)
-    if not co.empty:
-        co["Fecha"] = co["Fecha"].apply(parse_date)
-        co["Fecha_txt"] = co["Fecha"].dt.strftime("%Y-%m-%d")
-        co["Tienda"] = co["Tienda"].map(canon_store)
-        # Reagrupar después de homologar para unir Guadalajara Miravalle -> Miravalle y Guadalajara -> Atemajac.
-        co = co.groupby(["Hoja", "Fecha", "Fecha_txt", "Tienda", "ID", "Color"], as_index=False)[["Dev_Pzs", "Vta_Pzs", "Vta_Imp", "Costo_Dev"]].sum()
-        co["Semana ISO"] = co["Fecha"].dt.isocalendar().week.astype(int)
-        co["Mes"] = co["Fecha"].dt.to_period("M").astype(str)
-
-    diag = pd.DataFrame(diag_rows)
-    samples = pd.DataFrame(sample_rows)
-    if not samples.empty:
-        samples.insert(0, "Tipo", "Muestra lectura")
-        diag = pd.concat([diag, samples], ignore_index=True, sort=False)
-
-    co = normalize_commercial_df(co)
-    return co, diag
-
+    co=pd.DataFrame(all_records)
+    co=normalize_commercial_df(co)
+    diag=pd.DataFrame(diag_rows)
+    samples=pd.DataFrame(sample_rows)
+    if not samples.empty: diag=pd.concat([diag,samples],ignore_index=True,sort=False)
+    return co,diag
 
 
 def process_excel(file_path):
@@ -5183,33 +5119,155 @@ def page_mensual(op, co):
     combined_chart(df, f"Ingreso vs Habilitado vs Ubicado - Mes {m}", income_column="Ingresos periodo")
 
 
+def compute_fifo_weekly_recovery(co):
+    """Hecho semanal auditable con matching Tienda+SKU+Año ISO+Semana ISO y FIFO vectorizado."""
+    cols=["Año ISO","Semana ISO","Tienda","SKU","Descripción","Dev Pzs","Ventas Pzs","Conv Pzs","Pendiente","Conv %","Costo Dev","Costo Recuperado","Pendiente $","Venta Recuperada"]
+    if co is None or co.empty:
+        return pd.DataFrame(columns=cols)
+    x=normalize_commercial_df(co)
+    x=x.copy()
+    for c in ["Dev_Pzs","Vta_Pzs","Vta_Imp","Costo_Dev"]:
+        x[c]=pd.to_numeric(x[c],errors="coerce").fillna(0).clip(lower=0)
+    keys=["Año ISO","Semana ISO","Tienda","SKU","Descripción"]
+    x=x.sort_values(keys+["Fecha"],kind="mergesort")
+    totals=x.groupby(keys,as_index=False,dropna=False).agg(
+        **{"Dev Pzs":("Dev_Pzs","sum"),"Ventas Pzs":("Vta_Pzs","sum"),"Costo Dev":("Costo_Dev","sum")}
+    )
+    totals["Conv Pzs"]=np.minimum(totals["Dev Pzs"],totals["Ventas Pzs"]).clip(lower=0)
+    x=x.merge(totals[keys+["Conv Pzs"]],on=keys,how="left",validate="many_to_one")
+
+    # FIFO de costo: consume primero las devoluciones más antiguas.
+    x["Dev antes"]=x.groupby(keys,dropna=False)["Dev_Pzs"].cumsum()-x["Dev_Pzs"]
+    x["Dev asignada"]=np.minimum(np.maximum(x["Conv Pzs"]-x["Dev antes"],0),x["Dev_Pzs"])
+    x["Costo unit dev"]=np.divide(x["Costo_Dev"],x["Dev_Pzs"],out=np.zeros(len(x),dtype=float),where=x["Dev_Pzs"].to_numpy()>0)
+    x["Costo rec fila"]=x["Dev asignada"]*x["Costo unit dev"]
+
+    # FIFO de ventas: utiliza una sola vez las primeras piezas vendidas de la semana.
+    x["Venta antes"]=x.groupby(keys,dropna=False)["Vta_Pzs"].cumsum()-x["Vta_Pzs"]
+    x["Venta usada"]=np.minimum(np.maximum(x["Conv Pzs"]-x["Venta antes"],0),x["Vta_Pzs"])
+    x["Precio venta unit"]=np.divide(x["Vta_Imp"],x["Vta_Pzs"],out=np.zeros(len(x),dtype=float),where=x["Vta_Pzs"].to_numpy()>0)
+    x["Venta rec fila"]=x["Venta usada"]*x["Precio venta unit"]
+
+    money=x.groupby(keys,as_index=False,dropna=False).agg(
+        **{"Costo Recuperado":("Costo rec fila","sum"),"Venta Recuperada":("Venta rec fila","sum")}
+    )
+    out=totals.merge(money,on=keys,how="left",validate="one_to_one")
+    out["Pendiente"]=(out["Dev Pzs"]-out["Conv Pzs"]).clip(lower=0)
+    out["Conv %"]=np.where(out["Dev Pzs"]>0,(out["Conv Pzs"]/out["Dev Pzs"]*100).clip(upper=100),0)
+    out["Costo Recuperado"]=np.minimum(out["Costo Recuperado"].fillna(0),out["Costo Dev"])
+    out["Pendiente $"]=(out["Costo Dev"]-out["Costo Recuperado"]).clip(lower=0)
+    return out[cols].sort_values(["Año ISO","Semana ISO","Tienda","SKU"],kind="mergesort").reset_index(drop=True)
+
+
+def recovery_period_filter(facts, prefix):
+    """Filtra semana/mes/año; mensual y anual agregan hechos semanales sin rematching."""
+    mode=st.selectbox("Vista",["Semanal","Mensual","Anual"],key=f"{prefix}_vista")
+    f=facts.copy()
+    week_start=pd.to_datetime(f["Año ISO"].astype(str)+"-W"+f["Semana ISO"].astype(str).str.zfill(2)+"-1",format="%G-W%V-%u",errors="coerce")
+    f["Mes cierre"]=(week_start+pd.Timedelta(days=6)).dt.to_period("M").astype(str)
+    if mode=="Semanal":
+        opts=sorted({f"{int(y)}-Sem {int(w):02d}" for y,w in zip(f["Año ISO"],f["Semana ISO"])})
+        sel=st.multiselect("Semana ISO",opts,default=opts[-1:] if opts else [],key=f"{prefix}_sem")
+        key=f["Año ISO"].astype(int).astype(str)+"-Sem "+f["Semana ISO"].astype(int).astype(str).str.zfill(2)
+        return f[key.isin(sel)].copy(), mode, ", ".join(sel)
+    if mode=="Mensual":
+        opts=sorted(f["Mes cierre"].dropna().unique().tolist())
+        sel=st.multiselect("Mes de cierre de semana",opts,default=opts[-1:] if opts else [],key=f"{prefix}_mes")
+        return f[f["Mes cierre"].isin(sel)].copy(), mode, ", ".join(sel)
+    opts=sorted(f["Año ISO"].dropna().astype(int).unique().tolist())
+    sel=st.multiselect("Año ISO",opts,default=opts[-1:] if opts else [],key=f"{prefix}_anio")
+    return f[f["Año ISO"].isin(sel)].copy(), mode, ", ".join(map(str,sel))
+
+
+def recovery_kpi_cards(values, economic=False):
+    c=st.columns(5)
+    if not economic:
+        labels=[("Devoluciones",values.get("Dev Pzs",0),None),("Conversión Piezas",values.get("Conv Pzs",0),None),("Pendiente",values.get("Pendiente",0),None),("Conversión %",values.get("Conv %",0),"%"),("Conversión $",values.get("Venta Recuperada",0),"$")]
+    else:
+        labels=[("Costo Devuelto",values.get("Costo Dev",0),"$"),("Costo Recuperado",values.get("Costo Recuperado",0),"$"),("Recuperación %",values.get("Recuperación %",0),"%"),("Pendiente $",values.get("Pendiente $",0),"$"),("Venta Recuperada",values.get("Venta Recuperada",0),"$")]
+    for col,(lab,val,kind) in zip(c,labels):
+        if kind=="$": shown=f"${val:,.0f}"
+        elif kind=="%": shown=f"{val:,.1f}%"
+        else: shown=f"{val:,.0f}"
+        col.metric(lab,shown)
+
+
+def conversion_charts(detail):
+    if detail.empty: return
+    by_store=detail.groupby("Tienda",as_index=False).agg(**{"Dev Pzs":("Dev Pzs","sum"),"Conv Pzs":("Conv Pzs","sum")})
+    fig=go.Figure()
+    fig.add_bar(x=by_store["Tienda"],y=by_store["Dev Pzs"],name="Dev Pzs",marker_color=AZUL,text=by_store["Dev Pzs"],textposition="outside")
+    fig.add_bar(x=by_store["Tienda"],y=by_store["Conv Pzs"],name="Conv Pzs",marker_color=ROSA,text=by_store["Conv Pzs"],textposition="outside")
+    fig.update_layout(title="Conversión por tienda",barmode="group",height=430,margin=dict(l=20,r=20,t=55,b=70))
+    st.plotly_chart(fig,use_container_width=True)
+    sku=detail.groupby(["SKU","Descripción"],as_index=False).agg(**{"Dev Pzs":("Dev Pzs","sum"),"Conv Pzs":("Conv Pzs","sum")})
+    sku["Conv %"]=np.where(sku["Dev Pzs"]>0,sku["Conv Pzs"]/sku["Dev Pzs"]*100,0).clip(upper=100)
+    a,b=st.columns(2)
+    top=sku.sort_values(["Conv Pzs","Conv %"],ascending=False).head(20).sort_values("Conv Pzs")
+    bot=sku[sku["Dev Pzs"]>0].sort_values(["Conv %","Conv Pzs"],ascending=[True,True]).head(20).sort_values("Conv %",ascending=False)
+    for col,data,title,xcol in [(a,top,"Top 20 SKU con mayor conversión","Conv Pzs"),(b,bot,"Bottom 20 SKU con menor conversión","Conv %")]:
+        fig=go.Figure(go.Bar(x=data[xcol],y=data["SKU"],orientation="h",text=data[xcol].round(1),textposition="outside",marker_color=ROSA if xcol=="Conv Pzs" else AZUL))
+        fig.update_layout(title=title,height=580,margin=dict(l=20,r=30,t=55,b=20))
+        col.plotly_chart(fig,use_container_width=True)
+
 def page_conversion(op, co):
-    st.markdown("## Conversión Semanal Dev → Venta")
-    st.caption("Se respeta semana ISO por tienda. La conversión real requiere ventas por ID/color/semana en el archivo.")
-    if co.empty:
-        st.info("Sin información comercial mensual.")
+    st.markdown("## Conversión real de devoluciones → venta")
+    st.caption("Matching exclusivo por Tienda + SKU + Año ISO + Semana ISO. Asignación FIFO; ninguna conversión puede superar 100%.")
+    facts=compute_fifo_weekly_recovery(co)
+    if facts.empty:
+        st.info("Sin detalle comercial por SKU. Vuelve a procesar el Excel con esta versión.")
         return
-    weeks = sorted(co["Semana ISO"].dropna().unique().tolist())
-    w = st.multiselect("Semana ISO", weeks, default=weeks[-1:])
-    df = co[co["Semana ISO"].isin(w)].groupby(["Semana ISO","Tienda"], as_index=False).agg({"Dev_Pzs":"sum","Vta_Pzs":"sum","Vta_Imp":"sum"})
-    df["Pend. Conv."] = df["Dev_Pzs"] - df["Vta_Pzs"]
-    df["% Conv."] = np.where(df["Dev_Pzs"]>0, df["Vta_Pzs"]/df["Dev_Pzs"]*100, 0)
-    df = df.rename(columns={"Dev_Pzs":"Dev Pzs", "Vta_Pzs":"Conv. Pzs", "Vta_Imp":"Conv. $"})
-    generic_pdf_button("Conversión Semanal Dev a Venta", f"Semanas: {w}", df, file_name="Reporte_Conversion.pdf", key="pdf_conversion")
-    panel("Detalle Conversión", df, height=420)
+    detail,mode,label=recovery_period_filter(facts,"conv")
+    if detail.empty:
+        st.info("Sin información para el periodo seleccionado.")
+        return
+    total=detail[["Dev Pzs","Conv Pzs","Pendiente","Venta Recuperada"]].sum().to_dict()
+    total["Conv %"]=min(100.0,total["Conv Pzs"]/total["Dev Pzs"]*100) if total["Dev Pzs"]>0 else 0.0
+    recovery_kpi_cards(total,economic=False)
+    by_store=detail.groupby("Tienda",as_index=False).agg(**{"Dev Pzs":("Dev Pzs","sum"),"Conv Pzs":("Conv Pzs","sum"),"Conv $":("Venta Recuperada","sum")})
+    by_store["Pendiente"]=(by_store["Dev Pzs"]-by_store["Conv Pzs"]).clip(lower=0)
+    by_store["% Conversión"]=np.where(by_store["Dev Pzs"]>0,(by_store["Conv Pzs"]/by_store["Dev Pzs"]*100).clip(upper=100),0)
+    if mode=="Semanal":
+        period=detail[["Año ISO","Semana ISO"]].drop_duplicates().astype(str).agg("-Sem ".join,axis=1)
+        by_store.insert(1,"Periodo",label)
+    else: by_store.insert(1,"Periodo",label)
+    panel("Conversión por tienda",by_store[["Tienda","Periodo","Dev Pzs","Conv Pzs","Conv $","Pendiente","% Conversión"]],height=360)
+    sku=detail.groupby(["SKU","Descripción"],as_index=False).agg(**{"Dev":("Dev Pzs","sum"),"Conv":("Conv Pzs","sum"),"Conv $":("Venta Recuperada","sum")})
+    sku["Pendiente"]=(sku["Dev"]-sku["Conv"]).clip(lower=0)
+    sku["Conv %"]=np.where(sku["Dev"]>0,(sku["Conv"]/sku["Dev"]*100).clip(upper=100),0)
+    panel("Detalle por SKU",sku[["SKU","Descripción","Dev","Conv","Pendiente","Conv %","Conv $"]],height=500)
+    conversion_charts(detail)
+    generic_pdf_button("Conversión real Dev a Venta",f"{mode}: {label}",by_store,file_name="Reporte_Conversion_FIFO.pdf",key="pdf_conversion_fifo")
 
 
 def page_recuperacion(op, co):
-    st.markdown("## Recuperación Económica")
-    if co.empty:
-        st.info("Sin información comercial mensual.")
+    st.markdown("## Recuperación Económica real")
+    st.caption("Costo recuperado y venta recuperada se limitan a las piezas convertidas mediante FIFO dentro de la misma semana ISO.")
+    facts=compute_fifo_weekly_recovery(co)
+    if facts.empty:
+        st.info("Sin detalle comercial por SKU. Vuelve a procesar el Excel con esta versión.")
         return
-    weeks = sorted(co["Semana ISO"].dropna().unique().tolist())
-    w = st.multiselect("Semana ISO", weeks, default=weeks[-1:], key="rec_sem")
-    df = co[co["Semana ISO"].isin(w)].groupby(["Semana ISO","Tienda"], as_index=False).agg({"Vta_Imp":"sum","Dev_Pzs":"sum"})
-    df = df.rename(columns={"Vta_Imp":"Recuperación $", "Dev_Pzs":"Dev Pzs"})
-    generic_pdf_button("Recuperación Económica", f"Semanas: {w}", df, file_name="Reporte_Recuperacion_Economica.pdf", key="pdf_recuperacion")
-    panel("Recuperación Económica", df, height=420)
+    detail,mode,label=recovery_period_filter(facts,"rec")
+    if detail.empty:
+        st.info("Sin información para el periodo seleccionado.")
+        return
+    total=detail[["Costo Dev","Costo Recuperado","Pendiente $","Venta Recuperada"]].sum().to_dict()
+    total["Recuperación %"]=min(100.0,total["Costo Recuperado"]/total["Costo Dev"]*100) if total["Costo Dev"]>0 else 0.0
+    recovery_kpi_cards(total,economic=True)
+    store=detail.groupby("Tienda",as_index=False).agg(**{"Costo Dev":("Costo Dev","sum"),"Recuperado":("Costo Recuperado","sum"),"Venta Recuperada":("Venta Recuperada","sum")})
+    store["Pendiente"]=(store["Costo Dev"]-store["Recuperado"]).clip(lower=0)
+    store["Recuperación %"]=np.where(store["Costo Dev"]>0,(store["Recuperado"]/store["Costo Dev"]*100).clip(upper=100),0)
+    panel("Recuperación por tienda",store[["Tienda","Costo Dev","Recuperado","Pendiente","Recuperación %","Venta Recuperada"]],height=380)
+    sku=detail.groupby(["SKU","Descripción"],as_index=False).agg(**{"Costo Dev":("Costo Dev","sum"),"Recuperado":("Costo Recuperado","sum"),"Venta Recuperada":("Venta Recuperada","sum")})
+    sku["Pendiente"]=(sku["Costo Dev"]-sku["Recuperado"]).clip(lower=0)
+    sku["Recuperación %"]=np.where(sku["Costo Dev"]>0,(sku["Recuperado"]/sku["Costo Dev"]*100).clip(upper=100),0)
+    panel("Detalle económico por SKU",sku[["SKU","Descripción","Costo Dev","Recuperado","Pendiente","Recuperación %","Venta Recuperada"]],height=500)
+    fig=go.Figure()
+    fig.add_bar(x=store["Tienda"],y=store["Costo Dev"],name="Costo Devuelto",marker_color=AZUL,text=store["Costo Dev"].round(0),textposition="outside")
+    fig.add_bar(x=store["Tienda"],y=store["Recuperado"],name="Costo Recuperado",marker_color=ROSA,text=store["Recuperado"].round(0),textposition="outside")
+    fig.update_layout(title="Recuperación económica por tienda",barmode="group",height=430,margin=dict(l=20,r=20,t=55,b=70))
+    st.plotly_chart(fig,use_container_width=True)
+    generic_pdf_button("Recuperación Económica FIFO",f"{mode}: {label}",store,file_name="Reporte_Recuperacion_FIFO.pdf",key="pdf_recuperacion_fifo")
 
 
 def page_productividad(op, co):
