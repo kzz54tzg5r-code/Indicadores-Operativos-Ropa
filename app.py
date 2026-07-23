@@ -56,7 +56,7 @@ for p in [DATA_DIR, UPLOAD_DIR, CACHE_DIR, CONFIG_DIR, ASSETS_DIR]:
     p.mkdir(parents=True, exist_ok=True)
 
 MX_TZ = ZoneInfo("America/Mexico_City")
-APP_CACHE_VERSION = "v12.8"
+APP_CACHE_VERSION = "v12.9"
 AZUL = "#10245F"
 ROSA = "#EC007C"
 LAVANDA = "#F3F6FB"
@@ -2611,6 +2611,38 @@ div[data-testid="stDialog"] button[kind="primary"] {{
     border-color: var(--portal-pink) !important;
 }}
 
+
+/* V12.9 — acceso más compacto */
+.login-brand-card {{ margin: 0 auto 10px !important; }}
+.login-real-logo {{ width: 125px !important; margin: 0 auto 4px !important; }}
+.login-real-logo img {{ max-height: 82px !important; }}
+.login-portal-title {{ font-size: 30px !important; margin-top: 4px !important; }}
+.login-portal-subtitle {{ font-size: 18px !important; margin-top: 2px !important; }}
+[data-testid="stForm"]:has(input[aria-label="Usuario o correo"]) {{
+    max-width: 610px !important;
+    padding: 20px 28px 24px !important;
+    margin-top: 10px !important;
+    border-radius: 16px !important;
+}}
+[data-testid="stForm"]:has(input[aria-label="Usuario o correo"]) [data-testid="stTextInput"] {{ margin-bottom: 6px !important; }}
+[data-testid="stForm"]:has(input[aria-label="Usuario o correo"]) input {{ min-height: 46px !important; }}
+[data-testid="stForm"]:has(input[aria-label="Usuario o correo"]) button[kind="primary"] {{ min-height: 48px !important; margin-top: 6px !important; }}
+body:has(input[aria-label="Usuario o correo"]) .block-container {{
+    justify-content: center !important;
+    padding-top: 1.5vh !important;
+    padding-bottom: 1.5vh !important;
+}}
+@media (max-width: 768px) {{
+    .login-real-logo {{ width: 105px !important; }}
+    .login-real-logo img {{ max-height: 68px !important; }}
+    .login-portal-title {{ font-size: 25px !important; }}
+    .login-portal-subtitle {{ font-size: 16px !important; }}
+    [data-testid="stForm"]:has(input[aria-label="Usuario o correo"]) {{
+        margin: 8px 10px 0 !important;
+        padding: 17px 16px 20px !important;
+    }}
+}}
+
 </style>
 """,
         unsafe_allow_html=True,
@@ -2726,6 +2758,37 @@ def render_header():
             )
 
     st.markdown('<div class="ps-module-pinkline"></div>', unsafe_allow_html=True)
+
+
+def read_file_history():
+    """Lee el historial de archivos sin afectar la operación principal."""
+    try:
+        if not FILE_HISTORY.exists():
+            return []
+        data = json.loads(FILE_HISTORY.read_text(encoding="utf-8"))
+        return data if isinstance(data, list) else []
+    except Exception:
+        return []
+
+
+def append_file_history(accion, archivo, estado, detalle=""):
+    """Agrega un registro al historial; nunca bloquea la carga."""
+    try:
+        rows = read_file_history()
+        rows.append({
+            "fecha": datetime.now(MX_TZ).strftime("%Y-%m-%d %H:%M:%S"),
+            "accion": str(accion),
+            "archivo": str(archivo),
+            "estado": str(estado),
+            "detalle": str(detalle),
+        })
+        FILE_HISTORY.parent.mkdir(parents=True, exist_ok=True)
+        FILE_HISTORY.write_text(
+            json.dumps(rows[-100:], ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+    except Exception:
+        pass
 
 
 def save_uploaded_file(uploaded):
