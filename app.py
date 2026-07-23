@@ -56,7 +56,7 @@ for p in [DATA_DIR, UPLOAD_DIR, CACHE_DIR, CONFIG_DIR, ASSETS_DIR]:
     p.mkdir(parents=True, exist_ok=True)
 
 MX_TZ = ZoneInfo("America/Mexico_City")
-APP_CACHE_VERSION = "v13.1"
+APP_CACHE_VERSION = "v14.0"
 AZUL = "#10245F"
 ROSA = "#EC007C"
 LAVANDA = "#F3F6FB"
@@ -2659,6 +2659,35 @@ div[data-testid="stDialog"] button[kind="primary"] {{
     min-height: 46px !important;
 }}
 
+
+/* V14.0 — Administración estable sin diálogos */
+.st-key-app_admin_menu [data-testid="stPopoverBody"],
+div[data-baseweb="popover"] [data-testid="stPopoverBody"] {{
+    min-width: 430px !important;
+    max-width: 520px !important;
+    max-height: 78vh !important;
+    overflow-y: auto !important;
+}}
+
+.st-key-app_admin_menu [data-testid="stFileUploaderDropzone"] {{
+    min-height: 86px !important;
+    padding: 10px !important;
+}}
+
+.st-key-app_admin_menu button[kind="primary"] {{
+    background: var(--portal-pink) !important;
+    border-color: var(--portal-pink) !important;
+}}
+
+@media (max-width: 768px) {{
+    .st-key-app_admin_menu [data-testid="stPopoverBody"],
+    div[data-baseweb="popover"] [data-testid="stPopoverBody"] {{
+        min-width: min(92vw, 430px) !important;
+        max-width: 92vw !important;
+        max-height: 72vh !important;
+    }}
+}}
+
 </style>
 """,
         unsafe_allow_html=True,
@@ -4828,10 +4857,12 @@ def sidebar_data_admin():
     )
 
 
-@st.dialog("Administración de Cambios y Muertos", width="large")
-@st.dialog("Administración de Cambios y Muertos", width="large")
-def file_admin_dialog():
-    """Carga y procesamiento separados para dar respuesta inmediata."""
+def render_file_admin_panel():
+    """Panel administrativo embebido en el menú de tres puntos.
+
+    No utiliza st.dialog, por lo que evita por completo los errores de
+    diálogos anidados en Streamlit.
+    """
     meta = {}
     if META_FILE.exists():
         try:
@@ -4844,6 +4875,7 @@ def file_admin_dialog():
         st.write(f"**Nombre:** {meta.get('nombre_original', ACTIVE_FILE.name)}")
         if meta.get("fecha_carga"):
             st.caption(f"Cargado: {meta.get('fecha_carga')}")
+
         if cache_valid():
             st.caption("Estado: Procesado y disponible")
         else:
@@ -4854,31 +4886,33 @@ def file_admin_dialog():
     uploaded = st.file_uploader(
         "Selecciona un archivo Excel",
         type=["xlsx"],
-        key="modal_upload_excel_v131",
+        key="popover_upload_excel_v140",
         help="Primero se guarda el archivo y después se procesa.",
     )
 
     if uploaded is not None:
         st.caption(
-            f"Archivo seleccionado: {uploaded.name} · "
+            f"Seleccionado: {uploaded.name} · "
             f"{uploaded.size / (1024 * 1024):,.1f} MB"
         )
+
         if st.button(
             "1. Guardar archivo",
-            key="modal_save_only_v131",
+            key="popover_save_only_v140",
             type="primary",
             use_container_width=True,
         ):
             try:
                 with st.spinner("Guardando archivo..."):
                     save_uploaded_file(uploaded)
+
                 append_file_history(
                     "Carga",
                     uploaded.name,
                     "Guardado",
                     "Archivo guardado; pendiente de procesamiento",
                 )
-                st.success("Archivo guardado. Ya puedes procesarlo.")
+                st.success("Archivo guardado. Continúa con el procesamiento.")
                 st.rerun()
             except Exception as exc:
                 st.error("No fue posible guardar el archivo.")
@@ -4890,14 +4924,16 @@ def file_admin_dialog():
             "El archivo ya está guardado. El procesamiento puede tardar "
             "porque se revisan las hojas operativas y comerciales."
         )
+
         if st.button(
             "2. Procesar archivo activo",
-            key="modal_process_active_v131",
+            key="popover_process_active_v140",
             type="primary",
             use_container_width=True,
         ):
             try:
                 process_excel(str(ACTIVE_FILE))
+
                 append_file_history(
                     "Proceso",
                     meta.get("nombre_original", ACTIVE_FILE.name),
@@ -4910,23 +4946,16 @@ def file_admin_dialog():
                 st.error("No fue posible procesar el archivo.")
                 st.exception(exc)
 
-    col_close, col_delete = st.columns(2)
-    with col_close:
+    if ACTIVE_FILE.exists():
+        st.divider()
         if st.button(
-            "Cerrar",
-            key="modal_close_v131",
-            use_container_width=True,
-        ):
-            st.rerun()
-
-    with col_delete:
-        if ACTIVE_FILE.exists() and st.button(
             "Eliminar archivo activo",
-            key="modal_delete_active_v131",
+            key="popover_delete_active_v140",
             use_container_width=True,
         ):
             file_name = meta.get("nombre_original", ACTIVE_FILE.name)
             delete_active_file()
+
             append_file_history(
                 "Eliminación",
                 file_name,
@@ -4990,23 +5019,7 @@ def render_app_portal():
                             with st.popover("⋮", use_container_width=False):
                                 st.markdown("### Cambios y Muertos")
                                 st.caption("Administración de la fuente de datos")
-
-                                if ACTIVE_FILE.exists():
-                                    st.caption(
-                                        "Archivo procesado"
-                                        if cache_valid()
-                                        else "Archivo pendiente de procesar"
-                                    )
-                                else:
-                                    st.caption("Sin archivo cargado")
-
-                                if st.button(
-                                    "📂 Administrar archivo",
-                                    key="open_file_modal_v128",
-                                    type="primary",
-                                    use_container_width=True,
-                                ):
-                                    file_admin_dialog()
+                                render_file_admin_panel()
 
                     if st.button(
                         "Cambios y Muertos\n\nRecuperación · Productividad · Conversión",
@@ -5044,6 +5057,10 @@ def nav_bar():
     current = st.session_state.get("nav_page", pages[0])
     if current not in pages:
         current = pages[0]
+
+    permiso = st.session_state.get("user", {}).get("permiso", "Consulta")
+    if permiso != "Administrador":
+        pages = [p for p in pages if p not in ["Configuración", "Usuarios"]]
 
     selected = st.radio(
         "Pestañas",
@@ -5738,8 +5755,8 @@ ROUTES = {
     "Ranking": lambda: page_ranking(op_all, co_all),
     "Macro": lambda: page_macro(op_all, co_all),
     "Diagnóstico": lambda: page_diagnostico(op_all, co_all, diag_df),
-    "Configuración": page_configuracion,
-    "Usuarios": page_usuarios,
+    "Configuración": page_configuracion if st.session_state.get("user", {}).get("permiso") == "Administrador" else lambda: st.warning("Acceso exclusivo para Administrador."),
+    "Usuarios": page_usuarios if st.session_state.get("user", {}).get("permiso") == "Administrador" else lambda: st.warning("Acceso exclusivo para Administrador."),
 }
 
 ROUTES.get(page, lambda: page_resumen(op_all, co_all))()

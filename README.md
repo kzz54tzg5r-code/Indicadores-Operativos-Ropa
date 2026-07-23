@@ -1,14 +1,17 @@
-# Indicadores Cambios y Muertos v13.1
+# Indicadores Cambios y Muertos v14.0
 
-Optimización de carga y procesamiento:
-- La carga se divide en dos pasos: Guardar y Procesar.
-- Guardar el archivo ya no espera a que termine todo el procesamiento.
-- El lector comercial ya no convierte cada hoja completa en una lista.
-- Solo lee las columnas necesarias: Tienda, ID, Color, Dev Pzs, Venta Pzs y Venta Neta $.
-- Se redujo la cantidad de registros de diagnóstico de muestra.
-- Se eliminaron normalizaciones duplicadas.
-- Se mantiene el cálculo por ID y Venta Neta en $.
+Versión estable sin diálogos:
 
-Para un archivo de aproximadamente 80 MB, la subida seguirá dependiendo de la velocidad
-de internet, pero el procesamiento en el servidor debe consumir menos memoria y terminar
-más rápido.
+- Se eliminaron completamente todos los `st.dialog`.
+- Ya no puede ocurrir el error “Dialogs may not be nested inside other dialogs”.
+- La administración se realiza directamente dentro del menú de tres puntos.
+- Flujo de archivo:
+  1. Seleccionar Excel.
+  2. Guardar archivo.
+  3. Procesar archivo activo.
+  4. Eliminar archivo activo.
+- Se conserva el lector optimizado de v13.1.
+- Permisos disponibles:
+  - Administrador
+  - Consulta
+- Configuración y Usuarios solo son visibles para Administrador.
