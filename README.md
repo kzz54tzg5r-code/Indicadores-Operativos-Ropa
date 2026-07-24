@@ -1,17 +1,19 @@
-# Indicadores Cambios y Muertos v14.0
+# Indicadores Cambios y Muertos v15.0
 
-Versión estable sin diálogos:
+Arquitectura estable del portal:
 
-- Se eliminaron completamente todos los `st.dialog`.
-- Ya no puede ocurrir el error “Dialogs may not be nested inside other dialogs”.
-- La administración se realiza directamente dentro del menú de tres puntos.
-- Flujo de archivo:
-  1. Seleccionar Excel.
-  2. Guardar archivo.
-  3. Procesar archivo activo.
-  4. Eliminar archivo activo.
-- Se conserva el lector optimizado de v13.1.
-- Permisos disponibles:
-  - Administrador
-  - Consulta
-- Configuración y Usuarios solo son visibles para Administrador.
+- Los tres puntos de Cambios y Muertos abren una página administrativa.
+- No se utilizan diálogos ni popovers para cargar archivos.
+- La página Administración incluye:
+  - estado del archivo;
+  - selección del Excel;
+  - guardar archivo;
+  - procesar archivo activo;
+  - reprocesar;
+  - eliminar;
+  - historial de movimientos.
+- La tarjeta Cambios y Muertos únicamente abre el indicador.
+- El logo Price Shoes dentro del indicador regresa al portal.
+- Permisos disponibles: Administrador y Consulta.
+- Configuración y Usuarios continúan exclusivos para Administrador.
+- Se conserva el lector comercial optimizado y el cálculo por ID/Venta Neta $.

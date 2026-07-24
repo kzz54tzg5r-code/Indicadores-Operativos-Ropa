@@ -56,7 +56,7 @@ for p in [DATA_DIR, UPLOAD_DIR, CACHE_DIR, CONFIG_DIR, ASSETS_DIR]:
     p.mkdir(parents=True, exist_ok=True)
 
 MX_TZ = ZoneInfo("America/Mexico_City")
-APP_CACHE_VERSION = "v14.0"
+APP_CACHE_VERSION = "v15.0"
 AZUL = "#10245F"
 ROSA = "#EC007C"
 LAVANDA = "#F3F6FB"
@@ -2688,6 +2688,63 @@ div[data-baseweb="popover"] [data-testid="stPopoverBody"] {{
     }}
 }}
 
+
+/* V15.0 — Administración como página estable */
+.admin-section-title {{
+    background: #244F93;
+    color: #FFFFFF;
+    font-weight: 800;
+    font-size: 18px;
+    padding: 12px 16px;
+    border-radius: 10px 10px 0 0;
+    margin-bottom: 14px;
+}}
+.admin-status {{
+    margin-top: 12px;
+    border-radius: 10px;
+    padding: 12px 14px;
+    font-weight: 750;
+}}
+.admin-status-ok {{
+    background: #E7F8EE;
+    color: #087A3D;
+    border: 1px solid #B8E7CC;
+}}
+.admin-status-warn {{
+    background: #FFF7DA;
+    color: #9A6900;
+    border: 1px solid #F0D88A;
+}}
+.st-key-app_admin_menu {{
+    position: absolute !important;
+    top: 8px !important;
+    right: 8px !important;
+    z-index: 20 !important;
+    width: 46px !important;
+}}
+.st-key-app_admin_menu button {{
+    width: 42px !important;
+    min-width: 42px !important;
+    height: 42px !important;
+    min-height: 42px !important;
+    padding: 0 !important;
+    border-radius: 50% !important;
+    border: 0 !important;
+    background: rgba(255,255,255,.96) !important;
+    color: #244F93 !important;
+    font-size: 26px !important;
+    box-shadow: 0 3px 10px rgba(0,0,0,.12) !important;
+}}
+.st-key-app_admin_menu button p {{
+    font-size: 26px !important;
+    line-height: 1 !important;
+}}
+@media (max-width: 768px) {{
+    .admin-section-title {{
+        font-size: 16px;
+    }}
+}}
+
 </style>
 """,
         unsafe_allow_html=True,
@@ -2744,6 +2801,7 @@ def render_header():
     with c_logo:
         if st.button(" ", key="logo_home_btn", help="Volver al portal", use_container_width=True):
             st.session_state["active_app"] = None
+            st.session_state["portal_view"] = "apps"
             st.session_state["nav_page"] = "Resumen"
             st.rerun()
 
@@ -4966,6 +5024,206 @@ def render_file_admin_panel():
             st.rerun()
 
 
+def page_portal_admin():
+    """Página empresarial para administrar la fuente de Cambios y Muertos."""
+    user = st.session_state.get("user", {})
+    if user.get("permiso") != "Administrador":
+        st.error("Acceso exclusivo para Administrador.")
+        if st.button("Volver al portal", key="admin_back_unauthorized"):
+            st.session_state["portal_view"] = "apps"
+            st.rerun()
+        return
+
+    render_portal_header()
+
+    top_left, top_right = st.columns([7.5, 2.5], vertical_alignment="center")
+    with top_left:
+        st.markdown("## Administración · Cambios y Muertos")
+        st.caption("Carga, procesamiento, historial y eliminación de la fuente de datos.")
+    with top_right:
+        if st.button(
+            "← Volver al portal",
+            key="admin_back_portal",
+            use_container_width=True,
+        ):
+            st.session_state["portal_view"] = "apps"
+            st.rerun()
+
+    meta = {}
+    if META_FILE.exists():
+        try:
+            meta = json.loads(META_FILE.read_text(encoding="utf-8"))
+        except Exception:
+            meta = {}
+
+    status_col, action_col = st.columns([3.2, 6.8], gap="large")
+
+    with status_col:
+        st.markdown('<div class="admin-section-title">Estado del archivo</div>', unsafe_allow_html=True)
+
+        if ACTIVE_FILE.exists():
+            st.success("Archivo guardado")
+            st.markdown(f"**Nombre:** {meta.get('nombre_original', ACTIVE_FILE.name)}")
+            if meta.get("fecha_carga"):
+                st.caption(f"Cargado: {meta.get('fecha_carga')}")
+
+            try:
+                size_mb = ACTIVE_FILE.stat().st_size / (1024 * 1024)
+                st.caption(f"Tamaño: {size_mb:,.1f} MB")
+            except Exception:
+                pass
+
+            if cache_valid():
+                st.markdown(
+                    '<div class="admin-status admin-status-ok">● Procesado y disponible</div>',
+                    unsafe_allow_html=True,
+                )
+            else:
+                st.markdown(
+                    '<div class="admin-status admin-status-warn">● Pendiente de procesar</div>',
+                    unsafe_allow_html=True,
+                )
+        else:
+            st.warning("No hay archivo cargado")
+
+        st.divider()
+        st.markdown("#### Flujo")
+        st.markdown(
+            """
+            1. Seleccionar el Excel  
+            2. Guardar el archivo  
+            3. Procesar el archivo activo  
+            4. Consultar los indicadores
+            """
+        )
+
+    with action_col:
+        st.markdown('<div class="admin-section-title">Administrar fuente</div>', unsafe_allow_html=True)
+
+        uploaded = st.file_uploader(
+            "Selecciona un archivo Excel",
+            type=["xlsx"],
+            key="admin_page_upload_v150",
+            help="El archivo seleccionado sustituirá al archivo activo cuando se guarde.",
+        )
+
+        if uploaded is not None:
+            st.info(
+                f"Seleccionado: **{uploaded.name}** · "
+                f"{uploaded.size / (1024 * 1024):,.1f} MB"
+            )
+
+        save_col, process_col = st.columns(2)
+        with save_col:
+            save_disabled = uploaded is None
+            if st.button(
+                "1. Guardar archivo",
+                key="admin_page_save_v150",
+                type="primary",
+                use_container_width=True,
+                disabled=save_disabled,
+            ):
+                try:
+                    with st.spinner("Guardando archivo en el servidor..."):
+                        save_uploaded_file(uploaded)
+                    append_file_history(
+                        "Carga",
+                        uploaded.name,
+                        "Guardado",
+                        "Archivo guardado; pendiente de procesamiento",
+                    )
+                    st.success("Archivo guardado. Ahora presiona Procesar archivo activo.")
+                    st.rerun()
+                except Exception as exc:
+                    st.error("No fue posible guardar el archivo.")
+                    st.exception(exc)
+
+        with process_col:
+            process_disabled = not ACTIVE_FILE.exists() or cache_valid()
+            if st.button(
+                "2. Procesar archivo activo",
+                key="admin_page_process_v150",
+                type="primary",
+                use_container_width=True,
+                disabled=process_disabled,
+            ):
+                try:
+                    with st.spinner(
+                        "Procesando hojas operativas y comerciales. "
+                        "No cierres esta ventana..."
+                    ):
+                        process_excel(str(ACTIVE_FILE))
+                    append_file_history(
+                        "Proceso",
+                        meta.get("nombre_original", ACTIVE_FILE.name),
+                        "Procesado",
+                        "Archivo procesado correctamente",
+                    )
+                    st.success("Archivo procesado correctamente.")
+                    st.rerun()
+                except Exception as exc:
+                    st.error("No fue posible procesar el archivo.")
+                    st.exception(exc)
+
+        if ACTIVE_FILE.exists() and cache_valid():
+            st.success("La información está lista para consultarse.")
+
+        st.divider()
+        st.markdown("#### Acciones adicionales")
+        repro_col, delete_col = st.columns(2)
+
+        with repro_col:
+            if ACTIVE_FILE.exists() and st.button(
+                "Reprocesar archivo",
+                key="admin_page_reprocess_v150",
+                use_container_width=True,
+            ):
+                try:
+                    process_excel(str(ACTIVE_FILE))
+                    append_file_history(
+                        "Reproceso",
+                        meta.get("nombre_original", ACTIVE_FILE.name),
+                        "Procesado",
+                        "Archivo reprocesado correctamente",
+                    )
+                    st.success("Archivo reprocesado.")
+                    st.rerun()
+                except Exception as exc:
+                    st.error("No fue posible reprocesar el archivo.")
+                    st.exception(exc)
+
+        with delete_col:
+            if ACTIVE_FILE.exists() and st.button(
+                "Eliminar archivo activo",
+                key="admin_page_delete_v150",
+                use_container_width=True,
+            ):
+                file_name = meta.get("nombre_original", ACTIVE_FILE.name)
+                delete_active_file()
+                append_file_history(
+                    "Eliminación",
+                    file_name,
+                    "Eliminado",
+                    "Archivo activo eliminado",
+                )
+                st.success("Archivo eliminado.")
+                st.rerun()
+
+    st.markdown("### Historial de archivos")
+    history = read_file_history() if "read_file_history" in globals() else []
+    if history:
+        history_df = pd.DataFrame(history)
+        desired = ["fecha", "accion", "archivo", "estado", "detalle"]
+        history_df = history_df[[c for c in desired if c in history_df.columns]]
+        st.dataframe(
+            history_df.iloc[::-1].head(100),
+            use_container_width=True,
+            hide_index=True,
+            height=340,
+        )
+    else:
+        st.info("Aún no hay movimientos registrados en el historial.")
+
 def render_app_portal():
     user = st.session_state.get("user", {})
     permiso = user.get("permiso", "Consulta")
@@ -5016,10 +5274,13 @@ def render_app_portal():
                 with st.container(key="app_card_shell"):
                     if permiso == "Administrador":
                         with st.container(key="app_admin_menu"):
-                            with st.popover("⋮", use_container_width=False):
-                                st.markdown("### Cambios y Muertos")
-                                st.caption("Administración de la fuente de datos")
-                                render_file_admin_panel()
+                            if st.button(
+                                "⋮",
+                                key="open_admin_page_v150",
+                                help="Administración de Cambios y Muertos",
+                            ):
+                                st.session_state["portal_view"] = "admin"
+                                st.rerun()
 
                     if st.button(
                         "Cambios y Muertos\n\nRecuperación · Productividad · Conversión",
@@ -5725,20 +5986,25 @@ if not login_sidebar():
 
 if "active_app" not in st.session_state:
     st.session_state["active_app"] = None
+if "portal_view" not in st.session_state:
+    st.session_state["portal_view"] = "apps"
 
 if not st.session_state.get("active_app"):
-    render_app_portal()
+    if st.session_state.get("portal_view") == "admin":
+        page_portal_admin()
+    else:
+        render_app_portal()
     st.stop()
 
 render_header()
 page = nav_bar()
 
 if not ACTIVE_FILE.exists():
-    st.warning("El Administrador debe cargar el archivo desde el menú principal de aplicaciones.")
+    st.warning("El Administrador debe cargar el archivo desde la página Administración del portal.")
     st.stop()
 
 if not cache_valid():
-    st.warning("El archivo está cargado, pero aún no está procesado. Regresa al menú principal para procesarlo.")
+    st.warning("El archivo está cargado, pero aún no está procesado. Regresa a Administración para procesarlo.")
     st.stop()
 
 op_all, co_all, diag_df = read_cache(ACTIVE_FILE.stat().st_mtime)
