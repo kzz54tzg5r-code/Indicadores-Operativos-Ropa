@@ -5,8 +5,9 @@ import hashlib
 import json
 import re
 import sqlite3
+import secrets
 import unicodedata
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo
 from urllib.parse import quote
@@ -51,12 +52,14 @@ META_FILE = CONFIG_DIR / "metadata.json"
 FILE_HISTORY = DATA_DIR / "file_history.json"
 FILE_HISTORY.parent.mkdir(parents=True, exist_ok=True)
 DB_FILE = CONFIG_DIR / "usuarios.db"
+SESSION_FILE = CONFIG_DIR / "sessions.json"
+SESSION_TIMEOUT_HOURS = 8
 
 for p in [DATA_DIR, UPLOAD_DIR, CACHE_DIR, CONFIG_DIR, ASSETS_DIR]:
     p.mkdir(parents=True, exist_ok=True)
 
 MX_TZ = ZoneInfo("America/Mexico_City")
-APP_CACHE_VERSION = "v15.0"
+APP_CACHE_VERSION = "v16-enterprise"
 AZUL = "#10245F"
 ROSA = "#EC007C"
 LAVANDA = "#F3F6FB"
@@ -2745,6 +2748,24 @@ div[data-baseweb="popover"] [data-testid="stPopoverBody"] {{
     }}
 }}
 
+
+/* V16 Enterprise */
+[data-testid="stMetric"] {{
+    min-height: 118px !important;
+    border: 1px solid #DCE3EF !important;
+    border-radius: 14px !important;
+    padding: 15px !important;
+    background: #FFFFFF !important;
+    box-shadow: 0 5px 14px rgba(16,36,95,.06) !important;
+}}
+[data-testid="stMetricLabel"] p {{
+    font-weight: 750 !important;
+    color: #24134F !important;
+}}
+[data-testid="stMetricValue"] {{
+    color: #EC007C !important;
+}}
+
 </style>
 """,
         unsafe_allow_html=True,
@@ -2772,15 +2793,14 @@ def render_portal_header():
 
     with c_user:
         with st.container(key="portal_user_menu"):
-            with st.popover(f"👤 {user_name}", use_container_width=True):
+            with st.popover(f"👤 {user_name}", width="stretch"):
                 st.markdown(f"**{user_name}**")
                 if nomina:
                     st.caption(f"Nómina: {nomina}")
                 st.caption(f"Perfil: {permiso}")
                 st.caption(f"Fecha: {now.strftime('%d/%m/%Y')}")
-                if st.button("Cerrar sesión", key="logout_portal", use_container_width=True):
-                    for key in ["user", "active_app", "nav_page"]:
-                        st.session_state.pop(key, None)
+                if st.button("Cerrar sesión", key="logout_portal", width="stretch"):
+                    clear_auth_session()
                     st.rerun()
 
     st.markdown(
@@ -2799,7 +2819,7 @@ def render_header():
     c_logo, c_brand, c_user = st.columns([1.05, 6.65, 2.3], vertical_alignment="center")
 
     with c_logo:
-        if st.button(" ", key="logo_home_btn", help="Volver al portal", use_container_width=True):
+        if st.button(" ", key="logo_home_btn", help="Volver al portal", width="stretch"):
             st.session_state["active_app"] = None
             st.session_state["portal_view"] = "apps"
             st.session_state["nav_page"] = "Resumen"
@@ -2847,12 +2867,11 @@ def render_header():
 
     with c_user:
         with st.container(key="module_user_menu"):
-            with st.popover(f"👤 {user_name}", use_container_width=True):
+            with st.popover(f"👤 {user_name}", width="stretch"):
                 st.caption(f"Perfil: {permiso}")
                 st.caption(f"Fecha: {now.strftime('%d/%m/%Y')}")
-                if st.button("Cerrar sesión", key="logout_top", use_container_width=True):
-                    for key in ["user", "active_app", "nav_page"]:
-                        st.session_state.pop(key, None)
+                if st.button("Cerrar sesión", key="logout_top", width="stretch"):
+                    clear_auth_session()
                     st.rerun()
 
             st.markdown(
@@ -2950,6 +2969,154 @@ def cache_valid():
 
 
 
+def _read_sessions():
+    try:
+        if not SESSION_FILE.exists():
+            return {}
+        data = json.loads(SESSION_FILE.read_text(encoding="utf-8"))
+        return data if isinstance(data, dict) else {}
+    except Exception:
+        return {}
+
+
+def _write_sessions(data):
+    try:
+        SESSION_FILE.parent.mkdir(parents=True, exist_ok=True)
+        SESSION_FILE.write_text(
+            json.dumps(data, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+    except Exception:
+        pass
+
+
+def _session_token_hash(token):
+    return hashlib.sha256(str(token).encode("utf-8")).hexdigest()
+
+
+def create_persistent_session(user):
+    """Crea una sesión recuperable aun después de un rerun o reinicio."""
+    token = secrets.token_urlsafe(32)
+    token_hash = _session_token_hash(token)
+    now = datetime.now(MX_TZ)
+    sessions = _read_sessions()
+
+    # Limpiar sesiones vencidas.
+    clean = {}
+    for key, row in sessions.items():
+        try:
+            if datetime.fromisoformat(row.get("expires_at", "")) > now:
+                clean[key] = row
+        except Exception:
+            continue
+
+    clean[token_hash] = {
+        "user": {
+            "nomina": str(user.get("nomina", "")),
+            "nombre": str(user.get("nombre", "Consulta")),
+            "permiso": (
+                "Administrador"
+                if user.get("permiso") == "Administrador"
+                else "Consulta"
+            ),
+        },
+        "created_at": now.isoformat(),
+        "last_activity": now.isoformat(),
+        "expires_at": (now + timedelta(hours=SESSION_TIMEOUT_HOURS)).isoformat(),
+    }
+    _write_sessions(clean)
+    st.query_params["session"] = token
+    st.session_state["auth_token"] = token
+    return token
+
+
+def restore_persistent_session():
+    """Recupera la sesión mediante un token firmado por hash en el servidor."""
+    if "user" in st.session_state:
+        touch_persistent_session()
+        return True
+
+    token = st.query_params.get("session", "")
+    if isinstance(token, list):
+        token = token[0] if token else ""
+    if not token:
+        return False
+
+    sessions = _read_sessions()
+    row = sessions.get(_session_token_hash(token))
+    if not row:
+        try:
+            del st.query_params["session"]
+        except Exception:
+            pass
+        return False
+
+    now = datetime.now(MX_TZ)
+    try:
+        expires_at = datetime.fromisoformat(row.get("expires_at", ""))
+    except Exception:
+        expires_at = now - timedelta(seconds=1)
+
+    if expires_at <= now:
+        sessions.pop(_session_token_hash(token), None)
+        _write_sessions(sessions)
+        try:
+            del st.query_params["session"]
+        except Exception:
+            pass
+        return False
+
+    user = row.get("user", {})
+    user["permiso"] = (
+        "Administrador"
+        if user.get("permiso") == "Administrador"
+        else "Consulta"
+    )
+    st.session_state["user"] = user
+    st.session_state["auth_token"] = token
+    touch_persistent_session()
+    return True
+
+
+def touch_persistent_session():
+    """Renueva la sesión por ocho horas desde la última interacción."""
+    token = st.session_state.get("auth_token") or st.query_params.get("session", "")
+    if isinstance(token, list):
+        token = token[0] if token else ""
+    if not token:
+        return
+
+    sessions = _read_sessions()
+    token_hash = _session_token_hash(token)
+    row = sessions.get(token_hash)
+    if not row:
+        return
+
+    now = datetime.now(MX_TZ)
+    row["last_activity"] = now.isoformat()
+    row["expires_at"] = (now + timedelta(hours=SESSION_TIMEOUT_HOURS)).isoformat()
+    sessions[token_hash] = row
+    _write_sessions(sessions)
+
+
+def clear_auth_session():
+    token = st.session_state.get("auth_token") or st.query_params.get("session", "")
+    if isinstance(token, list):
+        token = token[0] if token else ""
+    if token:
+        sessions = _read_sessions()
+        sessions.pop(_session_token_hash(token), None)
+        _write_sessions(sessions)
+
+    for key in [
+        "user", "auth_token", "active_app", "portal_view", "nav_page",
+    ]:
+        st.session_state.pop(key, None)
+    try:
+        del st.query_params["session"]
+    except Exception:
+        pass
+
 def normalize_selected_date(x):
     d = parse_date(x)
     return d.date() if pd.notna(d) else date.today()
@@ -2974,7 +3141,7 @@ def normalize_commercial_df(co):
             co[c] = 0
         co[c] = pd.to_numeric(co[c], errors="coerce").fillna(0)
 
-    group_cols = [c for c in ["Hoja", "Fecha", "Fecha_txt", "Tienda", "ID", "Color"] if c in co.columns]
+    group_cols = [c for c in ["Hoja", "Fecha", "Fecha_txt", "Tienda", "ID", "Descripción", "Color"] if c in co.columns]
     if "Fecha" in group_cols and "Tienda" in group_cols:
         co = co.groupby(group_cols, as_index=False)[["Dev_Pzs", "Vta_Pzs", "Vta_Imp", "Costo_Dev"]].sum()
         iso = co["Fecha"].dt.isocalendar()
@@ -3320,13 +3487,21 @@ def read_monthly_dev(file_path, progress=None):
         date_row = top_rows[header_idx - 1] if header_idx > 0 else [None] * max_cols
 
         id_aliases = {
-            "ID", "ID ARTICULO", "ID ARTÍCULO", "ID MODELO",
-            "MODELO ID", "MODELO", "CODIGO", "CÓDIGO",
+            "ID", "SKU", "ID/SKU", "ID ARTICULO", "ID ARTÍCULO",
+            "ID MODELO", "MODELO ID", "MODELO", "CODIGO", "CÓDIGO",
+        }
+        description_aliases = {
+            "DESCRIPCION", "DESCRIPCIÓN", "DESC", "DESCRIPCION ARTICULO",
+            "DESCRIPCIÓN ARTÍCULO", "ARTICULO", "ARTÍCULO",
         }
         color_aliases = {"COLOR", "COLOUR"}
 
         id_col = next(
             (i for i, value in enumerate(header_row) if norm_text(value) in id_aliases),
+            None,
+        )
+        description_col = next(
+            (i for i, value in enumerate(header_row) if norm_text(value) in description_aliases),
             None,
         )
         color_col = next(
@@ -3406,6 +3581,8 @@ def read_monthly_dev(file_path, progress=None):
         required_cols = {tienda_col}
         if id_col is not None:
             required_cols.add(id_col)
+        if description_col is not None:
+            required_cols.add(description_col)
         if color_col is not None:
             required_cols.add(color_col)
         for cols in blocks.values():
@@ -3420,6 +3597,9 @@ def read_monthly_dev(file_path, progress=None):
 
         local_tienda = local_index(tienda_col)
         local_id = local_index(id_col) if id_col is not None else None
+        local_description = (
+            local_index(description_col) if description_col is not None else None
+        )
         local_color = local_index(color_col) if color_col is not None else None
         local_blocks = {
             fecha: {
@@ -3461,6 +3641,15 @@ def read_monthly_dev(file_path, progress=None):
             if item_id.lower() in {"none", "nan"}:
                 item_id = ""
 
+            raw_description = (
+                row[local_description]
+                if local_description is not None and local_description < len(row)
+                else ""
+            )
+            description = str(raw_description).strip()
+            if description.lower() in {"none", "nan"}:
+                description = ""
+
             raw_color = (
                 row[local_color]
                 if local_color is not None and local_color < len(row)
@@ -3494,7 +3683,7 @@ def read_monthly_dev(file_path, progress=None):
                 if dev == 0 and vta_pzs == 0 and vta_imp == 0:
                     continue
 
-                key = (sheet_name, fecha, tienda, item_id, color)
+                key = (sheet_name, fecha, tienda, item_id, description, color)
                 values = acc.setdefault(
                     key,
                     {"Dev_Pzs": 0.0, "Vta_Pzs": 0.0, "Vta_Imp": 0.0},
@@ -3534,7 +3723,7 @@ def read_monthly_dev(file_path, progress=None):
                     })
                     samples_per_sheet += 1
 
-        for (hoja, fecha, tienda, item_id, color), values in acc.items():
+        for (hoja, fecha, tienda, item_id, description, color), values in acc.items():
             all_records.append({
                 "Hoja": hoja,
                 "Fecha": fecha,
@@ -3545,6 +3734,7 @@ def read_monthly_dev(file_path, progress=None):
                 "Vta_Imp": values["Vta_Imp"],
                 "Costo_Dev": 0.0,
                 "ID": item_id,
+                "Descripción": description,
                 "Color": color,
             })
 
@@ -3578,7 +3768,7 @@ def read_monthly_dev(file_path, progress=None):
         co["Tienda"] = co["Tienda"].map(canon_store)
         co = (
             co.groupby(
-                ["Hoja", "Fecha", "Fecha_txt", "Tienda", "ID", "Color"],
+                ["Hoja", "Fecha", "Fecha_txt", "Tienda", "ID", "Descripción", "Color"],
                 as_index=False,
                 dropna=False,
             )[["Dev_Pzs", "Vta_Pzs", "Vta_Imp", "Costo_Dev"]]
@@ -4783,11 +4973,9 @@ def generic_pdf_button(title, subtitle, df, kpi_values=None, file_name=None, key
     )
 
 def login_sidebar():
-    if "user" in st.session_state:
+    if restore_persistent_session():
         return True
 
-    # Ocultar elementos de Streamlit durante el acceso para que realmente
-    # ocupe toda la pantalla útil.
     st.markdown(
         """
         <style>
@@ -4795,22 +4983,18 @@ def login_sidebar():
         [data-testid="stToolbar"],
         [data-testid="stDecoration"],
         #MainMenu,
-        footer {
-            display: none !important;
-        }
+        footer { display: none !important; }
         [data-testid="stAppViewContainer"] {
             background:
                 linear-gradient(rgba(0,27,28,.78), rgba(0,43,36,.92)),
                 radial-gradient(circle at 50% 18%, rgba(255,255,255,.10), transparent 34%),
                 linear-gradient(145deg,#061F29,#003D33) !important;
         }
-        [data-testid="stMain"] {
-            min-height: 100vh !important;
-        }
+        [data-testid="stMain"] { min-height: 100vh !important; }
         .block-container {
-            max-width: 760px !important;
+            max-width: 680px !important;
             min-height: 100vh !important;
-            padding: 5vh 1rem 2rem !important;
+            padding: 2vh 1rem !important;
             display: flex !important;
             flex-direction: column !important;
             justify-content: center !important;
@@ -4822,9 +5006,9 @@ def login_sidebar():
 
     logo_path = ASSETS_DIR / "price_shoes_logo.png"
     if logo_path.exists():
-        c1, c2, c3 = st.columns([1, 1.2, 1])
+        c1, c2, c3 = st.columns([1, 1, 1])
         with c2:
-            st.image(str(logo_path), use_container_width=True)
+            st.image(str(logo_path), width="stretch")
 
     st.markdown(
         """
@@ -4851,14 +5035,20 @@ def login_sidebar():
         submitted = st.form_submit_button(
             "Iniciar sesión",
             type="primary",
-            use_container_width=True,
+            width="stretch",
         )
 
     if submitted:
         user = get_user(nom, pwd)
         if user:
-            st.session_state.user = user
+            user["permiso"] = (
+                "Administrador"
+                if user.get("permiso") == "Administrador"
+                else "Consulta"
+            )
+            st.session_state["user"] = user
             st.session_state["nav_page"] = "Resumen"
+            create_persistent_session(user)
             st.rerun()
         else:
             st.error("Usuario o contraseña incorrectos.")
@@ -4958,7 +5148,7 @@ def render_file_admin_panel():
             "1. Guardar archivo",
             key="popover_save_only_v140",
             type="primary",
-            use_container_width=True,
+            width="stretch",
         ):
             try:
                 with st.spinner("Guardando archivo..."):
@@ -4987,7 +5177,7 @@ def render_file_admin_panel():
             "2. Procesar archivo activo",
             key="popover_process_active_v140",
             type="primary",
-            use_container_width=True,
+            width="stretch",
         ):
             try:
                 process_excel(str(ACTIVE_FILE))
@@ -5009,7 +5199,7 @@ def render_file_admin_panel():
         if st.button(
             "Eliminar archivo activo",
             key="popover_delete_active_v140",
-            use_container_width=True,
+            width="stretch",
         ):
             file_name = meta.get("nombre_original", ACTIVE_FILE.name)
             delete_active_file()
@@ -5044,7 +5234,7 @@ def page_portal_admin():
         if st.button(
             "← Volver al portal",
             key="admin_back_portal",
-            use_container_width=True,
+            width="stretch",
         ):
             st.session_state["portal_view"] = "apps"
             st.rerun()
@@ -5120,7 +5310,7 @@ def page_portal_admin():
                 "1. Guardar archivo",
                 key="admin_page_save_v150",
                 type="primary",
-                use_container_width=True,
+                width="stretch",
                 disabled=save_disabled,
             ):
                 try:
@@ -5144,7 +5334,7 @@ def page_portal_admin():
                 "2. Procesar archivo activo",
                 key="admin_page_process_v150",
                 type="primary",
-                use_container_width=True,
+                width="stretch",
                 disabled=process_disabled,
             ):
                 try:
@@ -5176,7 +5366,7 @@ def page_portal_admin():
             if ACTIVE_FILE.exists() and st.button(
                 "Reprocesar archivo",
                 key="admin_page_reprocess_v150",
-                use_container_width=True,
+                width="stretch",
             ):
                 try:
                     process_excel(str(ACTIVE_FILE))
@@ -5196,7 +5386,7 @@ def page_portal_admin():
             if ACTIVE_FILE.exists() and st.button(
                 "Eliminar archivo activo",
                 key="admin_page_delete_v150",
-                use_container_width=True,
+                width="stretch",
             ):
                 file_name = meta.get("nombre_original", ACTIVE_FILE.name)
                 delete_active_file()
@@ -5217,7 +5407,7 @@ def page_portal_admin():
         history_df = history_df[[c for c in desired if c in history_df.columns]]
         st.dataframe(
             history_df.iloc[::-1].head(100),
-            use_container_width=True,
+            width="stretch",
             hide_index=True,
             height=340,
         )
@@ -5285,7 +5475,7 @@ def render_app_portal():
                     if st.button(
                         "Cambios y Muertos\n\nRecuperación · Productividad · Conversión",
                         key="open_cambios_muertos_card",
-                        use_container_width=True,
+                        width="stretch",
                     ):
                         st.session_state["active_app"] = "Cambios y Muertos"
                         st.session_state["nav_page"] = "Resumen"
@@ -5653,215 +5843,543 @@ def page_mensual(op, co):
     combined_chart(df, f"Ingreso vs Habilitado vs Ubicado - Mes {m}", income_column="Ingresos periodo")
 
 
-def commercial_conversion_detail(co, selected_pairs=None):
-    """Calcula conversión por ID, tienda y semana ISO.
+def recovery_fifo_engine(co):
+    """Motor semanal cerrado de conversión y recuperación por ID/SKU.
 
-    La recuperación monetaria utiliza Venta Neta en $, no Costo Dev.
+    Llave: Tienda + ID/SKU + Color + Año ISO + Semana ISO.
+    Las ventas se asignan FIFO y únicamente si Fecha venta >= Fecha devolución.
     """
-    columns = [
-        "Año ISO", "Semana ISO", "Tienda", "ID", "Color",
-        "Dev Pzs", "Venta Pzs", "Pzs Convertidas", "Pend. Conv.",
-        "% Conversión", "Venta Neta $", "Venta Neta Recuperada $",
+    output_columns = [
+        "Tienda", "Año ISO", "Semana ISO", "ID/SKU", "Descripción", "Color",
+        "Dev Pzs", "Ventas Netas Pzs", "Venta Neta $",
+        "Precio Unitario Neto", "Piezas Recuperadas", "Pendiente Pzs",
+        "% Rec. Pzs", "Valor de la Devolución a Precio Neto",
+        "Recuperación $", "Pendiente $", "% Rec. $", "Estado Recuperación",
     ]
     if co is None or co.empty:
-        return pd.DataFrame(columns=columns)
+        return pd.DataFrame(columns=output_columns), pd.DataFrame()
 
     data = normalize_commercial_df(co).copy()
-    for col in ["Dev_Pzs", "Vta_Pzs", "Vta_Imp"]:
-        data[col] = pd.to_numeric(data.get(col, 0), errors="coerce").fillna(0.0)
+    for col in ["ID", "Descripción", "Color"]:
+        if col not in data.columns:
+            data[col] = ""
+        data[col] = data[col].fillna("").astype(str).str.strip()
 
-    if "ID" not in data.columns:
-        data["ID"] = ""
-    if "Color" not in data.columns:
-        data["Color"] = ""
-    data["ID"] = data["ID"].fillna("").astype(str).str.strip()
-    data["Color"] = data["Color"].fillna("").astype(str).str.strip()
+    data["ID"] = data["ID"].replace("", "SIN ID")
+    data["Descripción"] = data["Descripción"].replace("", "Sin descripción")
+    data["Color"] = data["Color"].replace("", "SIN COLOR")
+    data["Dev_Pzs"] = pd.to_numeric(data["Dev_Pzs"], errors="coerce").fillna(0.0)
+    data["Vta_Pzs"] = pd.to_numeric(data["Vta_Pzs"], errors="coerce").fillna(0.0)
+    data["Vta_Imp"] = pd.to_numeric(data["Vta_Imp"], errors="coerce").fillna(0.0)
+    data["Fecha"] = pd.to_datetime(data["Fecha"], errors="coerce").dt.normalize()
 
-    if "Año ISO" not in data.columns:
-        data["Año ISO"] = pd.to_datetime(data["Fecha"]).dt.isocalendar().year.astype(int)
+    diagnostics = []
+    invalid_dates = data["Fecha"].isna()
+    for _, row in data.loc[invalid_dates].head(2000).iterrows():
+        diagnostics.append({
+            "Alerta": "Fecha no válida",
+            "Tienda": row.get("Tienda", ""),
+            "ID/SKU": row.get("ID", ""),
+            "Detalle": "El registro fue excluido del emparejamiento.",
+        })
+    data = data.loc[~invalid_dates].copy()
 
-    if selected_pairs:
-        selected_set = {(int(year), int(week)) for year, week in selected_pairs}
-        mask = [
-            (int(year), int(week)) in selected_set
-            for year, week in zip(data["Año ISO"], data["Semana ISO"])
-        ]
-        data = data.loc[mask].copy()
+    negative_dev = data["Dev_Pzs"] < 0
+    for _, row in data.loc[negative_dev].head(2000).iterrows():
+        diagnostics.append({
+            "Alerta": "Devolución negativa convertida a valor absoluto",
+            "Tienda": row["Tienda"],
+            "ID/SKU": row["ID"],
+            "Detalle": f"Valor original: {row['Dev_Pzs']}",
+        })
+    data["Dev_Pzs"] = data["Dev_Pzs"].abs()
+    data["Vta_Pzs"] = data["Vta_Pzs"].clip(lower=0)
+    data["Vta_Imp"] = data["Vta_Imp"].clip(lower=0)
 
-    group_cols = ["Año ISO", "Semana ISO", "Tienda", "ID", "Color"]
-    detail = (
-        data.groupby(group_cols, as_index=False, dropna=False)[
-            ["Dev_Pzs", "Vta_Pzs", "Vta_Imp"]
-        ]
+    iso = data["Fecha"].dt.isocalendar()
+    data["Año ISO"] = iso.year.astype(int)
+    data["Semana ISO"] = iso.week.astype(int)
+
+    group_cols = ["Tienda", "ID", "Color", "Año ISO", "Semana ISO"]
+    rows = []
+
+    for group_key, group in data.groupby(group_cols, dropna=False, sort=False):
+        tienda, item_id, color, iso_year, iso_week = group_key
+        group = group.sort_values("Fecha").copy()
+
+        dev_total = float(group["Dev_Pzs"].sum())
+        sales_total = float(group["Vta_Pzs"].sum())
+        net_amount = float(group["Vta_Imp"].sum())
+
+        unit_price = net_amount / sales_total if sales_total > 0 else 0.0
+        if not np.isfinite(unit_price) or unit_price < 0:
+            diagnostics.append({
+                "Alerta": "Precio unitario inválido",
+                "Tienda": tienda,
+                "ID/SKU": item_id,
+                "Detalle": f"Precio calculado: {unit_price}",
+            })
+            unit_price = 0.0
+
+        if dev_total > 0 and sales_total <= 0:
+            diagnostics.append({
+                "Alerta": "ID con devolución y sin ventas netas",
+                "Tienda": tienda,
+                "ID/SKU": item_id,
+                "Detalle": f"{iso_year}-Sem {int(iso_week):02d}",
+            })
+        if dev_total > 0 and unit_price <= 0:
+            diagnostics.append({
+                "Alerta": "Sin precio unitario disponible",
+                "Tienda": tienda,
+                "ID/SKU": item_id,
+                "Detalle": "Ventas Netas Pzs o Venta Neta $ sin valor válido.",
+            })
+
+        # FIFO diario: las devoluciones del día entran antes de las ventas del mismo día.
+        queue = []
+        recovered = 0.0
+        for movement_date, day in group.groupby("Fecha", sort=True):
+            day_dev = float(day["Dev_Pzs"].sum())
+            day_sales = float(day["Vta_Pzs"].sum())
+
+            if day_dev > 0:
+                queue.append({"fecha": movement_date, "pendiente": day_dev})
+
+            available_sales = day_sales
+            while available_sales > 0 and queue:
+                current = queue[0]
+                if movement_date < current["fecha"]:
+                    break
+                assigned = min(available_sales, current["pendiente"])
+                recovered += assigned
+                available_sales -= assigned
+                current["pendiente"] -= assigned
+                if current["pendiente"] <= 1e-9:
+                    queue.pop(0)
+
+        recovered = min(max(recovered, 0.0), dev_total)
+        pending_pieces = max(dev_total - recovered, 0.0)
+        pct_pieces = min((recovered / dev_total * 100.0) if dev_total > 0 else 0.0, 100.0)
+
+        return_value = max(unit_price * dev_total, 0.0)
+        recovery_value = min(max(recovered * unit_price, 0.0), return_value)
+        pending_value = max(return_value - recovery_value, 0.0)
+        pct_value = min(
+            (recovery_value / return_value * 100.0) if return_value > 0 else 0.0,
+            100.0,
+        )
+
+        if recovered <= 0:
+            state = "Sin recuperación"
+        elif recovered + 1e-9 >= dev_total:
+            state = "Recuperación total"
+        else:
+            state = "Recuperación parcial"
+
+        description_values = (
+            group["Descripción"]
+            .replace("Sin descripción", np.nan)
+            .dropna()
+            .astype(str)
+        )
+        description = (
+            description_values.iloc[0]
+            if not description_values.empty
+            else "Sin descripción"
+        )
+
+        rows.append({
+            "Tienda": tienda,
+            "Año ISO": int(iso_year),
+            "Semana ISO": int(iso_week),
+            "ID/SKU": item_id,
+            "Descripción": description,
+            "Color": color,
+            "Dev Pzs": dev_total,
+            "Ventas Netas Pzs": sales_total,
+            "Venta Neta $": net_amount,
+            "Precio Unitario Neto": unit_price,
+            "Piezas Recuperadas": recovered,
+            "Pendiente Pzs": pending_pieces,
+            "% Rec. Pzs": pct_pieces,
+            "Valor de la Devolución a Precio Neto": return_value,
+            "Recuperación $": recovery_value,
+            "Pendiente $": pending_value,
+            "% Rec. $": pct_value,
+            "Estado Recuperación": state,
+        })
+
+    result = pd.DataFrame(rows, columns=output_columns)
+
+    # Validaciones finales y límites.
+    if not result.empty:
+        result["Piezas Recuperadas"] = np.minimum(
+            result["Piezas Recuperadas"], result["Dev Pzs"]
+        ).clip(lower=0)
+        result["Pendiente Pzs"] = (
+            result["Dev Pzs"] - result["Piezas Recuperadas"]
+        ).clip(lower=0)
+        result["Recuperación $"] = np.minimum(
+            result["Recuperación $"],
+            result["Valor de la Devolución a Precio Neto"],
+        ).clip(lower=0)
+        result["Pendiente $"] = (
+            result["Valor de la Devolución a Precio Neto"]
+            - result["Recuperación $"]
+        ).clip(lower=0)
+        result["% Rec. Pzs"] = result["% Rec. Pzs"].clip(0, 100)
+        result["% Rec. $"] = result["% Rec. $"].clip(0, 100)
+
+    return result, pd.DataFrame(diagnostics)
+
+
+@st.cache_data(show_spinner=False)
+def cached_recovery_fifo(co):
+    return recovery_fifo_engine(co)
+
+
+def recovery_totals(detail):
+    if detail is None or detail.empty:
+        return {
+            "dev": 0.0, "recovered": 0.0, "pending": 0.0,
+            "pct_pieces": 0.0, "return_value": 0.0,
+            "recovery_value": 0.0, "pending_value": 0.0,
+            "pct_value": 0.0, "stores": 0, "ids": 0,
+        }
+    dev = float(detail["Dev Pzs"].sum())
+    recovered = float(detail["Piezas Recuperadas"].sum())
+    return_value = float(detail["Valor de la Devolución a Precio Neto"].sum())
+    recovery_value = float(detail["Recuperación $"].sum())
+    return {
+        "dev": dev,
+        "recovered": recovered,
+        "pending": max(dev - recovered, 0.0),
+        "pct_pieces": min(recovered / dev * 100 if dev > 0 else 0.0, 100.0),
+        "return_value": return_value,
+        "recovery_value": recovery_value,
+        "pending_value": max(return_value - recovery_value, 0.0),
+        "pct_value": min(
+            recovery_value / return_value * 100 if return_value > 0 else 0.0,
+            100.0,
+        ),
+        "stores": int(detail["Tienda"].nunique()),
+        "ids": int(detail["ID/SKU"].nunique()),
+    }
+
+
+def recovery_store_macro(detail):
+    if detail is None or detail.empty:
+        return pd.DataFrame()
+    macro = (
+        detail.groupby("Tienda", as_index=False)[[
+            "Dev Pzs", "Piezas Recuperadas", "Pendiente Pzs",
+            "Valor de la Devolución a Precio Neto",
+            "Recuperación $", "Pendiente $",
+        ]]
         .sum()
     )
+    macro["% Recuperación Piezas"] = np.divide(
+        macro["Piezas Recuperadas"] * 100,
+        macro["Dev Pzs"],
+        out=np.zeros(len(macro), dtype=float),
+        where=macro["Dev Pzs"].to_numpy() > 0,
+    ).clip(0, 100)
+    macro["% Recuperación $"] = np.divide(
+        macro["Recuperación $"] * 100,
+        macro["Valor de la Devolución a Precio Neto"],
+        out=np.zeros(len(macro), dtype=float),
+        where=macro["Valor de la Devolución a Precio Neto"].to_numpy() > 0,
+    ).clip(0, 100)
+    return macro
 
-    dev = detail["Dev_Pzs"].to_numpy(dtype=float)
-    sales = detail["Vta_Pzs"].to_numpy(dtype=float)
-    net_sales = detail["Vta_Imp"].to_numpy(dtype=float)
 
-    converted = np.minimum(np.maximum(dev, 0), np.maximum(sales, 0))
-    conversion_pct = np.divide(
-        converted * 100.0,
-        dev,
-        out=np.zeros_like(converted, dtype=float),
-        where=dev > 0,
+def detail_with_total_row(detail):
+    if detail is None or detail.empty:
+        return detail
+    totals = recovery_totals(detail)
+    row = {col: "" for col in detail.columns}
+    row.update({
+        "Tienda": "TOTAL COMPAÑÍA",
+        "ID/SKU": f"{totals['ids']:,} IDs",
+        "Dev Pzs": totals["dev"],
+        "Ventas Netas Pzs": detail["Ventas Netas Pzs"].sum(),
+        "Venta Neta $": detail["Venta Neta $"].sum(),
+        "Piezas Recuperadas": totals["recovered"],
+        "Pendiente Pzs": totals["pending"],
+        "% Rec. Pzs": totals["pct_pieces"],
+        "Valor de la Devolución a Precio Neto": totals["return_value"],
+        "Recuperación $": totals["recovery_value"],
+        "Pendiente $": totals["pending_value"],
+        "% Rec. $": totals["pct_value"],
+    })
+    return pd.concat([detail, pd.DataFrame([row])], ignore_index=True)
+
+
+def recovery_exports(detail):
+    csv_data = detail.to_csv(index=False).encode("utf-8-sig")
+    excel_buffer = BytesIO()
+    with pd.ExcelWriter(excel_buffer, engine="openpyxl") as writer:
+        detail.to_excel(writer, index=False, sheet_name="Detalle por ID")
+        recovery_store_macro(detail).to_excel(
+            writer, index=False, sheet_name="Macro por Tienda"
+        )
+    return csv_data, excel_buffer.getvalue()
+
+
+def render_recovery_charts(macro, key_prefix):
+    if macro is None or macro.empty:
+        return
+
+    pieces = macro.sort_values("% Recuperación Piezas", ascending=False)
+    fig_pieces = go.Figure()
+    fig_pieces.add_bar(
+        x=pieces["Tienda"], y=pieces["Dev Pzs"],
+        name="Dev Pzs", marker_color=AZUL,
+        text=pieces["Dev Pzs"].map(lambda x: f"{x:,.0f}"),
+        textposition="outside",
     )
-    conversion_pct = np.minimum(conversion_pct, 100.0)
-
-    recovered_net = np.divide(
-        net_sales * converted,
-        sales,
-        out=np.zeros_like(net_sales, dtype=float),
-        where=sales > 0,
+    fig_pieces.add_bar(
+        x=pieces["Tienda"], y=pieces["Piezas Recuperadas"],
+        name="Piezas Recuperadas", marker_color=ROSA,
+        text=pieces["Piezas Recuperadas"].map(lambda x: f"{x:,.0f}"),
+        textposition="outside",
     )
-    recovered_net = np.minimum(np.maximum(recovered_net, 0), np.maximum(net_sales, 0))
+    fig_pieces.update_layout(
+        title="Recuperación en piezas por tienda",
+        barmode="group", height=470, margin=dict(t=70, b=90),
+        legend=dict(orientation="h"),
+    )
+    st.plotly_chart(fig_pieces, width="stretch", key=f"{key_prefix}_chart_pieces")
 
-    detail["Pzs Convertidas"] = converted
-    detail["Pend. Conv."] = np.maximum(dev - converted, 0)
-    detail["% Conversión"] = conversion_pct
-    detail["Venta Neta Recuperada $"] = recovered_net
+    money = macro.sort_values("% Recuperación $", ascending=False)
+    fig_money = go.Figure()
+    fig_money.add_bar(
+        x=money["Tienda"],
+        y=money["Valor de la Devolución a Precio Neto"],
+        name="Valor Devolución", marker_color=AZUL,
+        text=money["Valor de la Devolución a Precio Neto"].map(
+            lambda x: f"${x:,.0f}"
+        ),
+        textposition="outside",
+    )
+    fig_money.add_bar(
+        x=money["Tienda"], y=money["Recuperación $"],
+        name="Recuperación $", marker_color=ROSA,
+        text=money["Recuperación $"].map(lambda x: f"${x:,.0f}"),
+        textposition="outside",
+    )
+    fig_money.update_layout(
+        title="Recuperación económica por tienda",
+        barmode="group", height=470, margin=dict(t=70, b=90),
+        legend=dict(orientation="h"),
+    )
+    st.plotly_chart(fig_money, width="stretch", key=f"{key_prefix}_chart_money")
 
-    detail = detail.rename(
-        columns={
-            "Dev_Pzs": "Dev Pzs",
-            "Vta_Pzs": "Venta Pzs",
-            "Vta_Imp": "Venta Neta $",
-        }
+    comparison = macro.sort_values("% Recuperación Piezas", ascending=False)
+    fig_compare = go.Figure()
+    fig_compare.add_bar(
+        x=comparison["Tienda"], y=comparison["% Recuperación Piezas"],
+        name="% Recuperación Piezas", marker_color=AZUL,
+        text=comparison["% Recuperación Piezas"].map(lambda x: f"{x:.1f}%"),
+        textposition="outside",
+    )
+    fig_compare.add_bar(
+        x=comparison["Tienda"], y=comparison["% Recuperación $"],
+        name="% Recuperación $", marker_color=ROSA,
+        text=comparison["% Recuperación $"].map(lambda x: f"{x:.1f}%"),
+        textposition="outside",
+    )
+    fig_compare.update_layout(
+        title="Comparativo de recuperación: piezas contra pesos",
+        barmode="group", height=440, yaxis=dict(range=[0, 110]),
+        margin=dict(t=70, b=90), legend=dict(orientation="h"),
+    )
+    st.plotly_chart(fig_compare, width="stretch", key=f"{key_prefix}_chart_compare")
+
+
+def render_recovery_enterprise(co, key_prefix, title):
+    st.markdown(f"## {title}")
+    st.caption(
+        "Semana cerrada: misma tienda, ID/SKU, color, año ISO y semana ISO. "
+        "Las ventas se asignan FIFO y su fecha debe ser igual o posterior "
+        "a la devolución."
+    )
+    if co is None or co.empty:
+        st.info("Sin información comercial.")
+        return
+
+    detail_all, diagnostics = cached_recovery_fifo(co)
+    if detail_all.empty:
+        st.info("No se encontraron registros válidos.")
+        return
+
+    c1, c2, c3 = st.columns([1.1, 1.4, 2.5])
+    with c1:
+        years = sorted(detail_all["Año ISO"].dropna().astype(int).unique())
+        selected_years = st.multiselect(
+            "Año ISO", years, default=years[-1:], key=f"{key_prefix}_years"
+        )
+    year_base = detail_all[
+        detail_all["Año ISO"].isin(selected_years)
+    ] if selected_years else detail_all
+
+    with c2:
+        weeks = sorted(year_base["Semana ISO"].dropna().astype(int).unique())
+        selected_weeks = st.multiselect(
+            "Semana ISO", weeks, default=weeks[-1:] if weeks else [],
+            key=f"{key_prefix}_weeks",
+        )
+    with c3:
+        stores = sorted(year_base["Tienda"].dropna().astype(str).unique())
+        selected_stores = st.multiselect(
+            "Tienda", stores, default=stores, key=f"{key_prefix}_stores"
+        )
+
+    f1, f2, f3 = st.columns([2.2, 1.5, 1.5])
+    with f1:
+        search = st.text_input(
+            "Buscar ID/SKU o descripción",
+            key=f"{key_prefix}_search",
+            placeholder="Escribe ID/SKU o descripción",
+        )
+    with f2:
+        colors_available = sorted(
+            year_base["Color"].dropna().astype(str).unique()
+        )
+        selected_colors = st.multiselect(
+            "Color", colors_available, default=[],
+            key=f"{key_prefix}_colors",
+            help="Vacío equivale a todos los colores.",
+        )
+    with f3:
+        state = st.selectbox(
+            "Estado de recuperación",
+            ["Todos", "Sin recuperación", "Recuperación parcial", "Recuperación total"],
+            key=f"{key_prefix}_state",
+        )
+
+    detail = detail_all.copy()
+    if selected_years:
+        detail = detail[detail["Año ISO"].isin(selected_years)]
+    if selected_weeks:
+        detail = detail[detail["Semana ISO"].isin(selected_weeks)]
+    if selected_stores:
+        detail = detail[detail["Tienda"].isin(selected_stores)]
+    if selected_colors:
+        detail = detail[detail["Color"].isin(selected_colors)]
+    if state != "Todos":
+        detail = detail[detail["Estado Recuperación"].eq(state)]
+    if search:
+        search_norm = norm_text(search)
+        detail = detail[
+            detail["ID/SKU"].map(norm_text).str.contains(search_norm, na=False)
+            | detail["Descripción"].map(norm_text).str.contains(search_norm, na=False)
+        ]
+
+    if detail.empty:
+        st.warning("Los filtros no encontraron información.")
+        return
+
+    totals = recovery_totals(detail)
+    cards = [
+        ("Total Dev Pzs", f"{totals['dev']:,.0f}"),
+        ("Piezas Recuperadas", f"{totals['recovered']:,.0f}"),
+        ("% Recuperación Piezas", f"{totals['pct_pieces']:.1f}%"),
+        ("Valor Devolución a Precio Neto", f"${totals['return_value']:,.2f}"),
+        ("Recuperación Económica", f"${totals['recovery_value']:,.2f}"),
+        ("% Recuperación Económica", f"{totals['pct_value']:.1f}%"),
+        ("Pendiente Pzs", f"{totals['pending']:,.0f}"),
+        ("Pendiente $", f"${totals['pending_value']:,.2f}"),
+        ("Tiendas analizadas", f"{totals['stores']:,}"),
+        ("IDs analizados", f"{totals['ids']:,}"),
+    ]
+    first = st.columns(5)
+    second = st.columns(5)
+    for col, (label, value) in zip(first + second, cards):
+        col.metric(label, value)
+
+    macro = recovery_store_macro(detail)
+    st.markdown("### Macro Ejecutivo de Recuperación por Tienda")
+    ranking_view = st.segmented_control(
+        "Vista",
+        ["Ranking por piezas", "Ranking por pesos", "Vista comparativa"],
+        default="Ranking por piezas",
+        key=f"{key_prefix}_ranking_view",
     )
 
-    # El identificador comercial se muestra como ID. No se utiliza la palabra SKU.
-    detail["ID"] = detail["ID"].replace("", "SIN ID")
-    return detail[columns]
+    if ranking_view == "Ranking por pesos":
+        rank = macro.sort_values("% Recuperación $", ascending=False).copy()
+        rank.insert(0, "Ranking", range(1, len(rank) + 1))
+        rank = rank[[
+            "Ranking", "Tienda", "Valor de la Devolución a Precio Neto",
+            "Recuperación $", "Pendiente $", "% Recuperación $",
+        ]]
+    elif ranking_view == "Vista comparativa":
+        rank = macro.sort_values("% Recuperación Piezas", ascending=False).copy()
+        rank.insert(0, "Ranking", range(1, len(rank) + 1))
+    else:
+        rank = macro.sort_values("% Recuperación Piezas", ascending=False).copy()
+        rank.insert(0, "Ranking", range(1, len(rank) + 1))
+        rank = rank[[
+            "Ranking", "Tienda", "Dev Pzs", "Piezas Recuperadas",
+            "Pendiente Pzs", "% Recuperación Piezas",
+        ]]
+    panel("Ranking de recuperación", rank, height=420)
+
+    render_recovery_charts(macro, key_prefix)
+
+    st.markdown("### Detalle General por ID")
+    display_detail = detail_with_total_row(
+        detail.sort_values(
+            ["Año ISO", "Semana ISO", "Tienda", "ID/SKU"],
+            ascending=[False, False, True, True],
+        )
+    )
+    csv_data, excel_data = recovery_exports(detail)
+    d1, d2, d3 = st.columns([1, 1, 3])
+    with d1:
+        st.download_button(
+            "Descargar CSV", csv_data,
+            file_name="Detalle_Recuperacion_por_ID.csv",
+            mime="text/csv", key=f"{key_prefix}_csv",
+            width="stretch",
+        )
+    with d2:
+        st.download_button(
+            "Descargar Excel", excel_data,
+            file_name="Detalle_Recuperacion_por_ID.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            key=f"{key_prefix}_xlsx", width="stretch",
+        )
+    panel("Detalle General por ID", display_detail, height=560)
+
+    with st.expander("Auditoría y calidad de datos"):
+        st.metric("Alertas detectadas", len(diagnostics))
+        if diagnostics is not None and not diagnostics.empty:
+            st.download_button(
+                "Descargar diagnóstico CSV",
+                diagnostics.to_csv(index=False).encode("utf-8-sig"),
+                file_name="Diagnostico_Recuperacion.csv",
+                mime="text/csv", key=f"{key_prefix}_diag_csv",
+            )
+            panel("Detalle de alertas", diagnostics, height=380)
+        else:
+            st.success("No se detectaron alertas en los registros filtrados.")
 
 
 def page_conversion(op, co):
-    st.markdown("## Conversión Dev → Venta por ID")
-    st.caption(
-        "La conversión se calcula por ID, tienda y semana ISO. "
-        "Las ventas de otra semana no se consideran."
+    render_recovery_enterprise(
+        co, "conversion_enterprise",
+        "Conversión en Piezas — Recuperación Semanal por ID/SKU",
     )
-    if co is None or co.empty:
-        st.info("Sin información comercial mensual.")
-        return
-
-    data = normalize_commercial_df(co)
-    pairs = (
-        data[["Año ISO", "Semana ISO"]]
-        .dropna()
-        .drop_duplicates()
-        .sort_values(["Año ISO", "Semana ISO"])
-    )
-    week_pairs = [(int(r["Año ISO"]), int(r["Semana ISO"])) for _, r in pairs.iterrows()]
-    labels = [f"{year}-Sem {week:02d}" for year, week in week_pairs]
-    selected_labels = st.multiselect(
-        "Semana ISO",
-        labels,
-        default=labels[-1:] if labels else [],
-        key="conversion_week_id",
-    )
-    selected_pairs = [week_pairs[labels.index(label)] for label in selected_labels]
-    detail = commercial_conversion_detail(data, selected_pairs)
-
-    if detail.empty:
-        st.info("No hay registros para la semana seleccionada.")
-        return
-
-    total_dev = float(detail["Dev Pzs"].sum())
-    total_converted = float(detail["Pzs Convertidas"].sum())
-    total_pct = total_converted / total_dev * 100 if total_dev > 0 else 0
-
-    c1, c2, c3, c4 = st.columns(4)
-    c1.metric("Dev Pzs", f"{total_dev:,.0f}")
-    c2.metric("Pzs Convertidas", f"{total_converted:,.0f}")
-    c3.metric("Pendientes", f"{detail['Pend. Conv.'].sum():,.0f}")
-    c4.metric("Conversión", f"{min(total_pct, 100):,.1f}%")
-
-    generic_pdf_button(
-        "Conversión Dev a Venta por ID",
-        f"Semanas: {', '.join(selected_labels)}",
-        detail,
-        file_name="Reporte_Conversion_por_ID.pdf",
-        key="pdf_conversion_id",
-    )
-    panel("Detalle de conversión por ID", detail, height=470)
 
 
 def page_recuperacion(op, co):
-    st.markdown("## Recuperación Económica — Venta Neta en $")
-    st.caption(
-        "La recuperación monetaria utiliza Venta Neta en $. "
-        "No utiliza Costo Dev ni SKU; la relación se realiza por ID y semana ISO."
+    render_recovery_enterprise(
+        co, "recovery_enterprise",
+        "Recuperación Económica — Precio Neto de Venta",
     )
-    if co is None or co.empty:
-        st.info("Sin información comercial mensual.")
-        return
-
-    data = normalize_commercial_df(co)
-    pairs = (
-        data[["Año ISO", "Semana ISO"]]
-        .dropna()
-        .drop_duplicates()
-        .sort_values(["Año ISO", "Semana ISO"])
-    )
-    week_pairs = [(int(r["Año ISO"]), int(r["Semana ISO"])) for _, r in pairs.iterrows()]
-    labels = [f"{year}-Sem {week:02d}" for year, week in week_pairs]
-    selected_labels = st.multiselect(
-        "Semana ISO",
-        labels,
-        default=labels[-1:] if labels else [],
-        key="recovery_week_id",
-    )
-    selected_pairs = [week_pairs[labels.index(label)] for label in selected_labels]
-
-    detail = commercial_conversion_detail(data, selected_pairs)
-    if detail.empty:
-        st.info("No hay registros para la semana seleccionada.")
-        return
-
-    store = (
-        detail.groupby("Tienda", as_index=False)[
-            ["Dev Pzs", "Pzs Convertidas", "Venta Neta $", "Venta Neta Recuperada $"]
-        ]
-        .sum()
-    )
-    store["Pendiente $"] = np.maximum(
-        store["Venta Neta $"] - store["Venta Neta Recuperada $"],
-        0,
-    )
-    total_net = store["Venta Neta $"].to_numpy(dtype=float)
-    total_recovered = store["Venta Neta Recuperada $"].to_numpy(dtype=float)
-    store["Recuperación %"] = np.divide(
-        total_recovered * 100.0,
-        total_net,
-        out=np.zeros_like(total_recovered, dtype=float),
-        where=total_net > 0,
-    )
-    store["Recuperación %"] = np.minimum(store["Recuperación %"], 100.0)
-
-    venta_neta = float(store["Venta Neta $"].sum())
-    recuperada = float(store["Venta Neta Recuperada $"].sum())
-    pendiente = max(venta_neta - recuperada, 0)
-    porcentaje = recuperada / venta_neta * 100 if venta_neta > 0 else 0
-
-    c1, c2, c3, c4 = st.columns(4)
-    c1.metric("Venta Neta $", f"${venta_neta:,.0f}")
-    c2.metric("Venta Neta Recuperada $", f"${recuperada:,.0f}")
-    c3.metric("Pendiente $", f"${pendiente:,.0f}")
-    c4.metric("Recuperación", f"{min(porcentaje, 100):,.1f}%")
-
-    generic_pdf_button(
-        "Recuperación Económica - Venta Neta en $",
-        f"Semanas: {', '.join(selected_labels)}",
-        store,
-        file_name="Reporte_Recuperacion_Venta_Neta.pdf",
-        key="pdf_recuperacion_venta_neta",
-    )
-    panel("Recuperación por tienda", store, height=450)
-
-    with st.expander("Detalle por ID"):
-        panel("Detalle monetario por ID", detail, height=420)
-
 
 def page_productividad(op, co):
     st.markdown("## Productividad")
@@ -5911,8 +6429,10 @@ def page_ranking(op, co):
 
 
 def page_macro(op, co):
-    st.markdown("## Macro")
-    page_resumen(op, co)
+    render_recovery_enterprise(
+        co, "macro_recovery_enterprise",
+        "Macro Ejecutivo de Recuperación por Tienda",
+    )
 
 
 def page_diagnostico(op, co, diag):
@@ -5927,6 +6447,13 @@ def page_diagnostico(op, co, diag):
             panel("Diagnóstico operativo — unión de hojas", diag_op, height=260)
     panel("Diagnóstico de hojas", diag, height=420)
     if not co.empty:
+        _enterprise_detail, _enterprise_diag = cached_recovery_fifo(co)
+        st.write(
+            f"Motor FIFO: {_enterprise_detail['ID/SKU'].nunique() if not _enterprise_detail.empty else 0:,} IDs | "
+            f"{len(_enterprise_diag):,} alertas de calidad"
+        )
+        if _enterprise_diag is not None and not _enterprise_diag.empty:
+            panel("Diagnóstico financiero FIFO", _enterprise_diag, height=360)
         _co_diag = normalize_commercial_df(co)
         dev_diag = (
             _co_diag.groupby(["Fecha", "Tienda"], as_index=False)[["Dev_Pzs", "Vta_Pzs", "Vta_Imp"]]
