@@ -5,6 +5,7 @@ import json
 import re
 import sqlite3
 import secrets
+import hashlib
 import unicodedata
 from datetime import datetime, date, timedelta
 from pathlib import Path
