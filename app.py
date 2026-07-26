@@ -3757,6 +3757,27 @@ h1,h2,h3{{
   }}
 }}
 
+
+/* ===== V20.3: PROCESAMIENTO SIN CAPA TRANSPARENTE ===== */
+[data-testid="stAppViewBlockContainer"]{{
+  opacity:1!important;
+  filter:none!important;
+}}
+[data-testid="stSpinner"]{{
+  position:static!important;
+  background:transparent!important;
+}}
+[data-testid="stStatusWidget"]{{
+  display:none!important;
+}}
+div[data-testid="stAppViewContainer"] > div[style*="opacity"]{{
+  opacity:1!important;
+}}
+.st-key-v202_excel_uploader{{
+  opacity:1!important;
+  filter:none!important;
+}}
+
 </style>
 """,
         unsafe_allow_html=True,
@@ -3981,14 +4002,18 @@ def _session_token_hash(token):
     return _hashlib.sha256(str(token).encode("utf-8")).hexdigest()
 
 
-def create_persistent_session(user):
-    """Crea una sesión recuperable aun después de un rerun o reinicio."""
+def create_persistent_session(user, remember=False):
+    """
+    Crea una sesión recuperable.
+
+    - Recordarme activado: 30 días.
+    - Recordarme desactivado: 8 horas.
+    """
     token = secrets.token_urlsafe(32)
     token_hash = _session_token_hash(token)
     now = datetime.now(MX_TZ)
     sessions = _read_sessions()
 
-    # Limpiar sesiones vencidas.
     clean = {}
     for key, row in sessions.items():
         try:
@@ -3997,22 +4022,47 @@ def create_persistent_session(user):
         except Exception:
             continue
 
+    duration = timedelta(days=30) if remember else timedelta(
+        hours=SESSION_TIMEOUT_HOURS
+    )
+
     clean[token_hash] = {
         "user": {
             "nomina": str(user.get("nomina", "")),
             "nombre": str(user.get("nombre", "Consulta")),
-            "permiso": str(user.get("permiso", ROLE_LABELS.get(normalize_role(user.get("role")), "Consulta"))),
-            "role": normalize_role(user.get("role", user.get("permiso"))),
+            "permiso": str(
+                user.get(
+                    "permiso",
+                    ROLE_LABELS.get(
+                        normalize_role(user.get("role")),
+                        "Consulta",
+                    ),
+                )
+            ),
+            "role": normalize_role(
+                user.get("role", user.get("permiso"))
+            ),
             "scope_type": str(user.get("scope_type", "COMPANY")),
             "scope_value": str(user.get("scope_value", "")),
         },
+        "remember": bool(remember),
         "created_at": now.isoformat(),
         "last_activity": now.isoformat(),
-        "expires_at": (now + timedelta(hours=SESSION_TIMEOUT_HOURS)).isoformat(),
+        "expires_at": (now + duration).isoformat(),
     }
+
     _write_sessions(clean)
     st.query_params["session"] = token
+    if remember:
+        st.query_params["remember_user"] = str(user.get("nomina", ""))
+    else:
+        try:
+            del st.query_params["remember_user"]
+        except Exception:
+            pass
+
     st.session_state["auth_token"] = token
+    st.session_state["remember_session"] = bool(remember)
     return token
 
 
@@ -4064,8 +4114,11 @@ def restore_persistent_session():
 
 
 def touch_persistent_session():
-    """Renueva la sesión por ocho horas desde la última interacción."""
-    token = st.session_state.get("auth_token") or st.query_params.get("session", "")
+    """Renueva la sesión según el modo elegido al iniciar sesión."""
+    token = (
+        st.session_state.get("auth_token")
+        or st.query_params.get("session", "")
+    )
     if isinstance(token, list):
         token = token[0] if token else ""
     if not token:
@@ -4078,8 +4131,12 @@ def touch_persistent_session():
         return
 
     now = datetime.now(MX_TZ)
+    remember = bool(row.get("remember", False))
+    duration = timedelta(days=30) if remember else timedelta(
+        hours=SESSION_TIMEOUT_HOURS
+    )
     row["last_activity"] = now.isoformat()
-    row["expires_at"] = (now + timedelta(hours=SESSION_TIMEOUT_HOURS)).isoformat()
+    row["expires_at"] = (now + duration).isoformat()
     sessions[token_hash] = row
     _write_sessions(sessions)
 
@@ -6223,19 +6280,30 @@ def login_sidebar():
         unsafe_allow_html=True,
     )
 
+    remembered_user = st.query_params.get("remember_user", "")
+    if isinstance(remembered_user, list):
+        remembered_user = remembered_user[0] if remembered_user else ""
+
     with st.form("login_portal_form", clear_on_submit=False):
         nom = st.text_input(
             "Usuario",
+            value=str(remembered_user or ""),
             key="login_user",
             placeholder="Ingresa tu usuario",
+            autocomplete="username",
         )
         pwd = st.text_input(
             "Contraseña",
             type="password",
             key="login_password",
             placeholder="Ingresa tu contraseña",
+            autocomplete="current-password",
         )
-        st.checkbox("Recordarme", value=True, key="login_remember")
+        remember = st.checkbox(
+            "Recordarme durante 30 días",
+            value=bool(remembered_user),
+            key="login_remember",
+        )
         submitted = st.form_submit_button(
             "↪  Iniciar sesión",
             type="primary",
@@ -6256,7 +6324,7 @@ def login_sidebar():
             )
             st.session_state["user"] = user
             st.session_state["nav_page"] = "Centro Ejecutivo"
-            create_persistent_session(user)
+            create_persistent_session(user, remember=remember)
             st.rerun()
         else:
             st.error("Usuario o contraseña incorrectos.")
@@ -7038,18 +7106,51 @@ def render_personalized_executive_header(user, op, co):
     role, scope_type, scope_value, label = user_experience_context(user)
     name = user.get("nombre", user.get("nomina", "Usuario"))
     now = datetime.now(MX_TZ)
+    greeting = _session_greeting(now)
     status = get_system_status()
-    scope_display = scope_value or ("Compañía" if scope_type == "COMPANY" else scope_type.title())
+    scope_display = scope_value or (
+        "Compañía" if scope_type == "COMPANY" else scope_type.title()
+    )
+
     st.markdown(
         f"""
-        <div style="background:linear-gradient(135deg,#10245F,#244D92);border-radius:22px;padding:24px 28px;color:white;margin-bottom:18px;box-shadow:0 14px 35px rgba(16,36,95,.18)">
-          <div style="font-size:13px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;opacity:.82">Centro Ejecutivo · {ROLE_LABELS.get(role, role)}</div>
-          <div style="font-size:30px;font-weight:900;margin-top:4px">Buenos días, {name}</div>
+        <div style="
+            background:linear-gradient(135deg,#10245F,#244D92);
+            border-radius:22px;
+            padding:24px 28px;
+            color:white;
+            margin-bottom:18px;
+            box-shadow:0 14px 35px rgba(16,36,95,.18)
+        ">
+          <div style="
+              font-size:13px;
+              font-weight:800;
+              letter-spacing:.08em;
+              text-transform:uppercase;
+              opacity:.82
+          ">
+            Centro Ejecutivo · {ROLE_LABELS.get(role, role)}
+          </div>
+          <div style="font-size:30px;font-weight:900;margin-top:4px">
+            {greeting}, {name}
+          </div>
           <div style="font-size:15px;margin-top:5px;opacity:.9">{label}</div>
-          <div style="display:flex;gap:18px;flex-wrap:wrap;margin-top:17px;font-size:13px;font-weight:700">
+          <div style="
+              display:flex;
+              gap:18px;
+              flex-wrap:wrap;
+              margin-top:17px;
+              font-size:13px;
+              font-weight:700
+          ">
             <span>📍 Alcance: {scope_display}</span>
             <span>🕒 {now.strftime('%d/%m/%Y %H:%M')}</span>
-            <span>● Sistema: {SYSTEM_STATUS_LABELS.get(status.get('status','ACTIVE'), status.get('status','ACTIVE'))}</span>
+            <span>● Sistema: {
+                SYSTEM_STATUS_LABELS.get(
+                    status.get('status','ACTIVE'),
+                    status.get('status','ACTIVE')
+                )
+            }</span>
           </div>
         </div>
         """,
@@ -8359,24 +8460,72 @@ def page_carga_excel_v17():
                 width="stretch",
                 disabled=not ACTIVE_FILE.exists() or not can_write(),
             ):
+                status_box = st.status(
+                    "Procesando archivo activo...",
+                    expanded=True,
+                    state="running",
+                )
                 try:
-                    with st.spinner(
-                        "Procesando hojas operativas y comerciales. "
-                        "No cierres esta ventana..."
-                    ):
-                        process_excel(str(ACTIVE_FILE))
+                    status_box.write(
+                        "Leyendo hojas operativas y comerciales."
+                    )
+                    process_excel(str(ACTIVE_FILE))
+
+                    status_box.write(
+                        "Validando el caché generado."
+                    )
+                    st.cache_data.clear()
+
+                    if not cache_valid():
+                        raise RuntimeError(
+                            "El procesamiento terminó, pero el caché "
+                            "no quedó disponible."
+                        )
+
                     append_file_history(
                         "Proceso",
-                        meta.get("nombre_original", ACTIVE_FILE.name),
+                        meta.get(
+                            "nombre_original",
+                            ACTIVE_FILE.name,
+                        ),
                         "Procesado",
                         "Archivo procesado correctamente",
                     )
-                    st.success("Archivo procesado correctamente.")
-                    st.cache_data.clear()
+                    status_box.update(
+                        label="Archivo procesado correctamente.",
+                        state="complete",
+                        expanded=False,
+                    )
+                    st.success(
+                        "La información ya está disponible en los reportes."
+                    )
+                    st.session_state["nav_page"] = "Centro Ejecutivo"
                     st.rerun()
+
                 except Exception as exc:
-                    st.error("No fue posible procesar el archivo.")
-                    st.exception(exc)
+                    status_box.update(
+                        label="No fue posible procesar el archivo.",
+                        state="error",
+                        expanded=True,
+                    )
+                    error_path = (
+                        CONFIG_DIR
+                        / "ultimo_error_proceso.txt"
+                    )
+                    st.error(
+                        "El archivo no quedó procesado. "
+                        "Consulta el detalle mostrado abajo."
+                    )
+                    if error_path.exists():
+                        st.code(
+                            error_path.read_text(
+                                encoding="utf-8",
+                                errors="replace",
+                            )[-6000:],
+                            language="text",
+                        )
+                    else:
+                        st.exception(exc)
 
         if ACTIVE_FILE.exists():
             st.divider()
