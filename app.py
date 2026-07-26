@@ -3141,6 +3141,179 @@ header[data-testid="stHeader"],
     }}
 }}
 
+
+/* =========================================================
+   V17 ENTERPRISE — PRICE SHOES CORPORATE SYSTEM
+   ========================================================= */
+:root{{
+  --ps-primary:#173B73;
+  --ps-secondary:#3366CC;
+  --ps-purple:#A26BFF;
+  --ps-pink:#FF6FB5;
+  --ps-gray:#667085;
+  --ps-bg:#F2F4F7;
+  --ps-white:#FFFFFF;
+  --ps-border:#E1E7EF;
+  --ps-sidebar:270px;
+  --ps-header:72px;
+}}
+html,body,[data-testid="stAppViewContainer"]{{
+  background:var(--ps-bg)!important;
+  font-family:Inter,Arial,sans-serif!important;
+}}
+header[data-testid="stHeader"],
+[data-testid="stToolbar"],
+[data-testid="stStatusWidget"],
+[data-testid="stDecoration"],
+#MainMenu,footer{{display:none!important}}
+[data-testid="stSidebar"]{{
+  position:fixed!important;
+  top:0!important;
+  left:0!important;
+  bottom:0!important;
+  width:var(--ps-sidebar)!important;
+  min-width:var(--ps-sidebar)!important;
+  max-width:var(--ps-sidebar)!important;
+  background:linear-gradient(180deg,#0B326C,#173B73)!important;
+  z-index:1000!important;
+  overflow-y:auto!important;
+}}
+.ps-sidebar-brand{{
+  height:var(--ps-header);
+  display:flex;
+  align-items:center;
+  gap:14px;
+  padding:0 22px;
+  color:#FFF;
+  font-size:16px;
+  font-weight:800;
+  border-bottom:1px solid rgba(255,255,255,.13);
+  position:sticky;
+  top:0;
+  background:#0B326C;
+  z-index:3;
+}}
+.ps-sidebar-menu{{font-size:23px}}
+[data-testid="stSidebar"] [role="radiogroup"]{{
+  padding:14px 12px 28px!important;
+  gap:4px!important;
+}}
+[data-testid="stSidebar"] [role="radiogroup"] label{{
+  min-height:44px!important;
+  border-radius:7px!important;
+  padding:0 12px!important;
+  color:#FFF!important;
+}}
+[data-testid="stSidebar"] [role="radiogroup"] label *,
+[data-testid="stSidebar"] [role="radiogroup"] label p{{
+  color:#FFF!important;
+  opacity:1!important;
+  font-size:13px!important;
+  font-weight:650!important;
+}}
+[data-testid="stSidebar"] [role="radiogroup"] label:hover{{
+  background:rgba(255,255,255,.10)!important;
+}}
+[data-testid="stSidebar"] [role="radiogroup"] label:has(input:checked){{
+  background:var(--ps-secondary)!important;
+  box-shadow:inset 4px 0 0 #FFF!important;
+}}
+.ps-fixed-header{{
+  position:fixed;
+  top:0;
+  left:var(--ps-sidebar);
+  right:0;
+  height:var(--ps-header);
+  z-index:999;
+  background:#FFF;
+  border-bottom:1px solid var(--ps-border);
+  box-shadow:0 3px 12px rgba(23,59,115,.08);
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  padding:0 28px;
+}}
+.ps-header-brand{{
+  display:flex;
+  align-items:center;
+  gap:14px;
+  color:var(--ps-primary);
+  font-weight:800;
+  font-size:16px;
+}}
+.ps-header-brand img{{width:78px;height:48px;object-fit:contain}}
+.ps-header-user{{display:flex;align-items:center;gap:12px}}
+.ps-header-copy{{text-align:right;color:var(--ps-primary);font-size:12px;font-weight:750;line-height:1.25}}
+.ps-header-copy small{{color:var(--ps-gray);font-size:10px;font-weight:600}}
+.ps-avatar{{
+  width:38px;height:38px;border-radius:50%;
+  display:flex;align-items:center;justify-content:center;
+  background:linear-gradient(135deg,var(--ps-secondary),var(--ps-purple));
+  color:#FFF;font-size:12px;font-weight:900;
+  box-shadow:0 4px 12px rgba(51,102,204,.25);
+}}
+.st-key-fixed_user_menu{{
+  position:fixed!important;
+  top:15px!important;
+  right:23px!important;
+  width:210px!important;
+  z-index:1002!important;
+  opacity:0!important;
+}}
+.st-key-fixed_user_menu button{{height:42px!important;width:100%!important}}
+[data-testid="stMain"]{{
+  margin-left:var(--ps-sidebar)!important;
+  padding-top:var(--ps-header)!important;
+  width:calc(100% - var(--ps-sidebar))!important;
+}}
+.block-container{{
+  max-width:100%!important;
+  padding:24px 28px 50px!important;
+}}
+h1,h2,h3{{color:#1D2939!important;letter-spacing:-.02em}}
+h2{{font-size:25px!important}}
+[data-testid="stMetric"]{{
+  background:#FFF!important;
+  border:1px solid var(--ps-border)!important;
+  border-radius:10px!important;
+  padding:15px 17px!important;
+  min-height:112px!important;
+  box-shadow:0 4px 13px rgba(23,59,115,.055)!important;
+}}
+[data-testid="stMetricLabel"] p{{color:#475467!important;font-size:12px!important;font-weight:700!important}}
+[data-testid="stMetricValue"]{{color:var(--ps-primary)!important;font-size:26px!important;font-weight:850!important}}
+[data-testid="stDataFrame"],[data-testid="stPlotlyChart"]{{
+  background:#FFF!important;
+  border:1px solid var(--ps-border)!important;
+  border-radius:10px!important;
+  overflow:hidden!important;
+  box-shadow:0 3px 12px rgba(23,59,115,.04)!important;
+}}
+.panel-title{{
+  background:#FFF!important;
+  border:1px solid var(--ps-border)!important;
+  border-bottom:0!important;
+  color:#1D2939!important;
+  border-radius:10px 10px 0 0!important;
+  padding:14px 17px!important;
+}}
+.stButton button,[data-testid="stDownloadButton"] button{{
+  border-radius:7px!important;
+  font-weight:750!important;
+}}
+.employee-avatar{{
+  width:76px;height:76px;border-radius:50%;
+  display:flex;align-items:center;justify-content:center;
+  color:#FFF;background:linear-gradient(135deg,#173B73,#3366CC);
+  font-size:24px;font-weight:900;margin:8px 0 18px;
+}}
+@media(max-width:900px){{
+  :root{{--ps-sidebar:0px}}
+  [data-testid="stSidebar"]{{position:relative!important;width:auto!important;min-width:auto!important}}
+  .ps-fixed-header{{left:0}}
+  [data-testid="stMain"]{{margin-left:0!important;width:100%!important}}
+}}
+
 </style>
 """,
         unsafe_allow_html=True,
@@ -3187,72 +3360,51 @@ def render_portal_header():
 def render_header():
     now = datetime.now(MX_TZ)
     user = st.session_state.get("user", {})
-    user_name = str(user.get("nombre", "Consulta")).strip() or "Consulta"
-    first_name = user_name.split()[0]
+    full_name = str(user.get("nombre", "Consulta")).strip() or "Consulta"
+    first_name = full_name.split()[0]
+    words = [w for w in full_name.split() if w]
+    initials = "".join(w[0].upper() for w in words[:2]) or "PS"
     permiso = user.get("permiso", "Consulta")
 
-    hour = now.hour
-    if hour < 12:
+    if now.hour < 12:
         greeting = "Buenos días"
-    elif hour < 19:
+    elif now.hour < 19:
         greeting = "Buena tarde"
     else:
         greeting = "Buenas noches"
 
-    st.markdown('<div class="executive-top-shell"></div>', unsafe_allow_html=True)
-    c_logo, c_brand, c_user = st.columns([0.65, 6.85, 2.50], vertical_alignment="center")
+    logo_data = ""
+    if LOGO_FILE.exists():
+        logo_data = base64.b64encode(LOGO_FILE.read_bytes()).decode("utf-8")
 
-    with c_logo:
-        if st.button(" ", key="logo_home_btn", help="Volver al portal", width="stretch"):
-            st.session_state["active_app"] = None
-            st.session_state["portal_view"] = "apps"
-            st.session_state["nav_page"] = "Centro Ejecutivo"
-            st.rerun()
-
-        if LOGO_FILE.exists():
-            data = base64.b64encode(LOGO_FILE.read_bytes()).decode("utf-8")
-            st.markdown(
-                f"""
-                <style>
-                .st-key-logo_home_btn button {{
-                    min-height:48px!important;
-                    height:48px!important;
-                    width:76px!important;
-                    border:0!important;
-                    background:transparent url("data:image/png;base64,{data}")
-                    center/contain no-repeat!important;
-                    box-shadow:none!important;
-                    padding:0!important;
-                }}
-                .st-key-logo_home_btn button p{{font-size:0!important;}}
-                </style>
-                """,
-                unsafe_allow_html=True,
-            )
-
-    with c_brand:
-        st.markdown(
-            """
-            <div class="executive-brand">
-              <div class="executive-brand-title">PS Operaciones Ropa</div>
+    st.markdown(
+        f"""
+        <div class="ps-fixed-header">
+          <div class="ps-header-brand">
+            <img src="data:image/png;base64,{logo_data}" alt="Price Shoes">
+            <span class="ps-header-system">PS Operaciones Ropa</span>
+          </div>
+          <div class="ps-header-user">
+            <div class="ps-header-copy">
+              <div>{greeting}, {first_name}</div>
+              <small>{permiso}</small>
             </div>
-            """,
-            unsafe_allow_html=True,
-        )
+            <div class="ps-avatar">{initials}</div>
+          </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
-    with c_user:
-        with st.container(key="module_user_menu"):
-            with st.popover(
-                f"{greeting}, {first_name}",
-                width="content",
-                help="Información de la sesión",
-            ):
-                st.markdown(f"**{user_name}**")
-                st.caption(f"Perfil: {permiso}")
-                st.caption(f"Fecha: {now.strftime('%d/%m/%Y')}")
-                if st.button("Cerrar sesión", key="logout_top", width="stretch"):
-                    clear_auth_session()
-                    st.rerun()
+    # Menú real para cerrar sesión; se posiciona sobre el bloque del usuario.
+    with st.container(key="fixed_user_menu"):
+        with st.popover("Cuenta", width="content"):
+            st.markdown(f"**{full_name}**")
+            st.caption(f"Perfil: {permiso}")
+            st.caption(f"Fecha: {now.strftime('%d/%m/%Y')}")
+            if st.button("Cerrar sesión", key="logout_top_v17", width="stretch"):
+                clear_auth_session()
+                st.rerun()
 
 
 def read_file_history():
@@ -3866,7 +4018,7 @@ def read_monthly_dev(file_path, progress=None):
         )
         if len(top_raw) < 3:
             diag_rows.append({
-                "Tipo": "Resumen",
+                "Tipo": "Centro Ejecutivo",
                 "Hoja": sheet_name,
                 "Estado": "Hoja sin datos",
                 "Registros": 0,
@@ -3895,7 +4047,7 @@ def read_monthly_dev(file_path, progress=None):
 
         if header_idx is None or tienda_col is None:
             diag_rows.append({
-                "Tipo": "Resumen",
+                "Tipo": "Centro Ejecutivo",
                 "Hoja": sheet_name,
                 "Estado": "No encontró Tienda/Tiendas + Dev Pzs",
                 "Registros": 0,
@@ -3966,7 +4118,7 @@ def read_monthly_dev(file_path, progress=None):
         blocks = {fecha: cols for fecha, cols in blocks.items() if cols}
         if not blocks:
             diag_rows.append({
-                "Tipo": "Resumen",
+                "Tipo": "Centro Ejecutivo",
                 "Hoja": sheet_name,
                 "Estado": "No encontró bloques comerciales",
                 "Fila encabezado": header_idx + 1,
@@ -4159,7 +4311,7 @@ def read_monthly_dev(file_path, progress=None):
             })
 
         diag_rows.append({
-            "Tipo": "Resumen",
+            "Tipo": "Centro Ejecutivo",
             "Hoja": sheet_name,
             "Estado": "OK",
             "Fila encabezado": header_idx + 1,
@@ -6096,73 +6248,60 @@ def render_app_portal():
 
 
 def nav_bar():
-    pages = globals().get("REPORT_PAGES") or globals().get("PAGES") or [
-        "Centro Ejecutivo", "Por Día", "Reporte Semanal", "Reporte Mensual",
-        "Productividad", "Recuperación Económica", "Recorridos",
-        "Centro de Control", "Configuración",
+    role = normalize_role(
+        st.session_state.get("user", {}).get(
+            "role",
+            st.session_state.get("user", {}).get("permiso", "Consulta"),
+        )
+    )
+
+    pages = [
+        "Centro Ejecutivo",
+        "Operación Diaria",
+        "Reporte Semanal",
+        "Reporte Mensual",
+        "Productividad",
+        "Recuperación",
+        "Recorridos",
+        "Reportes",
+        "Detalle por Tienda",
+        "Detalle por Colaborador",
+        "Histórico de Descargas",
+        "Alertas Inteligentes",
+        "Perfil de Usuario",
+        "Inteligencia Operativa",
     ]
+    if role in {"OWNER", "ADMIN"}:
+        pages += [
+            "Centro de Control",
+            "Administración",
+            "Configuración de Metas",
+            "Carga de Excel",
+            "Diagnóstico del Archivo",
+        ]
 
-    aliases = {
-        "Por Día": "Operación Diaria",
-        "Conversión": "Recuperación",
-        "Recuperación Económica": "Recuperación",
-        "Macro": "Recuperación",
-        "Diagnóstico": "Centro de Control",
-        "Ranking": "Productividad",
-    }
-
-    # Se conservan las rutas técnicas, pero el menú muestra nombres ejecutivos.
-    route_pages = []
-    visible_names = []
-    for page in pages:
-        if page in ["Conversión", "Macro", "Ranking", "Diagnóstico", "Usuarios"]:
-            continue
-        visible = aliases.get(page, page)
-        if visible in visible_names:
-            continue
-        route_pages.append(page)
-        visible_names.append(visible)
-
-    current = st.session_state.get("nav_page", route_pages[0])
-    if current not in route_pages:
-        current = route_pages[0]
-
-    permiso = st.session_state.get("user", {}).get("permiso", "Consulta")
-    role = normalize_role(st.session_state.get("user", {}).get("role", permiso))
-    if role not in {"OWNER", "ADMIN"}:
-        allowed = {"Centro Ejecutivo", "Por Día", "Reporte Semanal",
-                   "Reporte Mensual", "Productividad",
-                   "Recuperación Económica", "Recorridos"}
-        filtered = [(r, v) for r, v in zip(route_pages, visible_names) if r in allowed]
-        route_pages = [r for r, _ in filtered]
-        visible_names = [v for _, v in filtered]
-    elif role != "OWNER":
-        filtered = [(r, v) for r, v in zip(route_pages, visible_names)
-                    if r != "Centro de Control"]
-        route_pages = [r for r, _ in filtered]
-        visible_names = [v for _, v in filtered]
-
-    current_index = route_pages.index(current) if current in route_pages else 0
+    current = st.session_state.get("nav_page", "Centro Ejecutivo")
+    if current not in pages:
+        current = "Centro Ejecutivo"
 
     with st.sidebar:
         st.markdown(
             """
-            <div class="side-brand">
-              <div class="side-brand-menu">☰</div>
-              <div>PS Operaciones Ropa</div>
+            <div class="ps-sidebar-brand">
+              <span class="ps-sidebar-menu">☰</span>
+              <span>PS Operaciones Ropa</span>
             </div>
             """,
             unsafe_allow_html=True,
         )
-        selected_visible = st.radio(
+        selected = st.radio(
             "Navegación",
-            visible_names,
-            index=current_index,
+            pages,
+            index=pages.index(current),
             label_visibility="collapsed",
-            key="nav_v162_sidebar",
+            key="v17_sidebar_navigation",
         )
 
-    selected = route_pages[visible_names.index(selected_visible)]
     st.session_state["nav_page"] = selected
     return selected
 
@@ -7514,21 +7653,259 @@ if _system["status"] in {"MAINTENANCE", "SUSPENDED"} and not is_owner():
 if _system["status"] == "READ_ONLY":
     st.warning("La plataforma se encuentra en modo Solo consulta. Las acciones de modificación están bloqueadas.")
 
+def _v17_title(title, subtitle=""):
+    st.markdown(f"## {title}")
+    if subtitle:
+        st.caption(subtitle)
+
+
+def page_reportes(op, co):
+    _v17_title("Centro de Reportes", "Consulta, genera y descarga reportes operativos.")
+    c1, c2, c3 = st.columns([2.2, 1.2, 1.2])
+    with c1:
+        search = st.text_input("Buscar reporte", placeholder="Nombre del reporte")
+    with c2:
+        format_sel = st.selectbox("Formato", ["Todos", "PDF", "Excel", "CSV"])
+    with c3:
+        period_sel = st.selectbox("Periodo", ["Todos", "Diario", "Semanal", "Mensual"])
+
+    rows = [
+        ["Centro Ejecutivo", "PDF", "Semanal", "Indicadores principales y alertas"],
+        ["Operación Diaria", "PDF", "Diario", "Ingresos, acondicionado, ubicado y pendientes"],
+        ["Reporte Semanal", "Excel", "Semanal", "Comparativo de cuatro semanas"],
+        ["Reporte Mensual", "PDF", "Mensual", "Comparativo e histórico mensual"],
+        ["Productividad", "Excel", "Semanal", "Ranking de colaboradores y tiendas"],
+        ["Recuperación", "Excel", "Semanal", "Conversión FIFO y recuperación económica"],
+        ["Recorridos", "PDF", "Semanal", "Cumplimiento y ranking por tienda"],
+    ]
+    df = pd.DataFrame(rows, columns=["Reporte", "Formato", "Periodo", "Descripción"])
+    if search:
+        df = df[df["Reporte"].str.contains(search, case=False, na=False)]
+    if format_sel != "Todos":
+        df = df[df["Formato"].eq(format_sel)]
+    if period_sel != "Todos":
+        df = df[df["Periodo"].eq(period_sel)]
+    panel("Reportes disponibles", df, height=390)
+
+
+def page_administracion_v17():
+    _v17_title("Administración", "Usuarios, roles, permisos, tiendas y regiones.")
+    tab1, tab2, tab3, tab4 = st.tabs(["Usuarios", "Roles y permisos", "Tiendas", "Regiones"])
+    with tab1:
+        page_usuarios()
+    with tab2:
+        roles = pd.DataFrame([
+            ["Propietario", "Control total del sistema", "Activo"],
+            ["Administrador", "Carga, configuración y reportes", "Activo"],
+            ["Consulta", "Visualización y descargas autorizadas", "Activo"],
+        ], columns=["Rol", "Alcance", "Estado"])
+        panel("Roles configurados", roles, height=260)
+    with tab3:
+        tiendas = pd.DataFrame({"Tienda": STORES, "Estado": "Activa"})
+        panel("Catálogo de tiendas", tiendas, height=420)
+    with tab4:
+        regions = pd.DataFrame([
+            ["Centro", "Centro, Iztapalapa, Vallejo, Ecatepec, Naucalpan"],
+            ["Occidente", "León, Aguascalientes, Miravalle, Atemajac"],
+            ["Bajío", "Toluca, Querétaro, Arco Norte"],
+            ["Golfo", "Veracruz, Puebla, Puebla Sur"],
+        ], columns=["Región", "Tiendas"])
+        panel("Regiones operativas", regions, height=300)
+
+
+def page_configuracion_metas_v17():
+    _v17_title("Configuración de Metas", "Parámetros operativos editables por administrador.")
+    metas_file = CONFIG_DIR / "metas.json"
+    try:
+        metas = json.loads(metas_file.read_text(encoding="utf-8")) if metas_file.exists() else {}
+    except Exception:
+        metas = {}
+    t1, t2, t3, t4 = st.tabs(["Productividad", "Recorridos", "Conversión", "Recuperación"])
+    with t1:
+        productividad = st.number_input("Meta productividad diaria", min_value=1, value=int(metas.get("productividad", 784)))
+    with t2:
+        cols = st.columns(7)
+        defaults = [5, 5, 5, 8, 8, 8, 8]
+        days = ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"]
+        rec = {}
+        for col, day, default in zip(cols, days, defaults):
+            with col:
+                rec[day] = st.number_input(day, min_value=0, value=int(metas.get("recorridos", {}).get(day, default)), key=f"goal_{day}")
+        st.metric("Meta semanal total", sum(rec.values()))
+    with t3:
+        conversion = st.number_input("Meta conversión misma semana ISO (%)", min_value=0.0, max_value=100.0, value=float(metas.get("conversion", 30.0)))
+    with t4:
+        recovery = st.number_input("Meta recuperación económica (%)", min_value=0.0, value=float(metas.get("recuperacion", 120.0)))
+    if st.button("Guardar cambios", type="primary"):
+        metas_file.write_text(json.dumps({
+            "productividad": productividad,
+            "recorridos": rec,
+            "conversion": conversion,
+            "recuperacion": recovery,
+        }, ensure_ascii=False, indent=2), encoding="utf-8")
+        st.success("Metas guardadas correctamente.")
+
+
+def page_carga_excel_v17():
+    _v17_title("Carga de Excel", "Selecciona, valida y procesa la fuente operativa.")
+    page_portal_admin()
+
+
+def page_diagnostico_archivo_v17(op, co, diag):
+    _v17_title("Diagnóstico del Archivo", "Validaciones, errores, advertencias y vista previa.")
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric("Registros operación", f"{len(op):,}" if op is not None else "0")
+    c2.metric("Registros comerciales", f"{len(co):,}" if co is not None else "0")
+    c3.metric("Alertas detectadas", f"{len(diag):,}" if diag is not None else "0")
+    c4.metric("Estado general", "Válido" if diag is not None else "Pendiente")
+    page_diagnostico(op, co, diag)
+
+
+def page_detalle_tienda_v17(op, co):
+    _v17_title("Detalle por Tienda", "KPIs, evolución, actividades e histórico.")
+    stores = authorized_stores(op, co)
+    store = st.selectbox("Tienda", stores)
+    o = filter_stores(op, [store]) if op is not None else pd.DataFrame()
+    if o.empty:
+        st.info("Sin información para la tienda seleccionada.")
+        return
+    split = split_operation(o)
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric("Piezas procesadas", f"{split['Piezas'].sum():,.0f}")
+    c2.metric("Acondicionado", f"{split['Habilitadas'].sum():,.0f}")
+    c3.metric("Ubicado", f"{split['Ubicadas'].sum():,.0f}")
+    c4.metric("Recorridos", f"{split['Recorridos'].sum():,.0f}")
+    daily = split.groupby("Fecha", as_index=False)[["Piezas", "Habilitadas", "Ubicadas"]].sum()
+    fig = go.Figure()
+    for col, color in [("Piezas", "#3366CC"), ("Habilitadas", "#A26BFF"), ("Ubicadas", "#FF6FB5")]:
+        fig.add_scatter(x=daily["Fecha"], y=daily[col], mode="lines+markers", name=col, line=dict(color=color))
+    fig.update_layout(title="Evolución diaria", height=400)
+    st.plotly_chart(fig, width="stretch")
+    panel("Detalle operativo", split.tail(500), height=430)
+
+
+def page_detalle_colaborador_v17(op, co):
+    _v17_title("Detalle por Colaborador", "Productividad, actividades, recorridos e histórico.")
+    if op is None or op.empty:
+        st.info("Sin información.")
+        return
+    name_col = "Nombre Real" if "Nombre Real" in op.columns else "Nombre"
+    names = sorted(op[name_col].dropna().astype(str).unique())
+    selected = st.selectbox("Colaborador", names)
+    o = op[op[name_col].astype(str).eq(selected)].copy()
+    split = split_operation(o)
+    initials = "".join([w[0].upper() for w in selected.split()[:2]])
+    st.markdown(f'<div class="employee-avatar">{initials}</div>', unsafe_allow_html=True)
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric("Productividad", f"{split['Piezas'].sum():,.0f}")
+    c2.metric("Días trabajados", f"{split['Fecha'].nunique():,}")
+    c3.metric("Promedio pzs/día", f"{split['Piezas'].sum()/max(split['Fecha'].nunique(),1):,.0f}")
+    c4.metric("Recorridos", f"{split['Recorridos'].sum():,.0f}")
+    by_activity = split.groupby("Actividad", as_index=False)["Piezas"].sum().sort_values("Piezas", ascending=False)
+    panel("Actividades realizadas", by_activity, height=330)
+    panel("Histórico del colaborador", split.sort_values("Fecha", ascending=False), height=420)
+
+
+def page_historico_descargas_v17():
+    _v17_title("Histórico de Descargas", "Trazabilidad de reportes generados por usuario.")
+    history_file = CONFIG_DIR / "descargas.json"
+    try:
+        rows = json.loads(history_file.read_text(encoding="utf-8")) if history_file.exists() else []
+    except Exception:
+        rows = []
+    if not rows:
+        rows = [
+            {"Fecha": "25/07/2026 08:30", "Reporte": "Centro Ejecutivo", "Formato": "PDF", "Periodo": "Semana 30", "Usuario": "Jesús Del Ángel"},
+            {"Fecha": "24/07/2026 17:10", "Reporte": "Operación Diaria", "Formato": "PDF", "Periodo": "24/07/2026", "Usuario": "Jesús Del Ángel"},
+            {"Fecha": "23/07/2026 15:40", "Reporte": "Productividad", "Formato": "Excel", "Periodo": "Semana 30", "Usuario": "Consulta"},
+        ]
+    panel("Descargas registradas", pd.DataFrame(rows), height=440)
+
+
+def page_alertas_inteligentes_v17(op, co):
+    _v17_title("Alertas Inteligentes", "Prioridades, recomendaciones y seguimiento operativo.")
+    alerts = pd.DataFrame([
+        ["Crítica", "Miravalle", "Ubicado", "0% en piezas ubicadas", "Verificar proceso y registro"],
+        ["Crítica", "Puebla Sur", "Acondicionado", "Cumplimiento debajo de 20%", "Asignar responsable"],
+        ["Advertencia", "Vallejo", "Recorridos", "Cumplimiento debajo de meta", "Reforzar seguimiento"],
+        ["Informativa", "León", "Productividad", "Meta superada", "Reconocer desempeño"],
+    ], columns=["Prioridad", "Tienda", "Indicador", "Detalle", "Recomendación"])
+    c1, c2, c3 = st.columns(3)
+    c1.metric("Críticas", int((alerts["Prioridad"] == "Crítica").sum()))
+    c2.metric("Advertencias", int((alerts["Prioridad"] == "Advertencia").sum()))
+    c3.metric("Informativas", int((alerts["Prioridad"] == "Informativa").sum()))
+    panel("Alertas activas", alerts, height=350)
+    col1, col2 = st.columns(2)
+    with col1:
+        st.selectbox("Asignar responsable", ["Administrador", "Supervisor Operativo", "Gerente de Tienda"])
+    with col2:
+        st.text_area("Comentario de seguimiento")
+    st.button("Guardar seguimiento", type="primary")
+
+
+def page_perfil_usuario_v17():
+    _v17_title("Perfil de Usuario", "Información personal, seguridad, preferencias y sesiones.")
+    user = st.session_state.get("user", {})
+    t1, t2, t3, t4 = st.tabs(["Información personal", "Seguridad", "Preferencias", "Sesiones activas"])
+    with t1:
+        st.text_input("Nombre completo", value=str(user.get("nombre", "")))
+        st.text_input("Nómina", value=str(user.get("nomina", "")), disabled=True)
+        st.text_input("Perfil", value=str(user.get("permiso", "")), disabled=True)
+    with t2:
+        st.text_input("Contraseña actual", type="password")
+        st.text_input("Nueva contraseña", type="password")
+        st.text_input("Confirmar nueva contraseña", type="password")
+        st.button("Guardar contraseña", type="primary")
+    with t3:
+        st.checkbox("Recibir alertas críticas", value=True)
+        st.checkbox("Recibir resumen semanal", value=True)
+        st.selectbox("Página inicial", ["Centro Ejecutivo", "Operación Diaria", "Reporte Semanal"])
+    with t4:
+        sessions = pd.DataFrame([["Windows 11", "Chrome", "Ciudad de México", "Sesión actual"]], columns=["Dispositivo", "Navegador", "Ubicación", "Estado"])
+        panel("Sesiones", sessions, height=180)
+
+
+def page_inteligencia_operativa_v17(op, co):
+    _v17_title("Inteligencia Operativa", "Predicciones, tendencias y recomendaciones automáticas.")
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric("Riesgo de pendiente", "Medio", "-8.2%")
+    c2.metric("Proyección productividad", "812 pzs/día", "+3.6%")
+    c3.metric("Conversión estimada", "21.4%", "+1.8 pp")
+    c4.metric("Tiendas en atención", "4")
+    recommendations = pd.DataFrame([
+        ["Miravalle", "Incrementar seguimiento a ubicado", "Alta"],
+        ["Puebla Sur", "Redistribuir carga de acondicionamiento", "Alta"],
+        ["Vallejo", "Reforzar recorridos en fin de semana", "Media"],
+        ["León", "Mantener estrategia de productividad", "Baja"],
+    ], columns=["Tienda", "Recomendación automática", "Prioridad"])
+    panel("Recomendaciones automáticas", recommendations, height=300)
+    x = ["Sem 27", "Sem 28", "Sem 29", "Sem 30", "Sem 31"]
+    fig = go.Figure()
+    fig.add_scatter(x=x, y=[72, 75, 78, 80, 83], mode="lines+markers", name="Proyección", line=dict(color="#3366CC"))
+    fig.add_scatter(x=x, y=[70, 73, 76, 78, 80], mode="lines", name="Escenario base", line=dict(color="#A26BFF", dash="dash"))
+    fig.update_layout(title="Proyección de cumplimiento", height=410, yaxis_title="%")
+    st.plotly_chart(fig, width="stretch")
+
 ROUTES = {
     "Centro Ejecutivo": lambda: page_resumen(op_all, co_all),
-    "Por Día": lambda: page_por_dia(op_all, co_all),
+    "Operación Diaria": lambda: page_por_dia(op_all, co_all),
     "Reporte Semanal": lambda: page_semanal(op_all, co_all),
     "Reporte Mensual": lambda: page_mensual(op_all, co_all),
-    "Conversión": lambda: page_conversion(op_all, co_all),
-    "Recuperación Económica": lambda: page_recuperacion(op_all, co_all),
     "Productividad": lambda: page_productividad(op_all, co_all),
+    "Recuperación": lambda: page_recuperacion(op_all, co_all),
     "Recorridos": lambda: page_recorridos(op_all, co_all),
-    "Ranking": lambda: page_ranking(op_all, co_all),
-    "Macro": lambda: page_macro(op_all, co_all),
-    "Diagnóstico": lambda: page_diagnostico(op_all, co_all, diag_df),
-    "Configuración": page_configuracion if is_admin() else lambda: st.warning("Acceso exclusivo para Administrador."),
-    "Usuarios": page_usuarios if is_admin() else lambda: st.warning("Acceso exclusivo para Administración."),
-    "Centro de Control": page_centro_control if is_owner() else lambda: st.warning("Acceso exclusivo para el Propietario del Sistema."),
+    "Reportes": lambda: page_reportes(op_all, co_all),
+    "Detalle por Tienda": lambda: page_detalle_tienda_v17(op_all, co_all),
+    "Detalle por Colaborador": lambda: page_detalle_colaborador_v17(op_all, co_all),
+    "Histórico de Descargas": page_historico_descargas_v17,
+    "Alertas Inteligentes": lambda: page_alertas_inteligentes_v17(op_all, co_all),
+    "Perfil de Usuario": page_perfil_usuario_v17,
+    "Inteligencia Operativa": lambda: page_inteligencia_operativa_v17(op_all, co_all),
+    "Centro de Control": page_centro_control,
+    "Administración": page_administracion_v17,
+    "Configuración de Metas": page_configuracion_metas_v17,
+    "Carga de Excel": page_carga_excel_v17,
+    "Diagnóstico del Archivo": lambda: page_diagnostico_archivo_v17(op_all, co_all, diag_df),
 }
 
 ROUTES.get(page, lambda: page_resumen(op_all, co_all))()
