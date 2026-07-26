@@ -330,31 +330,52 @@ def logo_html():
 def normalize_role(value):
     raw = norm_text(value)
     aliases = {
-        "PROPIETARIO": "OWNER", "OWNER": "OWNER",
-        "ADMINISTRADOR": "ADMIN", "ADMIN": "ADMIN",
+        "PROPIETARIO": "OWNER",
+        "PROPIETARIO DEL SISTEMA": "OWNER",
+        "OWNER": "OWNER",
+        "ADMINISTRADOR": "ADMIN",
+        "ADMIN": "ADMIN",
         "DIRECTOR": "DIRECTOR",
-        "GERENTE REGIONAL": "REGIONAL", "REGIONAL": "REGIONAL",
-        "GERENTE DE TIENDA": "TIENDA", "TIENDA": "TIENDA",
+        "GERENTE REGIONAL": "REGIONAL",
+        "REGIONAL": "REGIONAL",
+        "GERENTE DE TIENDA": "TIENDA",
+        "TIENDA": "TIENDA",
         "SUPERVISOR": "SUPERVISOR",
         "CONSULTA": "CONSULTA",
     }
     return aliases.get(raw, "CONSULTA")
 
 
-def is_owner(user=None):
+ROLE_LEVEL = {
+    "CONSULTA": 10,
+    "TIENDA": 20,
+    "SUPERVISOR": 30,
+    "REGIONAL": 40,
+    "DIRECTOR": 50,
+    "ADMIN": 80,
+    "OWNER": 100,
+}
+
+
+def role_level(user=None):
     user = user or st.session_state.get("user", {})
-    return normalize_role(user.get("role", user.get("permiso"))) == "OWNER"
+    role = normalize_role(user.get("role") or user.get("permiso"))
+    return ROLE_LEVEL.get(role, 10)
+
+
+def is_owner(user=None):
+    return role_level(user) >= ROLE_LEVEL["OWNER"]
 
 
 def is_admin(user=None):
-    user = user or st.session_state.get("user", {})
-    return normalize_role(user.get("role", user.get("permiso"))) in {"OWNER", "ADMIN"}
+    # El Propietario hereda todos los permisos de Administrador.
+    # Un Administrador no puede ejecutar acciones exclusivas del Propietario.
+    return role_level(user) >= ROLE_LEVEL["ADMIN"]
 
 
 def can_write(user=None):
     status = get_system_status().get("status", "ACTIVE")
     return is_admin(user) and status == "ACTIVE"
-
 
 def _table_columns(con, table):
     return {row[1] for row in con.execute(f"PRAGMA table_info({table})").fetchall()}
@@ -3540,6 +3561,131 @@ h1,h2,h3{{
   }}
 }}
 
+
+/* ===== V20.1 RESPONSIVE / PERMISOS ===== */
+.st-key-v20_open_cambios_muertos button p{{
+  white-space:pre-line!important;
+  line-height:1.45!important;
+  font-size:18px!important;
+}}
+.st-key-v20_open_cambios_muertos button p::first-letter{{
+  font-size:68px!important;
+  line-height:.8!important;
+  color:#173B73!important;
+  font-weight:500!important;
+}}
+.st-key-v20_mobile_nav_container{{
+  display:none!important;
+}}
+@media(min-width:901px){{
+  [data-testid="stMain"]{{
+    min-width:0!important;
+  }}
+  .block-container{{
+    width:100%!important;
+    max-width:none!important;
+  }}
+}}
+@media(max-width:900px){{
+  :root{{
+    --v20-sidebar:0px;
+    --v20-header:66px;
+  }}
+  [data-testid="stSidebar"]{{
+    display:none!important;
+  }}
+  [data-testid="stMain"]{{
+    margin-left:0!important;
+    width:100%!important;
+    padding-top:calc(var(--v20-header) + 70px)!important;
+  }}
+  .v20-header{{
+    left:0!important;
+    height:var(--v20-header)!important;
+    padding:0 12px!important;
+  }}
+  .v20-header-brand{{
+    gap:8px!important;
+    font-size:14px!important;
+  }}
+  .v20-header-brand img{{
+    width:61px!important;
+    height:42px!important;
+  }}
+  .v20-header-account{{
+    min-width:0!important;
+    gap:7px!important;
+  }}
+  .v20-header-account-copy strong{{
+    font-size:10px!important;
+    max-width:115px!important;
+    overflow:hidden!important;
+    text-overflow:ellipsis!important;
+  }}
+  .v20-header-account-copy small{{
+    font-size:9px!important;
+  }}
+  .v20-header-avatar{{
+    width:34px!important;
+    height:34px!important;
+    font-size:10px!important;
+  }}
+  .st-key-v20_user_menu{{
+    top:10px!important;
+    right:8px!important;
+    width:180px!important;
+  }}
+  .st-key-v20_mobile_nav_container{{
+    display:block!important;
+    position:fixed!important;
+    top:var(--v20-header)!important;
+    left:0!important;
+    right:0!important;
+    z-index:998!important;
+    padding:8px 12px 6px!important;
+    background:#F2F4F7!important;
+    border-bottom:1px solid #E1E7EF!important;
+  }}
+  .st-key-v20_mobile_nav_container [data-testid="stSelectbox"]{{
+    margin:0!important;
+  }}
+  .block-container{{
+    width:100%!important;
+    max-width:100%!important;
+    padding:14px 12px 32px!important;
+  }}
+  .v20-portal-content [data-testid="stHorizontalBlock"]{{
+    flex-direction:column!important;
+  }}
+  .v20-portal-content [data-testid="stColumn"]{{
+    width:100%!important;
+    flex:1 1 100%!important;
+  }}
+  .ps-profile-card,
+  .ps-portal-panel,
+  .ps-app-card,
+  .st-key-v20_open_cambios_muertos button{{
+    width:100%!important;
+  }}
+  .st-key-v20_open_cambios_muertos button{{
+    min-height:240px!important;
+  }}
+  [data-testid="stMetric"]{{
+    min-height:96px!important;
+  }}
+}}
+@media(max-width:520px){{
+  .v20-header-brand span{{
+    display:none!important;
+  }}
+  .v20-header-account-copy{{
+    display:none!important;
+  }}
+  .st-key-v20_open_cambios_muertos button p::first-letter{{
+    font-size:56px!important;
+  }}
+}}
+
 </style>
 """,
         unsafe_allow_html=True,
@@ -6390,10 +6536,33 @@ def render_app_portal():
     nombre = user.get("nombre", "Consulta")
     nomina = user.get("nomina", "—")
 
+    # El menú principal no utiliza sidebar; ocupa el 100% del viewport.
+    st.markdown(
+        """
+        <style>
+        [data-testid="stMain"]{
+          margin-left:0!important;
+          width:100%!important;
+        }
+        .v20-header{
+          left:0!important;
+        }
+        .block-container{
+          width:100%!important;
+          max-width:1440px!important;
+          margin:0 auto!important;
+          padding-left:clamp(18px,3vw,44px)!important;
+          padding-right:clamp(18px,3vw,44px)!important;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
     render_header()
 
     st.markdown('<main class="v20-portal-content">', unsafe_allow_html=True)
-    left, right = st.columns([3.0, 7.0], gap="large", vertical_alignment="top")
+    left, right = st.columns([2.65, 7.35], gap="large", vertical_alignment="top")
 
     with left:
         st.markdown(
@@ -6436,7 +6605,7 @@ def render_app_portal():
             app_col, future_col = st.columns(2, gap="medium")
             with app_col:
                 if st.button(
-                    "↻\n\nCambios y Muertos\n\nRecuperación · Productividad · Conversión",
+                    "⟳\n\nCambios y Muertos\n\nRecuperación · Productividad · Conversión",
                     key="v20_open_cambios_muertos",
                     width="stretch",
                 ):
@@ -6464,10 +6633,8 @@ def render_app_portal():
 
 def nav_bar():
     role = normalize_role(
-        st.session_state.get("user", {}).get(
-            "role",
-            st.session_state.get("user", {}).get("permiso", "Consulta"),
-        )
+        st.session_state.get("user", {}).get("role")
+        or st.session_state.get("user", {}).get("permiso", "Consulta")
     )
 
     pages = [
@@ -6487,7 +6654,8 @@ def nav_bar():
         "Inteligencia Operativa",
     ]
 
-    if role in {"OWNER", "ADMIN"}:
+    # OWNER y ADMIN comparten los permisos administrativos funcionales.
+    if role_level() >= ROLE_LEVEL["ADMIN"]:
         pages.extend([
             "Centro de Control",
             "Administración",
@@ -6499,6 +6667,13 @@ def nav_bar():
     current = st.session_state.get("nav_page", "Centro Ejecutivo")
     if current not in pages:
         current = "Centro Ejecutivo"
+        st.session_state["nav_page"] = current
+
+    def _desktop_changed():
+        st.session_state["nav_page"] = st.session_state["v20_sidebar_navigation"]
+
+    def _mobile_changed():
+        st.session_state["nav_page"] = st.session_state["v20_mobile_navigation"]
 
     with st.sidebar:
         st.markdown(
@@ -6510,16 +6685,25 @@ def nav_bar():
             """,
             unsafe_allow_html=True,
         )
-        selected = st.radio(
+        st.radio(
             "Navegación",
             pages,
             index=pages.index(current),
             label_visibility="collapsed",
             key="v20_sidebar_navigation",
+            on_change=_desktop_changed,
         )
 
-    st.session_state["nav_page"] = selected
-    return selected
+    with st.container(key="v20_mobile_nav_container"):
+        st.selectbox(
+            "Sección",
+            pages,
+            index=pages.index(st.session_state.get("nav_page", current)),
+            key="v20_mobile_navigation",
+            on_change=_mobile_changed,
+        )
+
+    return st.session_state.get("nav_page", current)
 
 
 def reliable_data_horizon(op, co):
