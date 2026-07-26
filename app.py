@@ -3,6 +3,9 @@
 import base64
 import json
 import hashlib
+import gc
+import os
+import traceback
 import re
 import sqlite3
 import secrets
@@ -3070,6 +3073,74 @@ h2{{
   }}
 }}
 
+
+/* V16.3 — Correcciones visuales y de lectura */
+header[data-testid="stHeader"],
+[data-testid="stToolbar"],
+[data-testid="stStatusWidget"],
+[data-testid="stDecoration"]{{
+    display:none!important;
+}}
+[data-testid="stSidebar"] [role="radiogroup"] label,
+[data-testid="stSidebar"] [role="radiogroup"] label *,
+[data-testid="stSidebar"] [role="radiogroup"] label p,
+[data-testid="stSidebar"] [role="radiogroup"] label span,
+[data-testid="stSidebar"] [role="radiogroup"] label div{{
+    color:#FFFFFF!important;
+    opacity:1!important;
+}}
+[data-testid="stSidebar"] [role="radiogroup"] label:has(input:checked),
+[data-testid="stSidebar"] [role="radiogroup"] label:has(input:checked) *{{
+    color:#FFFFFF!important;
+}}
+.st-key-module_user_menu{{
+    display:flex!important;
+    justify-content:flex-end!important;
+    align-items:center!important;
+    min-width:230px!important;
+    max-width:290px!important;
+}}
+.st-key-module_user_menu button{{
+    width:auto!important;
+    min-width:190px!important;
+    max-width:285px!important;
+    min-height:42px!important;
+    padding:7px 14px!important;
+    white-space:nowrap!important;
+    overflow:hidden!important;
+    text-overflow:ellipsis!important;
+    text-align:right!important;
+    color:#FFFFFF!important;
+    background:rgba(255,255,255,.08)!important;
+    border:1px solid rgba(255,255,255,.18)!important;
+    border-radius:8px!important;
+}}
+.st-key-module_user_menu button p,
+.st-key-module_user_menu button span{{
+    color:#FFFFFF!important;
+    white-space:nowrap!important;
+    overflow:hidden!important;
+    text-overflow:ellipsis!important;
+}}
+.executive-brand-title{{
+    color:#FFFFFF!important;
+}}
+.portal-top-strip{{
+    background:#173B73!important;
+    color:#FFFFFF!important;
+}}
+@media(max-width:900px){{
+    .st-key-module_user_menu{{
+        min-width:150px!important;
+        max-width:190px!important;
+    }}
+    .st-key-module_user_menu button{{
+        min-width:145px!important;
+        max-width:185px!important;
+        font-size:11px!important;
+    }}
+}}
+
 </style>
 """,
         unsafe_allow_html=True,
@@ -3116,11 +3187,20 @@ def render_portal_header():
 def render_header():
     now = datetime.now(MX_TZ)
     user = st.session_state.get("user", {})
-    user_name = user.get("nombre", "Consulta")
+    user_name = str(user.get("nombre", "Consulta")).strip() or "Consulta"
+    first_name = user_name.split()[0]
     permiso = user.get("permiso", "Consulta")
 
+    hour = now.hour
+    if hour < 12:
+        greeting = "Buenos días"
+    elif hour < 19:
+        greeting = "Buena tarde"
+    else:
+        greeting = "Buenas noches"
+
     st.markdown('<div class="executive-top-shell"></div>', unsafe_allow_html=True)
-    c_logo, c_brand, c_user = st.columns([.65, 6.7, 2.65], vertical_alignment="center")
+    c_logo, c_brand, c_user = st.columns([0.65, 6.85, 2.50], vertical_alignment="center")
 
     with c_logo:
         if st.button(" ", key="logo_home_btn", help="Volver al portal", width="stretch"):
@@ -3128,14 +3208,16 @@ def render_header():
             st.session_state["portal_view"] = "apps"
             st.session_state["nav_page"] = "Centro Ejecutivo"
             st.rerun()
+
         if LOGO_FILE.exists():
             data = base64.b64encode(LOGO_FILE.read_bytes()).decode("utf-8")
             st.markdown(
                 f"""
                 <style>
                 .st-key-logo_home_btn button {{
-                    min-height:46px!important;
-                    height:46px!important;
+                    min-height:48px!important;
+                    height:48px!important;
+                    width:76px!important;
                     border:0!important;
                     background:transparent url("data:image/png;base64,{data}")
                     center/contain no-repeat!important;
@@ -3160,7 +3242,11 @@ def render_header():
 
     with c_user:
         with st.container(key="module_user_menu"):
-            with st.popover(f"Buenos días, {user_name}", width="stretch"):
+            with st.popover(
+                f"{greeting}, {first_name}",
+                width="content",
+                help="Información de la sesión",
+            ):
                 st.markdown(f"**{user_name}**")
                 st.caption(f"Perfil: {permiso}")
                 st.caption(f"Fecha: {now.strftime('%d/%m/%Y')}")
@@ -3245,7 +3331,9 @@ def cache_paths():
 
 def cache_valid():
     paths = cache_paths()
-    if not ACTIVE_FILE.exists() or not paths["meta"].exists() or not paths["op"].exists() or not paths["co"].exists():
+    op_exists = paths["op"].exists() or paths["op"].with_suffix(".pkl").exists()
+    co_exists = paths["co"].exists() or paths["co"].with_suffix(".pkl").exists()
+    if not ACTIVE_FILE.exists() or not paths["meta"].exists() or not op_exists or not co_exists:
         return False
     try:
         meta = json.loads(paths["meta"].read_text(encoding="utf-8"))
@@ -3439,34 +3527,79 @@ def normalize_commercial_df(co):
     return co
 
 def write_cache(op, co, diag):
+    """Guarda caché de forma atómica y evita archivos corruptos."""
     paths = cache_paths()
-    op.to_parquet(paths["op"], index=False)
-    co.to_parquet(paths["co"], index=False)
-    diag = diag.copy()
-    for _c in diag.columns:
-        if diag[_c].dtype == "object":
-            diag[_c] = diag[_c].astype(str)
-    diag = diag.copy()
-    for _c in diag.columns:
-        if diag[_c].dtype == "object":
-            diag[_c] = diag[_c].astype(str)
-    diag.to_parquet(paths["diag"], index=False)
-    paths["meta"].write_text(
-        json.dumps({"mtime": ACTIVE_FILE.stat().st_mtime, "version": APP_CACHE_VERSION, "procesado": datetime.now(MX_TZ).strftime("%Y-%m-%d %H:%M:%S")}, ensure_ascii=False, indent=2),
+    CACHE_DIR.mkdir(parents=True, exist_ok=True)
+
+    op = op if op is not None else pd.DataFrame()
+    co = co if co is not None else pd.DataFrame()
+    diag = diag.copy() if diag is not None else pd.DataFrame()
+
+    for col in diag.columns:
+        if diag[col].dtype == "object":
+            diag[col] = diag[col].map(
+                lambda value: "" if value is None else str(value)
+            )
+
+    payloads = {
+        "op": op,
+        "co": co,
+        "diag": diag,
+    }
+
+    for key, frame in payloads.items():
+        final_path = paths[key]
+        temp_path = final_path.with_suffix(final_path.suffix + ".tmp")
+        pickle_path = final_path.with_suffix(".pkl")
+        temp_pickle = pickle_path.with_suffix(".pkl.tmp")
+
+        try:
+            frame.to_parquet(temp_path, index=False)
+            os.replace(temp_path, final_path)
+            if temp_pickle.exists():
+                temp_pickle.unlink(missing_ok=True)
+            pickle_path.unlink(missing_ok=True)
+        except Exception:
+            temp_path.unlink(missing_ok=True)
+            frame.to_pickle(temp_pickle)
+            os.replace(temp_pickle, pickle_path)
+            final_path.unlink(missing_ok=True)
+
+    meta_tmp = paths["meta"].with_suffix(".json.tmp")
+    meta_tmp.write_text(
+        json.dumps(
+            {
+                "mtime": ACTIVE_FILE.stat().st_mtime,
+                "version": APP_CACHE_VERSION,
+                "procesado": datetime.now(MX_TZ).strftime("%Y-%m-%d %H:%M:%S"),
+            },
+            ensure_ascii=False,
+            indent=2,
+        ),
         encoding="utf-8",
     )
+    os.replace(meta_tmp, paths["meta"])
 
 
 @st.cache_data(show_spinner=False)
 def read_cache(mtime):
     paths = cache_paths()
-    op = pd.read_parquet(paths["op"]) if paths["op"].exists() else pd.DataFrame()
-    co = pd.read_parquet(paths["co"]) if paths["co"].exists() else pd.DataFrame()
-    diag = pd.read_parquet(paths["diag"]) if paths["diag"].exists() else pd.DataFrame()
+
+    def _read_frame(key):
+        parquet_path = paths[key]
+        pickle_path = parquet_path.with_suffix(".pkl")
+        if parquet_path.exists():
+            return pd.read_parquet(parquet_path)
+        if pickle_path.exists():
+            return pd.read_pickle(pickle_path)
+        return pd.DataFrame()
+
+    op = _read_frame("op")
+    co = _read_frame("co")
+    diag = _read_frame("diag")
     op = normalize_operation_df(op)
     co = normalize_commercial_df(co)
     return op, co, diag
-
 
 # ============================================================
 # PROCESAMIENTO DEL EXCEL
@@ -4076,45 +4209,78 @@ def read_monthly_dev(file_path, progress=None):
 
 
 def process_excel(file_path):
+    """Procesa el Excel una sola vez y conserva el error exacto por etapa."""
     progress = st.progress(0, text="Preparando archivo...")
+    stage = "inicio"
 
-    progress.progress(
-        0.08,
-        text="Leyendo Resultados productividad y Resultados productividad 2...",
-    )
-    op, diag_op = read_operation_sheet(file_path)
+    try:
+        stage = "lectura de operación"
+        progress.progress(
+            0.08,
+            text="Leyendo Resultados productividad y Resultados productividad 2...",
+        )
+        op, diag_op = read_operation_sheet(file_path)
+        gc.collect()
 
-    progress.progress(0.22, text="Leyendo plantilla de colaboradores...")
-    plantilla = read_plantilla(file_path)
-    op = apply_nombre_map(op, plantilla)
+        stage = "plantilla de colaboradores"
+        progress.progress(0.24, text="Leyendo plantilla de colaboradores...")
+        plantilla = read_plantilla(file_path)
+        op = apply_nombre_map(op, plantilla)
+        del plantilla
+        gc.collect()
 
-    progress.progress(0.35, text="Leyendo hojas comerciales...")
-    co, diag_co = read_monthly_dev(file_path, progress=progress)
+        stage = "información comercial"
+        progress.progress(0.36, text="Leyendo hojas comerciales...")
+        co, diag_co = read_monthly_dev(file_path, progress=progress)
+        gc.collect()
 
-    progress.progress(0.88, text="Normalizando información...")
-    op = normalize_operation_df(op)
-    co = normalize_commercial_df(co)
+        stage = "normalización"
+        progress.progress(0.88, text="Normalizando información...")
+        op = normalize_operation_df(op)
+        co = normalize_commercial_df(co)
 
-    diag = pd.concat([diag_op, diag_co], ignore_index=True, sort=False)
+        diag = pd.concat([diag_op, diag_co], ignore_index=True, sort=False)
+        del diag_op, diag_co
+        gc.collect()
 
-    if op is not None and not op.empty and "Fecha" in op.columns:
-        fechas_op = pd.to_datetime(op["Fecha"], errors="coerce").dropna()
-        if not fechas_op.empty:
-            diag_fecha = pd.DataFrame([{
-                "Hoja": "VALIDACIÓN FECHAS OPERACIÓN",
-                "Tipo": "Control",
-                "Estado": "OK",
-                "Filas válidas": len(fechas_op),
-                "Fecha mínima": fechas_op.min().strftime("%Y-%m-%d"),
-                "Fecha máxima": fechas_op.max().strftime("%Y-%m-%d"),
-            }])
-            diag = pd.concat([diag_fecha, diag], ignore_index=True, sort=False)
+        if op is not None and not op.empty and "Fecha" in op.columns:
+            fechas_op = pd.to_datetime(op["Fecha"], errors="coerce").dropna()
+            if not fechas_op.empty:
+                diag_fecha = pd.DataFrame([{
+                    "Hoja": "VALIDACIÓN FECHAS OPERACIÓN",
+                    "Tipo": "Control",
+                    "Estado": "OK",
+                    "Filas válidas": len(fechas_op),
+                    "Fecha mínima": fechas_op.min().strftime("%Y-%m-%d"),
+                    "Fecha máxima": fechas_op.max().strftime("%Y-%m-%d"),
+                }])
+                diag = pd.concat([diag_fecha, diag], ignore_index=True, sort=False)
 
-    progress.progress(0.94, text="Guardando caché optimizado...")
-    write_cache(op, co, diag)
+        stage = "guardado de caché"
+        progress.progress(0.95, text="Guardando caché estable...")
+        write_cache(op, co, diag)
 
-    progress.progress(1.0, text="Archivo procesado correctamente.")
-    return op, co, diag
+        error_file = CONFIG_DIR / "ultimo_error_proceso.txt"
+        error_file.unlink(missing_ok=True)
+
+        progress.progress(1.0, text="Archivo procesado correctamente.")
+        return op, co, diag
+
+    except Exception as exc:
+        error_text = (
+            f"Etapa: {stage}\n"
+            f"Tipo: {type(exc).__name__}\n"
+            f"Detalle: {exc}\n\n"
+            f"{traceback.format_exc()}"
+        )
+        error_file = CONFIG_DIR / "ultimo_error_proceso.txt"
+        error_file.parent.mkdir(parents=True, exist_ok=True)
+        error_file.write_text(error_text, encoding="utf-8")
+        progress.empty()
+        raise RuntimeError(
+            f"Falló el procesamiento durante: {stage}. "
+            "El detalle quedó guardado en ultimo_error_proceso.txt."
+        ) from exc
 
 
 def split_operation(op):
@@ -5266,205 +5432,164 @@ def login_sidebar():
     if restore_persistent_session():
         return True
 
+    logo_data = ""
+    if LOGO_FILE.exists():
+        logo_data = base64.b64encode(LOGO_FILE.read_bytes()).decode("utf-8")
+
+    boutique_file = ASSETS_DIR / "login_boutique_reference.png"
+    boutique_data = ""
+    if boutique_file.exists():
+        boutique_data = base64.b64encode(boutique_file.read_bytes()).decode("utf-8")
+
     st.markdown(
         f"""
         <style>
         header[data-testid="stHeader"],
         [data-testid="stToolbar"],
         [data-testid="stDecoration"],
+        [data-testid="stStatusWidget"],
         #MainMenu,
         footer {{
-            display:none !important;
+            display:none!important;
         }}
         [data-testid="stAppViewContainer"] {{
             background:
-                radial-gradient(circle at 12% 18%, rgba(51,102,204,.12), transparent 24%),
-                radial-gradient(circle at 88% 82%, rgba(166,111,255,.18), transparent 30%),
-                linear-gradient(145deg,#F2F7FF 0%,#FFFFFF 56%,#EEF2FF 100%) !important;
+                radial-gradient(circle at 10% 20%,rgba(51,102,204,.12),transparent 28%),
+                radial-gradient(circle at 92% 82%,rgba(162,107,255,.18),transparent 30%),
+                linear-gradient(145deg,#F2F7FF 0%,#FFFFFF 58%,#EEF2FF 100%)!important;
         }}
         [data-testid="stMain"] {{
-            min-height:100vh !important;
+            min-height:100vh!important;
         }}
         .block-container {{
-            max-width:1120px !important;
-            min-height:100vh !important;
-            padding:3vh 1rem !important;
-            display:flex !important;
-            flex-direction:column !important;
-            justify-content:center !important;
+            max-width:1080px!important;
+            min-height:100vh!important;
+            padding:3vh 1rem!important;
+            display:flex!important;
+            flex-direction:column!important;
+            justify-content:center!important;
         }}
         .login-shell {{
             display:grid;
-            grid-template-columns:minmax(360px, .92fr) minmax(420px, 1.08fr);
-            background:#FFFFFF;
-            border:1px solid #E3EAF5;
-            border-radius:22px;
+            grid-template-columns:0.92fr 1.08fr;
+            min-height:610px;
+            background:#FFF;
+            border:1px solid #E0E7F1;
+            border-radius:18px;
             overflow:hidden;
-            box-shadow:0 24px 70px rgba(23,59,115,.16);
-            min-height:620px;
+            box-shadow:0 22px 65px rgba(23,59,115,.17);
         }}
-        .login-copy {{
-            padding:46px 52px 28px;
-            display:flex;
-            flex-direction:column;
-            justify-content:center;
-            background:#FFFFFF;
+        .login-left {{
+            padding:38px 44px 310px;
+            background:#FFF;
+            position:relative;
         }}
-        .login-copy-logo {{
+        .login-logo {{
             display:flex;
             justify-content:center;
-            margin-bottom:20px;
+            height:105px;
+            margin-bottom:10px;
         }}
-        .login-copy-logo img {{
-            width:190px;
-            max-height:98px;
+        .login-logo img {{
+            width:210px;
+            height:105px;
             object-fit:contain;
+            display:block;
         }}
-        .login-copy-title {{
+        .login-title {{
             color:#173B73;
             text-align:center;
-            font-size:28px;
-            line-height:1.1;
+            font-size:27px;
             font-weight:900;
+            line-height:1.15;
         }}
-        .login-copy-subtitle {{
+        .login-subtitle {{
             color:#667085;
             text-align:center;
             font-size:14px;
-            font-weight:650;
-            margin:9px 0 30px;
+            font-weight:600;
+            margin-top:7px;
         }}
-        .login-visual {{
-            position:relative;
-            min-height:620px;
+        .login-boutique {{
+            min-height:610px;
             background:
-                linear-gradient(180deg,rgba(9,42,87,.08),rgba(13,26,61,.76)),
-                radial-gradient(circle at 72% 24%,rgba(255,255,255,.42),transparent 24%),
-                linear-gradient(145deg,#173B73 0%,#3366CC 48%,#A26BFF 100%);
-            overflow:hidden;
+                linear-gradient(180deg,rgba(13,43,91,.05),rgba(11,31,73,.22)),
+                url("data:image/png;base64,{boutique_data}") center/cover no-repeat;
+            position:relative;
         }}
-        .login-visual::before {{
+        .login-boutique::after {{
             content:"";
             position:absolute;
             inset:0;
-            background:
-                linear-gradient(90deg,transparent 0 6%,rgba(255,255,255,.12) 6% 7%,transparent 7% 14%),
-                repeating-linear-gradient(0deg,rgba(255,255,255,.04) 0 2px,transparent 2px 70px);
-        }}
-        .login-visual-inner {{
-            position:absolute;
-            inset:0;
-            display:flex;
-            flex-direction:column;
-            align-items:center;
-            justify-content:center;
-            color:#FFFFFF;
-            text-align:center;
-            padding:54px;
-        }}
-        .login-visual-mark {{
-            width:150px;
-            height:150px;
-            border-radius:30px;
-            border:1px solid rgba(255,255,255,.38);
-            background:rgba(255,255,255,.12);
-            backdrop-filter:blur(10px);
-            display:flex;
-            align-items:center;
-            justify-content:center;
-            font-size:72px;
-            margin-bottom:28px;
-            box-shadow:0 20px 45px rgba(0,0,0,.18);
-        }}
-        .login-visual-title {{
-            font-size:34px;
-            font-weight:900;
-            line-height:1.05;
-        }}
-        .login-visual-copy {{
-            margin-top:12px;
-            max-width:360px;
-            color:#EAF0FF;
-            font-size:16px;
-            line-height:1.55;
+            background:linear-gradient(90deg,rgba(51,102,204,.12),transparent 36%);
+            pointer-events:none;
         }}
         [data-testid="stForm"] {{
-            max-width:420px !important;
-            margin:-375px 0 0 52px !important;
-            width:calc(46% - 64px) !important;
-            position:relative !important;
-            z-index:20 !important;
-            background:transparent !important;
-            border:0 !important;
-            padding:0 !important;
+            position:relative!important;
+            z-index:20!important;
+            width:calc(46% - 62px)!important;
+            max-width:390px!important;
+            margin:-355px 0 0 44px!important;
+            padding:0!important;
+            border:0!important;
+            background:transparent!important;
         }}
         [data-testid="stForm"] label p {{
-            color:#173B73 !important;
-            font-weight:750 !important;
+            color:#173B73!important;
+            font-weight:750!important;
         }}
         [data-testid="stForm"] input {{
-            min-height:50px !important;
-            border-radius:8px !important;
-            color:#111827 !important;
-            background:#FFFFFF !important;
+            min-height:48px!important;
+            border-radius:7px!important;
+            background:#FFF!important;
+            color:#111827!important;
+            border-color:#CED9E8!important;
         }}
         [data-testid="stForm"] button[kind="primary"] {{
-            min-height:52px !important;
-            border-radius:8px !important;
-            background:linear-gradient(90deg,#173B73,#1B5CB8) !important;
-            border:none !important;
-            margin-top:12px !important;
-            font-weight:850 !important;
+            min-height:50px!important;
+            border-radius:7px!important;
+            border:none!important;
+            background:linear-gradient(90deg,#173B73,#1657AD)!important;
+            font-weight:850!important;
+            margin-top:10px!important;
         }}
         .login-version {{
             position:relative;
-            z-index:30;
-            max-width:420px;
-            width:calc(46% - 64px);
-            margin:22px 0 0 52px;
-            text-align:center;
+            z-index:20;
+            width:calc(46% - 62px);
+            max-width:390px;
+            margin:20px 0 0 44px;
+            padding-top:16px;
+            border-top:1px solid #E5EAF2;
             color:#667085;
+            text-align:center;
             font-size:12px;
             line-height:1.55;
         }}
-        @media(max-width:860px) {{
+        @media(max-width:820px) {{
             .block-container {{
-                max-width:540px !important;
-                padding:18px 14px 30px !important;
+                max-width:520px!important;
+                padding:18px 12px 28px!important;
             }}
             .login-shell {{
                 display:block;
                 min-height:auto;
             }}
-            .login-copy {{
-                padding:34px 26px 300px;
+            .login-left {{
+                padding:28px 24px 300px;
             }}
-            .login-visual {{
-                min-height:240px;
-            }}
-            .login-visual-inner {{
-                padding:28px;
-            }}
-            .login-visual-mark {{
-                width:90px;
-                height:90px;
-                font-size:44px;
-                margin-bottom:12px;
-            }}
-            .login-visual-title {{
-                font-size:25px;
-            }}
-            .login-visual-copy {{
-                font-size:13px;
+            .login-boutique {{
+                min-height:250px;
             }}
             [data-testid="stForm"] {{
-                max-width:none !important;
-                width:auto !important;
-                margin:-548px 28px 0 !important;
+                width:auto!important;
+                max-width:none!important;
+                margin:-545px 26px 0!important;
             }}
             .login-version {{
                 width:auto;
-                margin:18px 28px 24px;
+                max-width:none;
+                margin:18px 26px 20px;
             }}
         }}
         </style>
@@ -5472,30 +5597,17 @@ def login_sidebar():
         unsafe_allow_html=True,
     )
 
-    logo_data = ""
-    if LOGO_FILE.exists():
-        logo_data = base64.b64encode(LOGO_FILE.read_bytes()).decode("utf-8")
-
     st.markdown(
         f"""
         <div class="login-shell">
-          <section class="login-copy">
-            <div class="login-copy-logo">
+          <section class="login-left">
+            <div class="login-logo">
               <img src="data:image/png;base64,{logo_data}" alt="Price Shoes">
             </div>
-            <div class="login-copy-title">PS Operaciones Ropa</div>
-            <div class="login-copy-subtitle">Plataforma Integral de Gestión Operativa</div>
+            <div class="login-title">PS Operaciones Ropa</div>
+            <div class="login-subtitle">Plataforma Integral de Gestión Operativa</div>
           </section>
-          <section class="login-visual">
-            <div class="login-visual-inner">
-              <div class="login-visual-mark">▦</div>
-              <div class="login-visual-title">Indicadores operativos<br>en una sola vista</div>
-              <div class="login-visual-copy">
-                Seguimiento diario, productividad, recuperación, recorridos,
-                alertas y comparativos ejecutivos.
-              </div>
-            </div>
-          </section>
+          <section class="login-boutique" aria-label="Boutique Price Shoes"></section>
         </div>
         """,
         unsafe_allow_html=True,
@@ -5513,7 +5625,7 @@ def login_sidebar():
             key="login_password",
             placeholder="Ingresa tu contraseña",
         )
-        recordar = st.checkbox("Recordarme", value=True, key="login_remember")
+        st.checkbox("Recordarme", value=True, key="login_remember")
         submitted = st.form_submit_button(
             "↪  Iniciar sesión",
             type="primary",
@@ -5521,7 +5633,7 @@ def login_sidebar():
         )
 
     st.markdown(
-        '<div class="login-version">Versión 16.2<br>© Operaciones Ropa</div>',
+        '<div class="login-version">Versión 16.3<br>© Operaciones Ropa</div>',
         unsafe_allow_html=True,
     )
 
