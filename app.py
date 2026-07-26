@@ -2902,6 +2902,174 @@ div[data-baseweb="popover"] [data-testid="stPopoverBody"] {{
     color: #EC007C !important;
 }}
 
+
+/* ===== V16.2 DISEÑO PORTAL WEB / REPORTES EJECUTIVOS ===== */
+:root{{
+  --portal-navy:#082B63;
+  --portal-blue:#173B73;
+  --portal-cobalt:#3366CC;
+  --portal-purple:#A26BFF;
+  --portal-pink:#FF6FB5;
+  --portal-bg:#F3F6FB;
+  --portal-border:#DDE5F1;
+}}
+html,body,[data-testid="stAppViewContainer"]{{
+  background:var(--portal-bg)!important;
+}}
+.block-container{{
+  padding-top:.75rem!important;
+  padding-left:1.35rem!important;
+  padding-right:1.35rem!important;
+  max-width:100%!important;
+}}
+[data-testid="stSidebar"]{{
+  background:linear-gradient(180deg,#06285F 0%,#0B3A84 100%)!important;
+  min-width:245px!important;
+  max-width:245px!important;
+  border-right:0!important;
+}}
+[data-testid="stSidebar"] > div:first-child{{
+  padding:0!important;
+}}
+.side-brand{{
+  height:64px;
+  padding:0 18px;
+  display:flex;
+  align-items:center;
+  gap:12px;
+  color:#FFF;
+  font-size:16px;
+  font-weight:850;
+  border-bottom:1px solid rgba(255,255,255,.13);
+}}
+.side-brand-menu{{font-size:22px}}
+[data-testid="stSidebar"] [role="radiogroup"]{{
+  padding:14px 10px!important;
+  gap:4px!important;
+}}
+[data-testid="stSidebar"] [role="radiogroup"] label{{
+  color:#DCE7FF!important;
+  min-height:43px!important;
+  border-radius:7px!important;
+  padding:0 12px!important;
+  transition:.15s ease;
+}}
+[data-testid="stSidebar"] [role="radiogroup"] label:hover{{
+  background:rgba(255,255,255,.1)!important;
+  color:#FFF!important;
+}}
+[data-testid="stSidebar"] [role="radiogroup"] label:has(input:checked){{
+  background:#3366CC!important;
+  color:#FFF!important;
+  box-shadow:inset 3px 0 0 #FFFFFF;
+}}
+[data-testid="stSidebar"] [role="radiogroup"] label p{{
+  font-size:13px!important;
+  font-weight:760!important;
+}}
+.executive-top-shell{{
+  position:fixed;
+  top:0;
+  left:245px;
+  right:0;
+  height:64px;
+  background:linear-gradient(90deg,#06285F,#0C3C86);
+  z-index:5;
+  box-shadow:0 4px 14px rgba(6,40,95,.14);
+}}
+.st-key-logo_home_btn,.executive-brand,.st-key-module_user_menu{{
+  position:relative;
+  z-index:10;
+}}
+.executive-brand{{
+  color:#FFF;
+  min-height:46px;
+  display:flex;
+  align-items:center;
+}}
+.executive-brand-title{{
+  font-size:16px;
+  font-weight:850;
+}}
+.st-key-module_user_menu button{{
+  min-height:42px!important;
+  border:0!important;
+  background:transparent!important;
+  color:#FFF!important;
+  font-size:12px!important;
+  text-align:right!important;
+}}
+[data-testid="stMain"]{{
+  padding-top:65px!important;
+}}
+h1,h2,h3{{
+  color:#16213B!important;
+  letter-spacing:-.02em;
+}}
+h2{{
+  font-size:24px!important;
+  margin-top:.25rem!important;
+  margin-bottom:.4rem!important;
+}}
+[data-testid="stMetric"]{{
+  background:#FFF!important;
+  border:1px solid var(--portal-border)!important;
+  border-radius:8px!important;
+  min-height:105px!important;
+  padding:14px 16px!important;
+  box-shadow:0 4px 14px rgba(23,59,115,.05)!important;
+}}
+[data-testid="stMetricLabel"] p{{
+  color:#4B5565!important;
+  font-size:12px!important;
+  font-weight:700!important;
+}}
+[data-testid="stMetricValue"]{{
+  color:#173B73!important;
+  font-size:25px!important;
+  font-weight:850!important;
+}}
+.panel-title{{
+  border-radius:8px 8px 0 0!important;
+  border:1px solid var(--portal-border)!important;
+  padding:13px 16px!important;
+  font-size:15px!important;
+  color:#16213B!important;
+  box-shadow:none!important;
+}}
+[data-testid="stDataFrame"]{{
+  border:1px solid var(--portal-border)!important;
+  border-radius:0 0 8px 8px!important;
+  overflow:hidden!important;
+  background:#FFF!important;
+}}
+[data-testid="stDateInput"] input,
+[data-testid="stSelectbox"] > div > div,
+[data-testid="stMultiSelect"] > div > div{{
+  border-color:#D9E2EF!important;
+  border-radius:7px!important;
+  background:#FFF!important;
+}}
+[data-testid="stDownloadButton"] button,
+.stButton button{{
+  border-radius:7px!important;
+  font-weight:750!important;
+}}
+[data-testid="stPlotlyChart"]{{
+  border:1px solid var(--portal-border);
+  border-radius:8px;
+  background:#FFF;
+  padding:6px;
+}}
+@media(max-width:900px){{
+  [data-testid="stSidebar"]{{
+    min-width:0!important;
+  }}
+  .executive-top-shell{{
+    left:0;
+  }}
+}}
+
 </style>
 """,
         unsafe_allow_html=True,
@@ -2951,8 +3119,8 @@ def render_header():
     user_name = user.get("nombre", "Consulta")
     permiso = user.get("permiso", "Consulta")
 
-    st.markdown('<div class="ps-module-spacer"></div>', unsafe_allow_html=True)
-    c_logo, c_brand, c_user = st.columns([1.05, 6.65, 2.3], vertical_alignment="center")
+    st.markdown('<div class="executive-top-shell"></div>', unsafe_allow_html=True)
+    c_logo, c_brand, c_user = st.columns([.65, 6.7, 2.65], vertical_alignment="center")
 
     with c_logo:
         if st.button(" ", key="logo_home_btn", help="Volver al portal", width="stretch"):
@@ -2960,31 +3128,21 @@ def render_header():
             st.session_state["portal_view"] = "apps"
             st.session_state["nav_page"] = "Centro Ejecutivo"
             st.rerun()
-
-        logo = LOGO_FILE
-        if logo.exists():
-            data = base64.b64encode(logo.read_bytes()).decode("utf-8")
+        if LOGO_FILE.exists():
+            data = base64.b64encode(LOGO_FILE.read_bytes()).decode("utf-8")
             st.markdown(
                 f"""
                 <style>
                 .st-key-logo_home_btn button {{
-                    min-height: 92px !important;
-                    height: 92px !important;
-                    border: 0 !important;
-                    background:
-                        transparent
-                        url("data:image/png;base64,{data}")
-                        center / contain no-repeat !important;
-                    box-shadow: none !important;
-                    padding: 0 !important;
+                    min-height:46px!important;
+                    height:46px!important;
+                    border:0!important;
+                    background:transparent url("data:image/png;base64,{data}")
+                    center/contain no-repeat!important;
+                    box-shadow:none!important;
+                    padding:0!important;
                 }}
-                .st-key-logo_home_btn button:hover {{
-                    transform: scale(1.03);
-                    background-color: transparent !important;
-                }}
-                .st-key-logo_home_btn button p {{
-                    font-size: 0 !important;
-                }}
+                .st-key-logo_home_btn button p{{font-size:0!important;}}
                 </style>
                 """,
                 unsafe_allow_html=True,
@@ -2992,30 +3150,23 @@ def render_header():
 
     with c_brand:
         st.markdown(
-            """<div class="ps-module-brand">
-                    <div>
-                        <div class="ps-module-title">PS Operaciones Ropa</div>
-                        <div class="ps-module-subtitle">Recuperación · Productividad · Conversión</div>
-                    </div>
-                </div>""",
+            """
+            <div class="executive-brand">
+              <div class="executive-brand-title">PS Operaciones Ropa</div>
+            </div>
+            """,
             unsafe_allow_html=True,
         )
 
     with c_user:
         with st.container(key="module_user_menu"):
-            with st.popover(f"👤 {user_name}", width="stretch"):
+            with st.popover(f"Buenos días, {user_name}", width="stretch"):
+                st.markdown(f"**{user_name}**")
                 st.caption(f"Perfil: {permiso}")
                 st.caption(f"Fecha: {now.strftime('%d/%m/%Y')}")
                 if st.button("Cerrar sesión", key="logout_top", width="stretch"):
                     clear_auth_session()
                     st.rerun()
-
-            st.markdown(
-                f'<div class="portal-user-date">{now.strftime("%d/%m/%Y")} · {permiso}</div>',
-                unsafe_allow_html=True,
-            )
-
-    st.markdown('<div class="ps-module-pinkline"></div>', unsafe_allow_html=True)
 
 
 def read_file_history():
@@ -5116,47 +5267,235 @@ def login_sidebar():
         return True
 
     st.markdown(
-        """
+        f"""
         <style>
         header[data-testid="stHeader"],
         [data-testid="stToolbar"],
         [data-testid="stDecoration"],
         #MainMenu,
-        footer { display: none !important; }
-        [data-testid="stAppViewContainer"] {
+        footer {{
+            display:none !important;
+        }}
+        [data-testid="stAppViewContainer"] {{
             background:
-                linear-gradient(rgba(0,27,28,.78), rgba(0,43,36,.92)),
-                radial-gradient(circle at 50% 18%, rgba(255,255,255,.10), transparent 34%),
-                linear-gradient(145deg,#061F29,#003D33) !important;
-        }
-        [data-testid="stMain"] { min-height: 100vh !important; }
-        .block-container {
-            max-width: 680px !important;
-            min-height: 100vh !important;
-            padding: 2vh 1rem !important;
-            display: flex !important;
-            flex-direction: column !important;
-            justify-content: center !important;
-        }
+                radial-gradient(circle at 12% 18%, rgba(51,102,204,.12), transparent 24%),
+                radial-gradient(circle at 88% 82%, rgba(166,111,255,.18), transparent 30%),
+                linear-gradient(145deg,#F2F7FF 0%,#FFFFFF 56%,#EEF2FF 100%) !important;
+        }}
+        [data-testid="stMain"] {{
+            min-height:100vh !important;
+        }}
+        .block-container {{
+            max-width:1120px !important;
+            min-height:100vh !important;
+            padding:3vh 1rem !important;
+            display:flex !important;
+            flex-direction:column !important;
+            justify-content:center !important;
+        }}
+        .login-shell {{
+            display:grid;
+            grid-template-columns:minmax(360px, .92fr) minmax(420px, 1.08fr);
+            background:#FFFFFF;
+            border:1px solid #E3EAF5;
+            border-radius:22px;
+            overflow:hidden;
+            box-shadow:0 24px 70px rgba(23,59,115,.16);
+            min-height:620px;
+        }}
+        .login-copy {{
+            padding:46px 52px 28px;
+            display:flex;
+            flex-direction:column;
+            justify-content:center;
+            background:#FFFFFF;
+        }}
+        .login-copy-logo {{
+            display:flex;
+            justify-content:center;
+            margin-bottom:20px;
+        }}
+        .login-copy-logo img {{
+            width:190px;
+            max-height:98px;
+            object-fit:contain;
+        }}
+        .login-copy-title {{
+            color:#173B73;
+            text-align:center;
+            font-size:28px;
+            line-height:1.1;
+            font-weight:900;
+        }}
+        .login-copy-subtitle {{
+            color:#667085;
+            text-align:center;
+            font-size:14px;
+            font-weight:650;
+            margin:9px 0 30px;
+        }}
+        .login-visual {{
+            position:relative;
+            min-height:620px;
+            background:
+                linear-gradient(180deg,rgba(9,42,87,.08),rgba(13,26,61,.76)),
+                radial-gradient(circle at 72% 24%,rgba(255,255,255,.42),transparent 24%),
+                linear-gradient(145deg,#173B73 0%,#3366CC 48%,#A26BFF 100%);
+            overflow:hidden;
+        }}
+        .login-visual::before {{
+            content:"";
+            position:absolute;
+            inset:0;
+            background:
+                linear-gradient(90deg,transparent 0 6%,rgba(255,255,255,.12) 6% 7%,transparent 7% 14%),
+                repeating-linear-gradient(0deg,rgba(255,255,255,.04) 0 2px,transparent 2px 70px);
+        }}
+        .login-visual-inner {{
+            position:absolute;
+            inset:0;
+            display:flex;
+            flex-direction:column;
+            align-items:center;
+            justify-content:center;
+            color:#FFFFFF;
+            text-align:center;
+            padding:54px;
+        }}
+        .login-visual-mark {{
+            width:150px;
+            height:150px;
+            border-radius:30px;
+            border:1px solid rgba(255,255,255,.38);
+            background:rgba(255,255,255,.12);
+            backdrop-filter:blur(10px);
+            display:flex;
+            align-items:center;
+            justify-content:center;
+            font-size:72px;
+            margin-bottom:28px;
+            box-shadow:0 20px 45px rgba(0,0,0,.18);
+        }}
+        .login-visual-title {{
+            font-size:34px;
+            font-weight:900;
+            line-height:1.05;
+        }}
+        .login-visual-copy {{
+            margin-top:12px;
+            max-width:360px;
+            color:#EAF0FF;
+            font-size:16px;
+            line-height:1.55;
+        }}
+        [data-testid="stForm"] {{
+            max-width:420px !important;
+            margin:-375px 0 0 52px !important;
+            width:calc(46% - 64px) !important;
+            position:relative !important;
+            z-index:20 !important;
+            background:transparent !important;
+            border:0 !important;
+            padding:0 !important;
+        }}
+        [data-testid="stForm"] label p {{
+            color:#173B73 !important;
+            font-weight:750 !important;
+        }}
+        [data-testid="stForm"] input {{
+            min-height:50px !important;
+            border-radius:8px !important;
+            color:#111827 !important;
+            background:#FFFFFF !important;
+        }}
+        [data-testid="stForm"] button[kind="primary"] {{
+            min-height:52px !important;
+            border-radius:8px !important;
+            background:linear-gradient(90deg,#173B73,#1B5CB8) !important;
+            border:none !important;
+            margin-top:12px !important;
+            font-weight:850 !important;
+        }}
+        .login-version {{
+            position:relative;
+            z-index:30;
+            max-width:420px;
+            width:calc(46% - 64px);
+            margin:22px 0 0 52px;
+            text-align:center;
+            color:#667085;
+            font-size:12px;
+            line-height:1.55;
+        }}
+        @media(max-width:860px) {{
+            .block-container {{
+                max-width:540px !important;
+                padding:18px 14px 30px !important;
+            }}
+            .login-shell {{
+                display:block;
+                min-height:auto;
+            }}
+            .login-copy {{
+                padding:34px 26px 300px;
+            }}
+            .login-visual {{
+                min-height:240px;
+            }}
+            .login-visual-inner {{
+                padding:28px;
+            }}
+            .login-visual-mark {{
+                width:90px;
+                height:90px;
+                font-size:44px;
+                margin-bottom:12px;
+            }}
+            .login-visual-title {{
+                font-size:25px;
+            }}
+            .login-visual-copy {{
+                font-size:13px;
+            }}
+            [data-testid="stForm"] {{
+                max-width:none !important;
+                width:auto !important;
+                margin:-548px 28px 0 !important;
+            }}
+            .login-version {{
+                width:auto;
+                margin:18px 28px 24px;
+            }}
+        }}
         </style>
         """,
         unsafe_allow_html=True,
     )
 
-    logo_path = LOGO_FILE
-    if logo_path.exists():
-        c1, c2, c3 = st.columns([1, 1, 1])
-        with c2:
-            st.image(str(logo_path), width="stretch")
+    logo_data = ""
+    if LOGO_FILE.exists():
+        logo_data = base64.b64encode(LOGO_FILE.read_bytes()).decode("utf-8")
 
     st.markdown(
-        """
-        <div class="login-brand-card">
-            <div class="login-portal-title">PS Operaciones Ropa</div>
-            <div class="login-portal-subtitle">Plataforma Integral de Gestión Operativa</div>
-        </div>
-        <div style="text-align:center;color:#667085;font-size:13px;font-weight:700;margin:-4px 0 14px;">
-            Información confiable. Control total. Decisiones oportunas.
+        f"""
+        <div class="login-shell">
+          <section class="login-copy">
+            <div class="login-copy-logo">
+              <img src="data:image/png;base64,{logo_data}" alt="Price Shoes">
+            </div>
+            <div class="login-copy-title">PS Operaciones Ropa</div>
+            <div class="login-copy-subtitle">Plataforma Integral de Gestión Operativa</div>
+          </section>
+          <section class="login-visual">
+            <div class="login-visual-inner">
+              <div class="login-visual-mark">▦</div>
+              <div class="login-visual-title">Indicadores operativos<br>en una sola vista</div>
+              <div class="login-visual-copy">
+                Seguimiento diario, productividad, recuperación, recorridos,
+                alertas y comparativos ejecutivos.
+              </div>
+            </div>
+          </section>
         </div>
         """,
         unsafe_allow_html=True,
@@ -5164,9 +5503,9 @@ def login_sidebar():
 
     with st.form("login_portal_form", clear_on_submit=False):
         nom = st.text_input(
-            "Usuario o correo",
+            "Usuario",
             key="login_user",
-            placeholder="Ingresa tu usuario o nómina",
+            placeholder="Ingresa tu usuario",
         )
         pwd = st.text_input(
             "Contraseña",
@@ -5174,17 +5513,25 @@ def login_sidebar():
             key="login_password",
             placeholder="Ingresa tu contraseña",
         )
+        recordar = st.checkbox("Recordarme", value=True, key="login_remember")
         submitted = st.form_submit_button(
-            "Iniciar sesión",
+            "↪  Iniciar sesión",
             type="primary",
             width="stretch",
         )
+
+    st.markdown(
+        '<div class="login-version">Versión 16.2<br>© Operaciones Ropa</div>',
+        unsafe_allow_html=True,
+    )
 
     if submitted:
         user = get_user(nom, pwd)
         if user:
             user["role"] = normalize_role(user.get("role", user.get("permiso")))
-            user["permiso"] = ROLE_LABELS.get(user["role"], user.get("permiso", "Consulta"))
+            user["permiso"] = ROLE_LABELS.get(
+                user["role"], user.get("permiso", "Consulta")
+            )
             st.session_state["user"] = user
             st.session_state["nav_page"] = "Centro Ejecutivo"
             create_persistent_session(user)
@@ -5637,37 +5984,75 @@ def render_app_portal():
 
 
 def nav_bar():
-    # Lista local de respaldo: evita NameError aunque Streamlit conserve una
-    # versión parcial del módulo durante un reinicio.
     pages = globals().get("REPORT_PAGES") or globals().get("PAGES") or [
         "Centro Ejecutivo", "Por Día", "Reporte Semanal", "Reporte Mensual",
-        "Conversión", "Recuperación Económica", "Productividad",
-        "Recorridos", "Ranking", "Macro", "Diagnóstico",
-        "Configuración", "Usuarios",
+        "Productividad", "Recuperación Económica", "Recorridos",
+        "Centro de Control", "Configuración",
     ]
 
-    current = st.session_state.get("nav_page", pages[0])
-    if current not in pages:
-        current = pages[0]
+    aliases = {
+        "Por Día": "Operación Diaria",
+        "Conversión": "Recuperación",
+        "Recuperación Económica": "Recuperación",
+        "Macro": "Recuperación",
+        "Diagnóstico": "Centro de Control",
+        "Ranking": "Productividad",
+    }
+
+    # Se conservan las rutas técnicas, pero el menú muestra nombres ejecutivos.
+    route_pages = []
+    visible_names = []
+    for page in pages:
+        if page in ["Conversión", "Macro", "Ranking", "Diagnóstico", "Usuarios"]:
+            continue
+        visible = aliases.get(page, page)
+        if visible in visible_names:
+            continue
+        route_pages.append(page)
+        visible_names.append(visible)
+
+    current = st.session_state.get("nav_page", route_pages[0])
+    if current not in route_pages:
+        current = route_pages[0]
 
     permiso = st.session_state.get("user", {}).get("permiso", "Consulta")
     role = normalize_role(st.session_state.get("user", {}).get("role", permiso))
     if role not in {"OWNER", "ADMIN"}:
-        pages = [p for p in pages if p not in ["Configuración", "Usuarios", "Diagnóstico", "Centro de Control"]]
+        allowed = {"Centro Ejecutivo", "Por Día", "Reporte Semanal",
+                   "Reporte Mensual", "Productividad",
+                   "Recuperación Económica", "Recorridos"}
+        filtered = [(r, v) for r, v in zip(route_pages, visible_names) if r in allowed]
+        route_pages = [r for r, _ in filtered]
+        visible_names = [v for _, v in filtered]
     elif role != "OWNER":
-        pages = [p for p in pages if p != "Centro de Control"]
+        filtered = [(r, v) for r, v in zip(route_pages, visible_names)
+                    if r != "Centro de Control"]
+        route_pages = [r for r, _ in filtered]
+        visible_names = [v for _, v in filtered]
 
-    selected = st.radio(
-        "Pestañas",
-        pages,
-        index=pages.index(current),
-        horizontal=True,
-        label_visibility="collapsed",
-        key="nav_v123_tabs",
-    )
+    current_index = route_pages.index(current) if current in route_pages else 0
+
+    with st.sidebar:
+        st.markdown(
+            """
+            <div class="side-brand">
+              <div class="side-brand-menu">☰</div>
+              <div>PS Operaciones Ropa</div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+        selected_visible = st.radio(
+            "Navegación",
+            visible_names,
+            index=current_index,
+            label_visibility="collapsed",
+            key="nav_v162_sidebar",
+        )
+
+    selected = route_pages[visible_names.index(selected_visible)]
     st.session_state["nav_page"] = selected
     return selected
-
 
 
 def reliable_data_horizon(op, co):
@@ -6678,38 +7063,170 @@ def page_recuperacion(op, co):
     )
 
 def page_productividad(op, co):
-    st.markdown("## Productividad")
-    if op.empty:
-        st.info("Sin operación.")
+    st.markdown("## Productividad por colaborador")
+    if op is None or op.empty:
+        st.info("Sin información operativa.")
         return
-    c1, c2 = st.columns(2)
+
+    c1, c2, c3 = st.columns([1.2, 1.2, 2.6])
     with c1:
-        start = st.date_input("Fecha inicio", value=pd.to_datetime(op["Fecha"].min()).date(), key="prod_ini")
+        start = st.date_input(
+            "Fecha inicio",
+            value=pd.to_datetime(op["Fecha"].min()).date(),
+            key="prod_ini",
+        )
     with c2:
-        end = st.date_input("Fecha final", value=pd.to_datetime(op["Fecha"].max()).date(), key="prod_fin")
-    available_stores = authorized_stores(op, co)
-    tiendas = st.multiselect("Tienda", available_stores, default=available_stores, key="prod_tiendas")
+        end = st.date_input(
+            "Fecha final",
+            value=pd.to_datetime(op["Fecha"].max()).date(),
+            key="prod_fin",
+        )
+    with c3:
+        available_stores = authorized_stores(op, co)
+        tiendas = st.multiselect(
+            "Tienda", available_stores, default=available_stores,
+            key="prod_tiendas",
+        )
+
     o = split_operation(op)
-    o = o[(o["Fecha"] >= pd.to_datetime(start)) & (o["Fecha"] <= pd.to_datetime(end))]
+    o = o[
+        (o["Fecha"] >= pd.to_datetime(start))
+        & (o["Fecha"] <= pd.to_datetime(end))
+    ]
     o = filter_stores(o, tiendas)
     name_col = "Nombre Real" if "Nombre Real" in o.columns else "Nombre"
-    df = o.groupby(["Tienda", name_col], as_index=False).agg({"Piezas":"sum", "Habilitadas":"sum", "Ubicadas":"sum", "Recolectadas":"sum"})
-    df = df.rename(columns={name_col:"Colaborador"})
-    df_pdf = df.sort_values("Piezas", ascending=False)
-    generic_pdf_button("Productividad por colaborador", f"Periodo: {start} al {end}", df_pdf, file_name="Reporte_Productividad.pdf", key="pdf_productividad")
-    panel("Productividad por colaborador", df_pdf, height=500)
+
+    df = (
+        o.groupby(["Tienda", name_col], as_index=False)
+        .agg(
+            Piezas=("Piezas", "sum"),
+            Habilitadas=("Habilitadas", "sum"),
+            Ubicadas=("Ubicadas", "sum"),
+            Recolectadas=("Recolectadas", "sum"),
+            Dias=("Fecha", "nunique"),
+        )
+        .rename(columns={name_col: "Colaborador"})
+    )
+    df["Promedio pzs/día"] = np.divide(
+        df["Piezas"], df["Dias"],
+        out=np.zeros(len(df), dtype=float),
+        where=df["Dias"].to_numpy() > 0,
+    )
+    ranking = df.sort_values("Promedio pzs/día", ascending=False).reset_index(drop=True)
+    ranking.insert(0, "Ranking", np.arange(1, len(ranking) + 1))
+
+    top = ranking.head(3)[["Ranking", "Colaborador", "Tienda", "Promedio pzs/día"]]
+    bottom = ranking.tail(3).sort_values("Promedio pzs/día")[
+        ["Ranking", "Colaborador", "Tienda", "Promedio pzs/día"]
+    ]
+
+    left, right = st.columns(2, gap="large")
+    with left:
+        panel("Top 3 Colaboradores", top, height=210)
+    with right:
+        panel("Bottom 3 Colaboradores", bottom, height=210)
+
+    generic_pdf_button(
+        "Productividad por colaborador",
+        f"Periodo: {start} al {end}",
+        ranking,
+        file_name="Reporte_Productividad.pdf",
+        key="pdf_productividad",
+    )
+    panel("Ranking general", ranking, height=520)
 
 
 def page_recorridos(op, co):
     st.markdown("## Recorridos")
-    if op.empty:
+    if op is None or op.empty:
+        st.info("Sin información operativa.")
         return
-    o = op[op["Actividad"].map(norm_text).str.contains("RECORRIDO|RECOLECCION|RECOLECCIÓN", na=False)]
-    df = o.groupby(["Semana ISO","Tienda"], as_index=False).size().rename(columns={"size":"Recorridos"})
-    df["Meta"] = 47
-    df["% Cumplimiento"] = df["Recorridos"] / 47 * 100
-    generic_pdf_button("Recorridos", "Detalle por semana y tienda", df, file_name="Reporte_Recorridos.pdf", key="pdf_recorridos")
-    panel("Recorridos por semana", df, height=420)
+
+    o = op[
+        op["Actividad"].map(norm_text).str.contains(
+            "RECORRIDO|RECOLECCION|RECOLECCIÓN", na=False
+        )
+    ].copy()
+    if o.empty:
+        st.info("No se encontraron recorridos.")
+        return
+
+    weeks = sorted(o["Semana ISO"].dropna().astype(int).unique())
+    selected_week = st.selectbox(
+        "Semana ISO", weeks, index=len(weeks) - 1, key="rec_week"
+    )
+    current = o[o["Semana ISO"].astype(int).eq(int(selected_week))]
+    by_store = (
+        current.groupby("Tienda", as_index=False)
+        .size()
+        .rename(columns={"size": "Recorridos"})
+    )
+    by_store["Meta"] = 47
+    by_store["% Cumplimiento"] = (
+        by_store["Recorridos"] / by_store["Meta"] * 100
+    )
+
+    total = float(by_store["Recorridos"].sum())
+    goal = 47 * max(len(by_store), 1)
+    compliance = total / goal * 100 if goal else 0
+    average = total / max(len(by_store), 1)
+
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric("Meta semanal", "47")
+    c2.metric("Recorridos realizados", f"{total:,.0f}")
+    c3.metric("Cumplimiento", f"{compliance:.1f}%")
+    c4.metric("Promedio por tienda", f"{average:.1f}")
+
+    left, right = st.columns(2, gap="large")
+    with left:
+        fig = go.Figure()
+        ranked = by_store.sort_values("% Cumplimiento", ascending=True)
+        fig.add_bar(
+            y=ranked["Tienda"],
+            x=ranked["% Cumplimiento"],
+            orientation="h",
+            marker_color="#3366CC",
+            text=ranked["% Cumplimiento"].map(lambda x: f"{x:.1f}%"),
+            textposition="outside",
+        )
+        fig.add_vline(x=100, line_dash="dash", line_color="#FF6B6B")
+        fig.update_layout(
+            title="Cumplimiento de recorridos por tienda",
+            height=430,
+            margin=dict(l=20, r=55, t=65, b=30),
+            xaxis_title="% Cumplimiento",
+        )
+        st.plotly_chart(fig, width="stretch")
+    with right:
+        by_day = (
+            current.groupby(current["Fecha"].dt.day_name(), as_index=False)
+            .size().rename(columns={"size": "Realizados", "Fecha": "Día"})
+        )
+        fig2 = go.Figure()
+        fig2.add_bar(
+            x=by_day["Día"], y=by_day["Realizados"],
+            marker_color="#3366CC",
+            text=by_day["Realizados"],
+            textposition="outside",
+            name="Realizados",
+        )
+        fig2.add_scatter(
+            x=by_day["Día"], y=[47 / 7] * len(by_day),
+            mode="lines", line=dict(color="#FF6B6B", dash="dash"),
+            name="Meta diaria",
+        )
+        fig2.update_layout(
+            title="Recorridos realizados vs meta",
+            height=430,
+            margin=dict(l=20, r=20, t=65, b=30),
+        )
+        st.plotly_chart(fig2, width="stretch")
+
+    generic_pdf_button(
+        "Recorridos", f"Semana ISO {selected_week}", by_store,
+        file_name="Reporte_Recorridos.pdf", key="pdf_recorridos",
+    )
+    panel("Detalle de recorridos por tienda", by_store, height=360)
 
 
 def page_ranking(op, co):
