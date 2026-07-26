@@ -3314,6 +3314,232 @@ h2{{font-size:25px!important}}
   [data-testid="stMain"]{{margin-left:0!important;width:100%!important}}
 }}
 
+
+/* =========================================================
+   V20 ENTERPRISE — LAYOUT CORPORATIVO UNIFICADO
+   ========================================================= */
+:root{{
+  --v20-primary:#173B73;
+  --v20-secondary:#3366CC;
+  --v20-purple:#A26BFF;
+  --v20-pink:#FF6FB5;
+  --v20-gray:#667085;
+  --v20-bg:#F2F4F7;
+  --v20-white:#FFFFFF;
+  --v20-border:#E1E7EF;
+  --v20-sidebar:280px;
+  --v20-header:74px;
+}}
+html, body, [data-testid="stAppViewContainer"]{{
+  background:var(--v20-bg)!important;
+  font-family:Inter,Arial,sans-serif!important;
+}}
+header[data-testid="stHeader"],
+[data-testid="stToolbar"],
+[data-testid="stStatusWidget"],
+[data-testid="stDecoration"],
+#MainMenu, footer{{
+  display:none!important;
+}}
+[data-testid="stSidebar"]{{
+  position:fixed!important;
+  inset:0 auto 0 0!important;
+  width:var(--v20-sidebar)!important;
+  min-width:var(--v20-sidebar)!important;
+  max-width:var(--v20-sidebar)!important;
+  background:linear-gradient(180deg,#0A3067,#173B73)!important;
+  z-index:1000!important;
+  overflow-y:auto!important;
+  padding-top:0!important;
+}}
+.v20-sidebar-brand{{
+  position:sticky;
+  top:0;
+  z-index:3;
+  height:var(--v20-header);
+  padding:0 22px;
+  display:flex;
+  align-items:center;
+  gap:14px;
+  color:#FFF;
+  font-weight:850;
+  font-size:16px;
+  background:#0A3067;
+  border-bottom:1px solid rgba(255,255,255,.15);
+}}
+.v20-sidebar-menu{{font-size:24px}}
+[data-testid="stSidebar"] [role="radiogroup"]{{
+  padding:13px 12px 28px!important;
+  gap:3px!important;
+}}
+[data-testid="stSidebar"] [role="radiogroup"] label{{
+  min-height:43px!important;
+  border-radius:7px!important;
+  padding:0 12px!important;
+}}
+[data-testid="stSidebar"] [role="radiogroup"] label *,
+[data-testid="stSidebar"] [role="radiogroup"] label p{{
+  color:#FFF!important;
+  opacity:1!important;
+  font-size:13px!important;
+  font-weight:700!important;
+}}
+[data-testid="stSidebar"] [role="radiogroup"] label:hover{{
+  background:rgba(255,255,255,.10)!important;
+}}
+[data-testid="stSidebar"] [role="radiogroup"] label:has(input:checked){{
+  background:var(--v20-secondary)!important;
+  box-shadow:inset 4px 0 0 #FFF!important;
+}}
+.v20-header{{
+  position:fixed;
+  top:0;
+  left:var(--v20-sidebar);
+  right:0;
+  height:var(--v20-header);
+  z-index:999;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  padding:0 30px;
+  background:#FFF;
+  border-bottom:1px solid var(--v20-border);
+  box-shadow:0 3px 12px rgba(23,59,115,.08);
+}}
+.v20-header-brand{{
+  display:flex;
+  align-items:center;
+  gap:14px;
+  color:var(--v20-primary);
+  font-size:17px;
+  font-weight:850;
+}}
+.v20-header-brand img{{
+  width:82px;
+  height:52px;
+  object-fit:contain;
+}}
+.v20-header-account{{
+  display:flex;
+  align-items:center;
+  gap:12px;
+  min-width:245px;
+  justify-content:flex-end;
+}}
+.v20-header-account-copy{{
+  text-align:right;
+  line-height:1.2;
+  white-space:nowrap;
+}}
+.v20-header-account-copy strong{{
+  display:block;
+  color:var(--v20-primary);
+  font-size:12px;
+}}
+.v20-header-account-copy small{{
+  display:block;
+  color:var(--v20-gray);
+  font-size:10px;
+  margin-top:4px;
+}}
+.v20-header-avatar{{
+  width:40px;
+  height:40px;
+  border-radius:50%;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  color:#FFF;
+  font-weight:900;
+  font-size:12px;
+  background:linear-gradient(135deg,var(--v20-secondary),var(--v20-purple));
+  box-shadow:0 4px 13px rgba(51,102,204,.28);
+}}
+.st-key-v20_user_menu{{
+  position:fixed!important;
+  top:14px!important;
+  right:24px!important;
+  width:270px!important;
+  height:46px!important;
+  z-index:1002!important;
+  opacity:0!important;
+}}
+.st-key-v20_user_menu button{{
+  width:100%!important;
+  height:46px!important;
+}}
+[data-testid="stMain"]{{
+  margin-left:var(--v20-sidebar)!important;
+  width:calc(100% - var(--v20-sidebar))!important;
+  padding-top:var(--v20-header)!important;
+}}
+.block-container{{
+  max-width:100%!important;
+  padding:24px 28px 48px!important;
+  margin:0!important;
+}}
+.v20-portal-content{{
+  padding-top:6px;
+}}
+.ps-portal-top-spacer,
+.ps-portal-pinkbar,
+.executive-top-shell{{
+  display:none!important;
+}}
+.ps-portal-topbar-brand,
+.st-key-portal_user_menu{{
+  display:none!important;
+}}
+.st-key-v20_open_cambios_muertos button{{
+  min-height:305px!important;
+  border-radius:10px!important;
+  border:1px solid var(--v20-border)!important;
+  background:#FFF!important;
+  color:#1D2939!important;
+  font-size:20px!important;
+  font-weight:800!important;
+  box-shadow:0 5px 18px rgba(23,59,115,.08)!important;
+  border-bottom:6px solid var(--v20-pink)!important;
+}}
+.ps-app-disabled{{
+  min-height:305px!important;
+}}
+h1,h2,h3{{
+  color:#1D2939!important;
+  letter-spacing:-.02em;
+}}
+[data-testid="stMetric"]{{
+  background:#FFF!important;
+  border:1px solid var(--v20-border)!important;
+  border-radius:10px!important;
+  padding:15px 17px!important;
+  box-shadow:0 4px 13px rgba(23,59,115,.055)!important;
+}}
+[data-testid="stDataFrame"],
+[data-testid="stPlotlyChart"]{{
+  background:#FFF!important;
+  border:1px solid var(--v20-border)!important;
+  border-radius:10px!important;
+  overflow:hidden!important;
+  box-shadow:0 3px 12px rgba(23,59,115,.04)!important;
+}}
+@media(max-width:900px){{
+  :root{{--v20-sidebar:0px}}
+  [data-testid="stSidebar"]{{
+    position:relative!important;
+    width:auto!important;
+    min-width:auto!important;
+    max-width:none!important;
+  }}
+  .v20-header{{left:0;padding:0 14px}}
+  .v20-header-brand span{{display:none}}
+  .v20-header-account{{min-width:auto}}
+  [data-testid="stMain"]{{
+    margin-left:0!important;
+    width:100%!important;
+  }}
+}}
+
 </style>
 """,
         unsafe_allow_html=True,
@@ -3321,57 +3547,35 @@ h2{{font-size:25px!important}}
 
 
 def render_portal_header():
-    now = datetime.now(MX_TZ)
-    user = st.session_state.get("user", {})
-    user_name = user.get("nombre", "Consulta")
-    permiso = user.get("permiso", "Consulta")
-    nomina = user.get("nomina", "")
+    render_header()
 
-    st.markdown('<div class="ps-portal-top-spacer"></div>', unsafe_allow_html=True)
-    c_logo, c_user = st.columns([7.7, 2.3], vertical_alignment="center")
 
-    with c_logo:
-        st.markdown(
-            f"""<div class="ps-portal-topbar-brand">
-                    <div class="ps-portal-logo">{logo_html()}</div>
-                    <div class="ps-portal-system">Operaciones Ropa</div>
-                </div>""",
-            unsafe_allow_html=True,
-        )
+def _session_greeting(now):
+    if now.hour < 12:
+        return "Buenos días"
+    if now.hour < 19:
+        return "Buena tarde"
+    return "Buenas noches"
 
-    with c_user:
-        with st.container(key="portal_user_menu"):
-            with st.popover(f"👤 {user_name}", width="stretch"):
-                st.markdown(f"**{user_name}**")
-                if nomina:
-                    st.caption(f"Nómina: {nomina}")
-                st.caption(f"Perfil: {permiso}")
-                st.caption(f"Fecha: {now.strftime('%d/%m/%Y')}")
-                if st.button("Cerrar sesión", key="logout_portal", width="stretch"):
-                    clear_auth_session()
-                    st.rerun()
 
-    st.markdown(
-        '<div class="ps-portal-pinkbar">Corporativo · Comercial Operativo Ropa</div>',
-        unsafe_allow_html=True,
-    )
+def _user_initials(full_name):
+    parts = [part for part in str(full_name).strip().split() if part]
+    if not parts:
+        return "PS"
+    if len(parts) == 1:
+        return parts[0][:2].upper()
+    return f"{parts[0][0]}{parts[1][0]}".upper()
 
 
 def render_header():
+    """Encabezado corporativo fijo compartido por portal, administración y reportes."""
     now = datetime.now(MX_TZ)
     user = st.session_state.get("user", {})
     full_name = str(user.get("nombre", "Consulta")).strip() or "Consulta"
     first_name = full_name.split()[0]
-    words = [w for w in full_name.split() if w]
-    initials = "".join(w[0].upper() for w in words[:2]) or "PS"
-    permiso = user.get("permiso", "Consulta")
-
-    if now.hour < 12:
-        greeting = "Buenos días"
-    elif now.hour < 19:
-        greeting = "Buena tarde"
-    else:
-        greeting = "Buenas noches"
+    permiso = str(user.get("permiso", "Consulta"))
+    greeting = _session_greeting(now)
+    initials = _user_initials(full_name)
 
     logo_data = ""
     if LOGO_FILE.exists():
@@ -3379,32 +3583,57 @@ def render_header():
 
     st.markdown(
         f"""
-        <div class="ps-fixed-header">
-          <div class="ps-header-brand">
+        <header class="v20-header">
+          <div class="v20-header-brand">
             <img src="data:image/png;base64,{logo_data}" alt="Price Shoes">
-            <span class="ps-header-system">PS Operaciones Ropa</span>
+            <span>PS Operaciones Ropa</span>
           </div>
-          <div class="ps-header-user">
-            <div class="ps-header-copy">
-              <div>{greeting}, {first_name}</div>
+          <div class="v20-header-account">
+            <div class="v20-header-account-copy">
+              <strong>{greeting}, {first_name}</strong>
               <small>{permiso}</small>
             </div>
-            <div class="ps-avatar">{initials}</div>
+            <div class="v20-header-avatar">{initials}</div>
           </div>
-        </div>
+        </header>
         """,
         unsafe_allow_html=True,
     )
 
-    # Menú real para cerrar sesión; se posiciona sobre el bloque del usuario.
-    with st.container(key="fixed_user_menu"):
-        with st.popover("Cuenta", width="content"):
+    # Popover funcional colocado exactamente encima del bloque visual del usuario.
+    with st.container(key="v20_user_menu"):
+        with st.popover("Menú de usuario", width="content"):
             st.markdown(f"**{full_name}**")
-            st.caption(f"Perfil: {permiso}")
-            st.caption(f"Fecha: {now.strftime('%d/%m/%Y')}")
-            if st.button("Cerrar sesión", key="logout_top_v17", width="stretch"):
+            st.caption(f"{permiso} · {now.strftime('%d/%m/%Y')}")
+            if st.button(
+                "Volver al menú principal",
+                key="v20_return_portal",
+                width="stretch",
+            ):
+                st.session_state["active_app"] = None
+                st.session_state["portal_view"] = "apps"
+                st.session_state["nav_page"] = "Centro Ejecutivo"
+                st.rerun()
+            if st.button(
+                "Mi perfil",
+                key="v20_open_profile",
+                width="stretch",
+            ):
+                st.session_state["active_app"] = "Cambios y Muertos"
+                st.session_state["nav_page"] = "Perfil de Usuario"
+                st.rerun()
+            if st.button(
+                "Cerrar sesión",
+                key="v20_logout",
+                width="stretch",
+            ):
                 clear_auth_session()
                 st.rerun()
+
+
+def render_portal_header():
+    """El portal utiliza el mismo encabezado fijo del resto del sistema."""
+    render_header()
 
 
 def read_file_history():
@@ -5974,20 +6203,9 @@ def page_portal_admin():
             st.rerun()
         return
 
-    render_portal_header()
-
-    top_left, top_right = st.columns([7.5, 2.5], vertical_alignment="center")
-    with top_left:
-        st.markdown("## Administración · Cambios y Muertos")
-        st.caption("Carga, procesamiento, historial y eliminación de la fuente de datos.")
-    with top_right:
-        if st.button(
-            "← Volver al portal",
-            key="admin_back_portal",
-            width="stretch",
-        ):
-            st.session_state["portal_view"] = "apps"
-            st.rerun()
+    render_header()
+    st.markdown("## Administración · Cambios y Muertos")
+    st.caption("Carga, procesamiento, historial y eliminación de la fuente de datos.")
 
     meta = {}
     if META_FILE.exists():
@@ -6172,27 +6390,32 @@ def render_app_portal():
     nombre = user.get("nombre", "Consulta")
     nomina = user.get("nomina", "—")
 
-    render_portal_header()
-    left, right = st.columns([3.25, 6.75], gap="large", vertical_alignment="top")
+    render_header()
+
+    st.markdown('<main class="v20-portal-content">', unsafe_allow_html=True)
+    left, right = st.columns([3.0, 7.0], gap="large", vertical_alignment="top")
 
     with left:
         st.markdown(
-            f"""<section class="ps-profile-card">
-                    <div class="ps-profile-title">Información de usuario</div>
-                    <div class="ps-profile-row"><span>👤 Usuario</span><b>{nombre}</b></div>
-                    <div class="ps-profile-row"><span>▣ Nómina</span><b>{nomina}</b></div>
-                    <div class="ps-profile-row"><span>📍 Área</span><b>Comercial Operativo Ropa</b></div>
-                    <div class="ps-profile-row"><span>🔐 Perfil</span><b>{permiso}</b></div>
-                </section>""",
+            f"""
+            <section class="ps-profile-card">
+              <div class="ps-profile-title">Información de usuario</div>
+              <div class="ps-profile-row"><span>👤 Usuario</span><b>{nombre}</b></div>
+              <div class="ps-profile-row"><span>▣ Nómina</span><b>{nomina}</b></div>
+              <div class="ps-profile-row"><span>📍 Área</span><b>Comercial Operativo Ropa</b></div>
+              <div class="ps-profile-row"><span>🔐 Perfil</span><b>{permiso}</b></div>
+            </section>
+            """,
             unsafe_allow_html=True,
         )
         st.markdown(
-            """<section class="ps-portal-panel">
-                    <div class="ps-portal-panel-head">Comunicados</div>
-                    <div class="ps-notice-row"><b>22/07/2026</b><span>Portal de indicadores operativos disponible.</span></div>
-                    <div class="ps-notice-row"><b>Confidencial</b><span>Uso exclusivo de Price Shoes.</span></div>
-                </section>
-                <div class="ps-promo-head">Operaciones Ropa</div>""",
+            """
+            <section class="ps-portal-panel">
+              <div class="ps-portal-panel-head">Comunicados</div>
+              <div class="ps-notice-row"><b>26/07/2026</b><span>Portal empresarial disponible.</span></div>
+              <div class="ps-notice-row"><b>Confidencial</b><span>Uso exclusivo de Price Shoes.</span></div>
+            </section>
+            """,
             unsafe_allow_html=True,
         )
 
@@ -6201,50 +6424,42 @@ def render_app_portal():
             "Buscar aplicativo",
             placeholder="Siglas o nombre de aplicativo",
             label_visibility="collapsed",
-            key="portal_app_search",
+            key="v20_portal_search",
         )
 
         show_main = not search or any(
             token in search.lower()
-            for token in ["cambio", "muerto", "indicador", "recuperacion"]
+            for token in ["cambio", "muerto", "operacion", "indicador", "recuperacion"]
         )
 
         if show_main:
             app_col, future_col = st.columns(2, gap="medium")
-
             with app_col:
-                with st.container(key="app_card_shell"):
-                    if normalize_role(st.session_state.get("user", {}).get("role", permiso)) in {"OWNER", "ADMIN"}:
-                        with st.container(key="app_admin_menu"):
-                            if st.button(
-                                "⋮",
-                                key="open_admin_page_v150",
-                                help="Administración de Cambios y Muertos",
-                            ):
-                                st.session_state["portal_view"] = "admin"
-                                st.rerun()
-
-                    if st.button(
-                        "Cambios y Muertos\n\nRecuperación · Productividad · Conversión",
-                        key="open_cambios_muertos_card",
-                        width="stretch",
-                    ):
-                        st.session_state["active_app"] = "Cambios y Muertos"
-                        st.session_state["nav_page"] = "Centro Ejecutivo"
-                        st.rerun()
+                if st.button(
+                    "↻\n\nCambios y Muertos\n\nRecuperación · Productividad · Conversión",
+                    key="v20_open_cambios_muertos",
+                    width="stretch",
+                ):
+                    st.session_state["active_app"] = "Cambios y Muertos"
+                    st.session_state["nav_page"] = "Centro Ejecutivo"
+                    st.rerun()
 
             with future_col:
                 st.markdown(
-                    """<div class="ps-app-card ps-app-disabled">
-                        <div class="ps-app-code">PRX</div>
-                        <div class="ps-app-icon">▤</div>
-                        <div class="ps-app-name">Próximo indicador</div>
-                        <div class="ps-app-desc">Espacio preparado para futuros reportes.</div>
-                    </div>""",
+                    """
+                    <div class="ps-app-card ps-app-disabled">
+                      <div class="ps-app-code">PRX</div>
+                      <div class="ps-app-icon">▤</div>
+                      <div class="ps-app-name">Próximo indicador</div>
+                      <div class="ps-app-desc">Espacio preparado para futuros reportes.</div>
+                    </div>
+                    """,
                     unsafe_allow_html=True,
                 )
         else:
             st.info("No se encontraron aplicativos con ese criterio.")
+
+    st.markdown("</main>", unsafe_allow_html=True)
 
 
 def nav_bar():
@@ -6271,14 +6486,15 @@ def nav_bar():
         "Perfil de Usuario",
         "Inteligencia Operativa",
     ]
+
     if role in {"OWNER", "ADMIN"}:
-        pages += [
+        pages.extend([
             "Centro de Control",
             "Administración",
             "Configuración de Metas",
             "Carga de Excel",
             "Diagnóstico del Archivo",
-        ]
+        ])
 
     current = st.session_state.get("nav_page", "Centro Ejecutivo")
     if current not in pages:
@@ -6287,8 +6503,8 @@ def nav_bar():
     with st.sidebar:
         st.markdown(
             """
-            <div class="ps-sidebar-brand">
-              <span class="ps-sidebar-menu">☰</span>
+            <div class="v20-sidebar-brand">
+              <span class="v20-sidebar-menu">☰</span>
               <span>PS Operaciones Ropa</span>
             </div>
             """,
@@ -6299,7 +6515,7 @@ def nav_bar():
             pages,
             index=pages.index(current),
             label_visibility="collapsed",
-            key="v17_sidebar_navigation",
+            key="v20_sidebar_navigation",
         )
 
     st.session_state["nav_page"] = selected
