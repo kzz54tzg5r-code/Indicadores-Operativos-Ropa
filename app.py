@@ -3686,6 +3686,77 @@ h1,h2,h3{{
   }}
 }}
 
+
+/* ===== V20.2: MENÚ DE USUARIO FUNCIONAL ===== */
+.v20-header{{
+  padding-right:310px!important;
+}}
+.st-key-v202_user_menu{{
+  position:fixed!important;
+  top:14px!important;
+  right:24px!important;
+  width:270px!important;
+  height:48px!important;
+  z-index:3000!important;
+  display:block!important;
+  opacity:1!important;
+  pointer-events:auto!important;
+}}
+.st-key-v202_user_menu > div{{
+  width:100%!important;
+}}
+.st-key-v202_user_menu button{{
+  width:100%!important;
+  min-height:46px!important;
+  padding:5px 12px!important;
+  border:0!important;
+  border-radius:9px!important;
+  background:transparent!important;
+  color:#173B73!important;
+  font-weight:800!important;
+  white-space:nowrap!important;
+  box-shadow:none!important;
+}}
+.st-key-v202_user_menu button:hover{{
+  background:#F2F4F7!important;
+}}
+.st-key-v202_user_menu button p,
+.st-key-v202_user_menu button span{{
+  color:#173B73!important;
+  white-space:nowrap!important;
+}}
+.admin-section-title{{
+  background:#173B73;
+  color:#FFFFFF;
+  font-size:17px;
+  font-weight:850;
+  border-radius:9px 9px 0 0;
+  padding:15px 18px;
+  margin-bottom:16px;
+}}
+@media(max-width:900px){{
+  .v20-header{{
+    padding-right:78px!important;
+  }}
+  .st-key-v202_user_menu{{
+    top:10px!important;
+    right:7px!important;
+    width:62px!important;
+  }}
+  .st-key-v202_user_menu button{{
+    font-size:0!important;
+    width:52px!important;
+    min-width:52px!important;
+    border-radius:50%!important;
+    background:linear-gradient(135deg,#3366CC,#A26BFF)!important;
+  }}
+  .st-key-v202_user_menu button::after{{
+    content:"👤";
+    font-size:20px!important;
+    color:#FFFFFF!important;
+  }}
+}}
+
 </style>
 """,
         unsafe_allow_html=True,
@@ -3714,7 +3785,7 @@ def _user_initials(full_name):
 
 
 def render_header():
-    """Encabezado corporativo fijo compartido por portal, administración y reportes."""
+    """Encabezado fijo con menú de usuario funcional."""
     now = datetime.now(MX_TZ)
     user = st.session_state.get("user", {})
     full_name = str(user.get("nombre", "Consulta")).strip() or "Consulta"
@@ -3734,43 +3805,55 @@ def render_header():
             <img src="data:image/png;base64,{logo_data}" alt="Price Shoes">
             <span>PS Operaciones Ropa</span>
           </div>
-          <div class="v20-header-account">
-            <div class="v20-header-account-copy">
-              <strong>{greeting}, {first_name}</strong>
-              <small>{permiso}</small>
-            </div>
-            <div class="v20-header-avatar">{initials}</div>
-          </div>
         </header>
         """,
         unsafe_allow_html=True,
     )
 
-    # Popover funcional colocado exactamente encima del bloque visual del usuario.
-    with st.container(key="v20_user_menu"):
-        with st.popover("Menú de usuario", width="content"):
-            st.markdown(f"**{full_name}**")
+    # Este popover es el elemento visible y clicable del usuario.
+    with st.container(key="v202_user_menu"):
+        with st.popover(
+            f"{greeting}, {first_name}   {initials}",
+            width="content",
+            help="Abrir menú de usuario",
+        ):
+            st.markdown(f"### {full_name}")
             st.caption(f"{permiso} · {now.strftime('%d/%m/%Y')}")
+            st.divider()
+
             if st.button(
-                "Volver al menú principal",
-                key="v20_return_portal",
+                "⌂  Volver al menú principal",
+                key="v202_return_portal",
                 width="stretch",
             ):
                 st.session_state["active_app"] = None
                 st.session_state["portal_view"] = "apps"
                 st.session_state["nav_page"] = "Centro Ejecutivo"
                 st.rerun()
+
             if st.button(
-                "Mi perfil",
-                key="v20_open_profile",
+                "👤  Mi perfil",
+                key="v202_open_profile",
                 width="stretch",
             ):
                 st.session_state["active_app"] = "Cambios y Muertos"
                 st.session_state["nav_page"] = "Perfil de Usuario"
                 st.rerun()
+
+            if is_admin():
+                if st.button(
+                    "⬆  Cargar Excel",
+                    key="v202_open_upload",
+                    width="stretch",
+                ):
+                    st.session_state["active_app"] = "Cambios y Muertos"
+                    st.session_state["nav_page"] = "Carga de Excel"
+                    st.rerun()
+
+            st.divider()
             if st.button(
                 "Cerrar sesión",
-                key="v20_logout",
+                key="v202_logout",
                 width="stretch",
             ):
                 clear_auth_session()
@@ -8031,20 +8114,40 @@ if not st.session_state.get("active_app"):
 render_header()
 page = nav_bar()
 
-if not ACTIVE_FILE.exists():
-    st.warning("El Administrador debe cargar el archivo desde la página Administración del portal.")
-    st.stop()
+ADMIN_WITHOUT_DATA_PAGES = {
+    "Carga de Excel",
+    "Administración",
+    "Configuración de Metas",
+    "Centro de Control",
+    "Diagnóstico del Archivo",
+    "Perfil de Usuario",
+}
 
-if not cache_valid():
-    st.warning("El archivo está cargado, pero aún no está procesado. Regresa a Administración para procesarlo.")
-    st.stop()
+if ACTIVE_FILE.exists() and cache_valid():
+    op_all, co_all, diag_df = read_cache(ACTIVE_FILE.stat().st_mtime)
 
-op_all, co_all, diag_df = read_cache(ACTIVE_FILE.stat().st_mtime)
+    # Seguridad por alcance: todos los módulos y exportaciones reciben solamente
+    # la información autorizada para el usuario autenticado.
+    op_all = apply_user_scope(op_all)
+    co_all = apply_user_scope(co_all)
+else:
+    # Las páginas administrativas deben poder abrirse aunque todavía no exista
+    # un archivo, precisamente para permitir cargarlo y procesarlo.
+    op_all = pd.DataFrame()
+    co_all = pd.DataFrame()
+    diag_df = pd.DataFrame()
 
-# Seguridad por alcance: todos los módulos y exportaciones reciben solamente
-# la información autorizada para el usuario autenticado.
-op_all = apply_user_scope(op_all)
-co_all = apply_user_scope(co_all)
+    if page not in ADMIN_WITHOUT_DATA_PAGES:
+        if not ACTIVE_FILE.exists():
+            st.warning(
+                "No hay un archivo activo. Abre **Carga de Excel** para seleccionar, "
+                "guardar y procesar la fuente de datos."
+            )
+        else:
+            st.warning(
+                "El archivo está guardado, pero todavía no está procesado. "
+                "Abre **Carga de Excel** y presiona **Procesar archivo activo**."
+            )
 
 _system = get_system_status()
 if _system["status"] in {"MAINTENANCE", "SUSPENDED"} and not is_owner():
@@ -8146,9 +8249,153 @@ def page_configuracion_metas_v17():
         st.success("Metas guardadas correctamente.")
 
 
+
 def page_carga_excel_v17():
-    _v17_title("Carga de Excel", "Selecciona, valida y procesa la fuente operativa.")
-    page_portal_admin()
+    """Carga y procesamiento accesibles desde la navegación principal."""
+    _v17_title(
+        "Carga de Excel",
+        "Selecciona, guarda y procesa la fuente operativa de Cambios y Muertos.",
+    )
+
+    user = st.session_state.get("user", {})
+    if not is_admin(user):
+        st.error("Esta función está disponible únicamente para Administrador o Propietario.")
+        return
+
+    meta = {}
+    if META_FILE.exists():
+        try:
+            meta = json.loads(META_FILE.read_text(encoding="utf-8"))
+        except Exception:
+            meta = {}
+
+    status_col, upload_col = st.columns([3.0, 7.0], gap="large")
+
+    with status_col:
+        st.markdown(
+            '<div class="admin-section-title">Estado de la fuente</div>',
+            unsafe_allow_html=True,
+        )
+
+        if ACTIVE_FILE.exists():
+            st.success("Archivo guardado")
+            st.markdown(
+                f"**Nombre:** {meta.get('nombre_original', ACTIVE_FILE.name)}"
+            )
+            try:
+                st.caption(
+                    f"Tamaño: {ACTIVE_FILE.stat().st_size / (1024 * 1024):,.1f} MB"
+                )
+            except Exception:
+                pass
+
+            if cache_valid():
+                st.success("Procesado y disponible")
+            else:
+                st.warning("Pendiente de procesar")
+        else:
+            st.info("Todavía no hay un archivo cargado.")
+
+        st.markdown(
+            """
+            **Flujo recomendado**
+
+            1. Seleccionar el archivo Excel.  
+            2. Guardar el archivo.  
+            3. Procesar el archivo activo.  
+            4. Consultar los indicadores.
+            """
+        )
+
+    with upload_col:
+        st.markdown(
+            '<div class="admin-section-title">Seleccionar y procesar Excel</div>',
+            unsafe_allow_html=True,
+        )
+
+        uploaded = st.file_uploader(
+            "Selecciona un archivo Excel",
+            type=["xlsx"],
+            key="v202_excel_uploader",
+            help="El archivo seleccionado sustituirá la fuente activa al guardarlo.",
+        )
+
+        if uploaded is not None:
+            st.info(
+                f"Seleccionado: **{uploaded.name}** · "
+                f"{uploaded.size / (1024 * 1024):,.1f} MB"
+            )
+
+        save_col, process_col = st.columns(2)
+
+        with save_col:
+            if st.button(
+                "1. Guardar archivo",
+                key="v202_save_excel",
+                type="primary",
+                width="stretch",
+                disabled=uploaded is None or not can_write(),
+            ):
+                try:
+                    with st.spinner("Guardando archivo..."):
+                        save_uploaded_file(uploaded)
+                    append_file_history(
+                        "Carga",
+                        uploaded.name,
+                        "Guardado",
+                        "Archivo guardado y pendiente de procesamiento",
+                    )
+                    st.success("Archivo guardado correctamente.")
+                    st.rerun()
+                except Exception as exc:
+                    st.error("No fue posible guardar el archivo.")
+                    st.exception(exc)
+
+        with process_col:
+            if st.button(
+                "2. Procesar archivo activo",
+                key="v202_process_excel",
+                type="primary",
+                width="stretch",
+                disabled=not ACTIVE_FILE.exists() or not can_write(),
+            ):
+                try:
+                    with st.spinner(
+                        "Procesando hojas operativas y comerciales. "
+                        "No cierres esta ventana..."
+                    ):
+                        process_excel(str(ACTIVE_FILE))
+                    append_file_history(
+                        "Proceso",
+                        meta.get("nombre_original", ACTIVE_FILE.name),
+                        "Procesado",
+                        "Archivo procesado correctamente",
+                    )
+                    st.success("Archivo procesado correctamente.")
+                    st.cache_data.clear()
+                    st.rerun()
+                except Exception as exc:
+                    st.error("No fue posible procesar el archivo.")
+                    st.exception(exc)
+
+        if ACTIVE_FILE.exists():
+            st.divider()
+            if st.button(
+                "Eliminar archivo activo",
+                key="v202_delete_active",
+                width="stretch",
+                disabled=not can_write(),
+            ):
+                file_name = meta.get("nombre_original", ACTIVE_FILE.name)
+                delete_active_file()
+                append_file_history(
+                    "Eliminación",
+                    file_name,
+                    "Eliminado",
+                    "Archivo activo eliminado",
+                )
+                st.success("Archivo activo eliminado.")
+                st.rerun()
 
 
 def page_diagnostico_archivo_v17(op, co, diag):
