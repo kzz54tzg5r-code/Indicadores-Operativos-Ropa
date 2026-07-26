@@ -1,7 +1,6 @@
 
 # -*- coding: utf-8 -*-
 import base64
-import hashlib
 import json
 import re
 import sqlite3
@@ -25,6 +24,15 @@ from reportlab.graphics.charts.barcharts import VerticalBarChart
 import streamlit as st
 from openpyxl import load_workbook
 
+from core.settings import (
+    APP_NAME, APP_SUBTITLE, APP_SLOGAN, APP_AREA, APP_DIRECTION, APP_VERSION, APP_BUILD,
+    APP_CACHE_VERSION, COLOR_PRIMARY, COLOR_ACCENT, COLOR_BACKGROUND, DATA_DIR, UPLOAD_DIR,
+    CACHE_DIR, CONFIG_DIR, ASSETS_DIR, ACTIVE_FILE, META_FILE, FILE_HISTORY, DB_FILE,
+    SESSION_FILE, SESSION_TIMEOUT_HOURS, PROJECT_STORES, ROLES, ROLE_LABELS,
+    SYSTEM_STATUSES, SYSTEM_STATUS_LABELS, LOGO_FILE,
+)
+from core.security import hash_password, verify_password
+
 try:
     from st_aggrid import AgGrid, GridOptionsBuilder, JsCode
     AGGRID_OK = True
@@ -36,58 +44,19 @@ except Exception:
 # CONFIGURACIÓN GENERAL
 # ============================================================
 st.set_page_config(
-    page_title="Indicadores Cambios y Muertos",
+    page_title=APP_NAME,
     page_icon="📊",
     layout="wide",
     initial_sidebar_state="expanded",
 )
 
-DATA_DIR = Path("data")
-UPLOAD_DIR = DATA_DIR / "uploads"
-CACHE_DIR = DATA_DIR / "cache"
-CONFIG_DIR = DATA_DIR / "config"
-ASSETS_DIR = Path("assets")
-ACTIVE_FILE = UPLOAD_DIR / "base_activa.xlsx"
-META_FILE = CONFIG_DIR / "metadata.json"
-FILE_HISTORY = DATA_DIR / "file_history.json"
-FILE_HISTORY.parent.mkdir(parents=True, exist_ok=True)
-DB_FILE = CONFIG_DIR / "usuarios.db"
-SESSION_FILE = CONFIG_DIR / "sessions.json"
-SESSION_TIMEOUT_HOURS = 8
-
 for p in [DATA_DIR, UPLOAD_DIR, CACHE_DIR, CONFIG_DIR, ASSETS_DIR]:
     p.mkdir(parents=True, exist_ok=True)
 
 MX_TZ = ZoneInfo("America/Mexico_City")
-APP_CACHE_VERSION = "v16-enterprise"
-AZUL = "#10245F"
-ROSA = "#EC007C"
-LAVANDA = "#F3F6FB"
-
-PROJECT_STORES = [
-    "Arco Norte", "Ecatepec", "Miravalle", "Puebla Sur", "Vallejo",
-]
-
-# Pestañas internas del módulo Cambios y Muertos.
-# Esta constante se perdió al integrar la estructura tipo portal en v12.1,
-# lo que provocaba NameError al ejecutar nav_bar().
-PAGES = [
-    "Resumen",
-    "Por Día",
-    "Reporte Semanal",
-    "Reporte Mensual",
-    "Conversión",
-    "Recuperación Económica",
-    "Productividad",
-    "Recorridos",
-    "Ranking",
-    "Macro",
-    "Diagnóstico",
-    "Configuración",
-    "Usuarios",
-]
-
-REPORT_PAGES = PAGES.copy()
+AZUL = COLOR_PRIMARY
+ROSA = COLOR_ACCENT
+LAVANDA = COLOR_BACKGROUND
 
 
 # ============================================================
@@ -343,12 +312,8 @@ def fmt_pct(x):
     return f"{safe_num(x):.1f}%"
 
 
-def hash_password(pwd):
-    return hashlib.sha256(str(pwd).encode("utf-8")).hexdigest()
-
-
 def logo_html():
-    logo = ASSETS_DIR / "price_shoes_logo.png"
+    logo = LOGO_FILE
     if logo.exists():
         data = base64.b64encode(logo.read_bytes()).decode("utf-8")
         return f'<img src="data:image/png;base64,{data}" class="ps-logo-img">'
@@ -356,8 +321,41 @@ def logo_html():
 
 
 # ============================================================
-# USUARIOS
+# USUARIOS, ALCANCES Y CONTROL DEL SISTEMA
 # ============================================================
+def normalize_role(value):
+    raw = norm_text(value)
+    aliases = {
+        "PROPIETARIO": "OWNER", "OWNER": "OWNER",
+        "ADMINISTRADOR": "ADMIN", "ADMIN": "ADMIN",
+        "DIRECTOR": "DIRECTOR",
+        "GERENTE REGIONAL": "REGIONAL", "REGIONAL": "REGIONAL",
+        "GERENTE DE TIENDA": "TIENDA", "TIENDA": "TIENDA",
+        "SUPERVISOR": "SUPERVISOR",
+        "CONSULTA": "CONSULTA",
+    }
+    return aliases.get(raw, "CONSULTA")
+
+
+def is_owner(user=None):
+    user = user or st.session_state.get("user", {})
+    return normalize_role(user.get("role", user.get("permiso"))) == "OWNER"
+
+
+def is_admin(user=None):
+    user = user or st.session_state.get("user", {})
+    return normalize_role(user.get("role", user.get("permiso"))) in {"OWNER", "ADMIN"}
+
+
+def can_write(user=None):
+    status = get_system_status().get("status", "ACTIVE")
+    return is_admin(user) and status == "ACTIVE"
+
+
+def _table_columns(con, table):
+    return {row[1] for row in con.execute(f"PRAGMA table_info({table})").fetchall()}
+
+
 def init_db():
     con = sqlite3.connect(DB_FILE)
     cur = con.cursor()
@@ -373,60 +371,197 @@ def init_db():
         )
         """
     )
-    cur.execute("SELECT COUNT(*) FROM usuarios")
-    if cur.fetchone()[0] == 0:
-        cur.execute(
-            "INSERT INTO usuarios VALUES (?,?,?,?,?,?)",
-            ("admin", "Administrador", "Administrador", hash_password("admin123"), 1, datetime.now(MX_TZ).isoformat()),
+    cols = _table_columns(con, "usuarios")
+    migrations = {
+        "correo": "TEXT DEFAULT ''",
+        "role": "TEXT DEFAULT 'CONSULTA'",
+        "scope_type": "TEXT DEFAULT 'COMPANY'",
+        "scope_value": "TEXT DEFAULT ''",
+        "must_change_password": "INTEGER DEFAULT 0",
+        "password_algorithm": "TEXT DEFAULT 'legacy_sha256'",
+        "ultimo_acceso": "TEXT DEFAULT ''",
+    }
+    for col, definition in migrations.items():
+        if col not in cols:
+            cur.execute(f"ALTER TABLE usuarios ADD COLUMN {col} {definition}")
+
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS system_control (
+            id INTEGER PRIMARY KEY CHECK (id = 1),
+            status TEXT NOT NULL DEFAULT 'ACTIVE',
+            demo_mode INTEGER NOT NULL DEFAULT 0,
+            maintenance_text TEXT DEFAULT '',
+            changed_by TEXT DEFAULT '',
+            changed_at TEXT DEFAULT ''
         )
+        """
+    )
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS audit_logs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            usuario TEXT NOT NULL,
+            accion TEXT NOT NULL,
+            modulo TEXT DEFAULT '',
+            detalle TEXT DEFAULT '',
+            creado TEXT NOT NULL
+        )
+        """
+    )
+    cur.execute("INSERT OR IGNORE INTO system_control(id,status,demo_mode,maintenance_text,changed_by,changed_at) VALUES(1,'ACTIVE',0,'','','')")
+    # Cuenta propietaria inicial. La contraseña no se guarda en texto plano; solo se
+    # incluye el hash Argon2id solicitado para el primer acceso.
+    owner_hash = "$argon2id$v=19$m=65536,t=3,p=4$uGzgUHh0bnf2WhN7DnzMgQ$eBHOmzeNkrxgn/Kcdr7XMfCzwQtpj6hae1RtpqCRSig"
+    owner_exists = cur.execute("SELECT 1 FROM usuarios WHERE upper(nomina)='JDA'").fetchone()
+    if not owner_exists:
+        cur.execute(
+            """INSERT INTO usuarios
+            (nomina,nombre,permiso,password_hash,activo,creado,correo,role,scope_type,scope_value,must_change_password,password_algorithm)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
+            ("JDA", "Jesús Del Ángel", "Propietario del Sistema", owner_hash, 1,
+             datetime.now(MX_TZ).isoformat(), "", "OWNER", "COMPANY", "", 0, "argon2id"),
+        )
+
+    # Desactiva la credencial de demostración insegura heredada, sin borrar su historial.
+    cur.execute("UPDATE usuarios SET activo=0 WHERE lower(nomina)='admin'")
+    cur.execute("UPDATE usuarios SET role=CASE WHEN permiso='Administrador' THEN 'ADMIN' ELSE COALESCE(NULLIF(role,''),'CONSULTA') END WHERE upper(nomina)<>'JDA'")
     con.commit()
     con.close()
 
 
-def get_user(nomina, password):
+def get_system_status():
     con = sqlite3.connect(DB_FILE)
-    cur = con.cursor()
-    cur.execute("SELECT nomina,nombre,permiso FROM usuarios WHERE nomina=? AND password_hash=? AND activo=1", (nomina, hash_password(password)))
-    row = cur.fetchone()
+    row = con.execute("SELECT status,demo_mode,maintenance_text,changed_by,changed_at FROM system_control WHERE id=1").fetchone()
     con.close()
     if not row:
+        return {"status": "ACTIVE", "demo_mode": False, "maintenance_text": "", "changed_by": "", "changed_at": ""}
+    return {"status": row[0], "demo_mode": bool(row[1]), "maintenance_text": row[2] or "", "changed_by": row[3] or "", "changed_at": row[4] or ""}
+
+
+def audit(action, module="", detail="", user=None):
+    user = user or st.session_state.get("user", {})
+    try:
+        con = sqlite3.connect(DB_FILE)
+        con.execute(
+            "INSERT INTO audit_logs(usuario,accion,modulo,detalle,creado) VALUES(?,?,?,?,?)",
+            (str(user.get("nomina", "sistema")), str(action), str(module), str(detail), datetime.now(MX_TZ).isoformat()),
+        )
+        con.commit(); con.close()
+    except Exception:
+        pass
+
+
+def set_system_status(status, justification, user=None):
+    user = user or st.session_state.get("user", {})
+    if not is_owner(user):
+        raise PermissionError("Acceso exclusivo para el Propietario del Sistema.")
+    if status not in SYSTEM_STATUSES:
+        raise ValueError("Estado no válido.")
+    if len(str(justification).strip()) < 10:
+        raise ValueError("La justificación debe tener al menos 10 caracteres.")
+    previous = get_system_status().get("status", "ACTIVE")
+    now = datetime.now(MX_TZ).isoformat()
+    con = sqlite3.connect(DB_FILE)
+    con.execute(
+        "UPDATE system_control SET status=?,maintenance_text=?,changed_by=?,changed_at=? WHERE id=1",
+        (status, str(justification).strip(), str(user.get("nomina", "")), now),
+    )
+    con.commit(); con.close()
+    audit("CAMBIO_ESTADO", "Centro de Control", f"{previous} -> {status}. {justification}", user)
+
+
+def get_user(nomina, password):
+    identifier = str(nomina or "").strip()
+    con = sqlite3.connect(DB_FILE)
+    cur = con.cursor()
+    cur.execute(
+        """SELECT nomina,nombre,permiso,correo,role,scope_type,scope_value,
+        must_change_password,password_hash
+        FROM usuarios WHERE (upper(nomina)=upper(?) OR lower(correo)=lower(?)) AND activo=1""",
+        (identifier, identifier),
+    )
+    row = cur.fetchone()
+    if not row:
+        con.close()
         return None
-    return {"nomina": row[0], "nombre": row[1], "permiso": row[2]}
+    valid, needs_rehash = verify_password(password, row[8])
+    if not valid:
+        con.close()
+        return None
+    now = datetime.now(MX_TZ).isoformat()
+    if needs_rehash:
+        cur.execute(
+            "UPDATE usuarios SET password_hash=?,password_algorithm='argon2id',ultimo_acceso=? WHERE nomina=?",
+            (hash_password(password), now, row[0]),
+        )
+    else:
+        cur.execute("UPDATE usuarios SET ultimo_acceso=? WHERE nomina=?", (now, row[0]))
+    con.commit(); con.close()
+    role = normalize_role(row[4] or row[2])
+    return {
+        "nomina": row[0], "nombre": row[1], "permiso": ROLE_LABELS.get(role, role),
+        "correo": row[3] or "", "role": role, "scope_type": row[5] or "COMPANY",
+        "scope_value": row[6] or "", "must_change_password": bool(row[7]),
+    }
 
 
-def upsert_user(nomina, nombre, permiso, password):
+def upsert_user(nomina, nombre, role, password, correo="", scope_type="COMPANY", scope_value=""):
+    role = normalize_role(role)
+    if role == "OWNER" and not is_owner():
+        raise PermissionError("Solo el Propietario puede crear o modificar otro OWNER.")
     con = sqlite3.connect(DB_FILE)
     cur = con.cursor()
     cur.execute(
         """
-        INSERT INTO usuarios(nomina,nombre,permiso,password_hash,activo,creado)
-        VALUES (?,?,?,?,1,?)
+        INSERT INTO usuarios(nomina,nombre,permiso,password_hash,activo,creado,correo,role,scope_type,scope_value,must_change_password,password_algorithm)
+        VALUES (?,?,?,?,1,?,?,?,?,?,1,'argon2id')
         ON CONFLICT(nomina) DO UPDATE SET
-            nombre=excluded.nombre,
-            permiso=excluded.permiso,
-            password_hash=excluded.password_hash,
-            activo=1
+            nombre=excluded.nombre, permiso=excluded.permiso, password_hash=excluded.password_hash,
+            activo=1, correo=excluded.correo, role=excluded.role,
+            scope_type=excluded.scope_type, scope_value=excluded.scope_value,
+            must_change_password=1, password_algorithm='argon2id'
         """,
-        (str(nomina), nombre, permiso, hash_password(password), datetime.now(MX_TZ).isoformat()),
+        (str(nomina), nombre, ROLE_LABELS.get(role, role), hash_password(password), datetime.now(MX_TZ).isoformat(),
+         correo, role, scope_type, scope_value),
     )
-    con.commit()
-    con.close()
+    con.commit(); con.close()
+    audit("GUARDAR_USUARIO", "Usuarios", f"Usuario={nomina}; rol={role}; alcance={scope_type}:{scope_value}")
 
 
 def delete_user(nomina):
-    if nomina == "admin":
-        return
     con = sqlite3.connect(DB_FILE)
-    con.execute("DELETE FROM usuarios WHERE nomina=?", (nomina,))
-    con.commit()
-    con.close()
+    row = con.execute("SELECT role FROM usuarios WHERE nomina=?", (nomina,)).fetchone()
+    if row and normalize_role(row[0]) == "OWNER":
+        con.close(); raise PermissionError("El perfil OWNER no puede eliminarse desde la interfaz.")
+    con.execute("DELETE FROM usuarios WHERE nomina=?", (nomina,)); con.commit(); con.close()
+    audit("ELIMINAR_USUARIO", "Usuarios", f"Usuario={nomina}")
 
 
 def list_users():
     con = sqlite3.connect(DB_FILE)
-    df = pd.read_sql_query("SELECT nomina AS Nómina, nombre AS Nombre, permiso AS Permiso, activo AS Activo FROM usuarios ORDER BY nombre", con)
-    con.close()
-    return df
+    df = pd.read_sql_query(
+        """SELECT nomina AS Nómina,nombre AS Nombre,correo AS Correo,role AS Rol,
+        scope_type AS Alcance,scope_value AS Asignación,activo AS Activo
+        FROM usuarios ORDER BY nombre""", con,
+    )
+    con.close(); return df
+
+
+def apply_user_scope(df, user=None):
+    """Aplica el alcance territorial. La interfaz no puede ampliar este filtro."""
+    if df is None or df.empty or "Tienda" not in df.columns:
+        return df
+    user = user or st.session_state.get("user", {})
+    scope_type = str(user.get("scope_type", "COMPANY")).upper()
+    scope_value = str(user.get("scope_value", "")).strip()
+    role = normalize_role(user.get("role", user.get("permiso")))
+    if role in {"OWNER", "ADMIN", "DIRECTOR"} or scope_type == "COMPANY":
+        return df
+    allowed = [canon_store(x) for x in re.split(r"[,;|]", scope_value) if str(x).strip()]
+    if not allowed:
+        return df.iloc[0:0].copy()
+    return df[df["Tienda"].map(canon_store).isin(allowed)].copy()
 
 
 init_db()
@@ -2822,10 +2957,10 @@ def render_header():
         if st.button(" ", key="logo_home_btn", help="Volver al portal", width="stretch"):
             st.session_state["active_app"] = None
             st.session_state["portal_view"] = "apps"
-            st.session_state["nav_page"] = "Resumen"
+            st.session_state["nav_page"] = "Centro Ejecutivo"
             st.rerun()
 
-        logo = ASSETS_DIR / "price_shoes_logo.png"
+        logo = LOGO_FILE
         if logo.exists():
             data = base64.b64encode(logo.read_bytes()).decode("utf-8")
             st.markdown(
@@ -2858,7 +2993,7 @@ def render_header():
         st.markdown(
             """<div class="ps-module-brand">
                     <div>
-                        <div class="ps-module-title">Indicadores Cambios y Muertos</div>
+                        <div class="ps-module-title">PS Operaciones Ropa</div>
                         <div class="ps-module-subtitle">Recuperación · Productividad · Conversión</div>
                     </div>
                 </div>""",
@@ -3014,11 +3149,10 @@ def create_persistent_session(user):
         "user": {
             "nomina": str(user.get("nomina", "")),
             "nombre": str(user.get("nombre", "Consulta")),
-            "permiso": (
-                "Administrador"
-                if user.get("permiso") == "Administrador"
-                else "Consulta"
-            ),
+            "permiso": str(user.get("permiso", ROLE_LABELS.get(normalize_role(user.get("role")), "Consulta"))),
+            "role": normalize_role(user.get("role", user.get("permiso"))),
+            "scope_type": str(user.get("scope_type", "COMPANY")),
+            "scope_value": str(user.get("scope_value", "")),
         },
         "created_at": now.isoformat(),
         "last_activity": now.isoformat(),
@@ -3067,11 +3201,10 @@ def restore_persistent_session():
         return False
 
     user = row.get("user", {})
-    user["permiso"] = (
-        "Administrador"
-        if user.get("permiso") == "Administrador"
-        else "Consulta"
-    )
+    user["role"] = normalize_role(user.get("role", user.get("permiso")))
+    user["permiso"] = ROLE_LABELS.get(user["role"], user.get("permiso", "Consulta"))
+    user["scope_type"] = user.get("scope_type", "COMPANY")
+    user["scope_value"] = user.get("scope_value", "")
     st.session_state["user"] = user
     st.session_state["auth_token"] = token
     touch_persistent_session()
@@ -4697,10 +4830,10 @@ def build_pdf_report(title, subtitle, kpi_values, df):
     story = []
 
     # Encabezado con logo Price Shoes.
-    logo_path = ASSETS_DIR / "price_shoes_logo.png"
+    logo_path = LOGO_FILE
     logo = RLImage(str(logo_path), width=58, height=34) if logo_path.exists() else Paragraph("<b>Price Shoes</b>", styles["Normal"])
     title_block = Paragraph(
-        f"<font name='Helvetica-Bold' color='#1D1259' size='13'>Indicadores Cambios y Muertos</font><br/>"
+        f"<font name='Helvetica-Bold' color='#1D1259' size='13'>PS Operaciones Ropa</font><br/>"
         f"<font name='Helvetica-Bold' color='#1D1259' size='10'>{title}</font>"
         f"<font name='Helvetica' color='#5B6476' size='8'> | {subtitle}</font>",
         ParagraphStyle("pdf_header", parent=styles["Normal"], leading=14),
@@ -4840,12 +4973,15 @@ def build_generic_table_pdf(title, subtitle, df, kpi_values=None):
     styles = getSampleStyleSheet()
     story = []
 
-    logo_path = ASSETS_DIR / "price_shoes_logo.png"
+    logo_path = LOGO_FILE
     logo = RLImage(str(logo_path), width=58, height=34) if logo_path.exists() else Paragraph("<b>Price Shoes</b>", styles["Normal"])
+    _pdf_user = st.session_state.get("user", {})
+    _pdf_scope = _pdf_user.get("scope_value") or ("Compañía" if _pdf_user.get("scope_type", "COMPANY") == "COMPANY" else _pdf_user.get("scope_type", ""))
     header_text = Paragraph(
-        f"<font name='Helvetica-Bold' color='#1D1259' size='13'>Indicadores Cambios y Muertos</font><br/>"
+        f"<font name='Helvetica-Bold' color='#1D1259' size='13'>PS Operaciones Ropa</font><br/>"
         f"<font name='Helvetica-Bold' color='#1D1259' size='10'>{title}</font>"
-        f"<font name='Helvetica' color='#5B6476' size='8'> | {subtitle}</font>",
+        f"<font name='Helvetica' color='#5B6476' size='8'> | {subtitle}</font><br/>"
+        f"<font name='Helvetica' color='#6B7280' size='7'>Usuario: {_pdf_user.get('nombre','')} · Alcance: {_pdf_scope} · Generado: {datetime.now(MX_TZ).strftime('%d/%m/%Y %H:%M')}</font>",
         ParagraphStyle("generic_header", parent=styles["Normal"], leading=14),
     )
     header = Table([[logo, header_text]], colWidths=[72, 650], rowHeights=[40])
@@ -5004,7 +5140,7 @@ def login_sidebar():
         unsafe_allow_html=True,
     )
 
-    logo_path = ASSETS_DIR / "price_shoes_logo.png"
+    logo_path = LOGO_FILE
     if logo_path.exists():
         c1, c2, c3 = st.columns([1, 1, 1])
         with c2:
@@ -5013,8 +5149,11 @@ def login_sidebar():
     st.markdown(
         """
         <div class="login-brand-card">
-            <div class="login-portal-title">Operaciones Ropa</div>
-            <div class="login-portal-subtitle">Indicadores</div>
+            <div class="login-portal-title">PS Operaciones Ropa</div>
+            <div class="login-portal-subtitle">Plataforma Integral de Gestión Operativa</div>
+        </div>
+        <div style="text-align:center;color:#667085;font-size:13px;font-weight:700;margin:-4px 0 14px;">
+            Información confiable. Control total. Decisiones oportunas.
         </div>
         """,
         unsafe_allow_html=True,
@@ -5041,13 +5180,10 @@ def login_sidebar():
     if submitted:
         user = get_user(nom, pwd)
         if user:
-            user["permiso"] = (
-                "Administrador"
-                if user.get("permiso") == "Administrador"
-                else "Consulta"
-            )
+            user["role"] = normalize_role(user.get("role", user.get("permiso")))
+            user["permiso"] = ROLE_LABELS.get(user["role"], user.get("permiso", "Consulta"))
             st.session_state["user"] = user
-            st.session_state["nav_page"] = "Resumen"
+            st.session_state["nav_page"] = "Centro Ejecutivo"
             create_persistent_session(user)
             st.rerun()
         else:
@@ -5077,7 +5213,7 @@ def sidebar_data_admin():
     else:
         st.sidebar.warning("No hay archivo cargado")
 
-    if st.session_state.get("user", {}).get("permiso") == "Administrador":
+    if is_admin():
         up = st.sidebar.file_uploader("Cargar/Reemplazar Excel", type=["xlsx"])
         if up is not None and st.sidebar.button("Guardar archivo", type="primary"):
             save_uploaded_file(up)
@@ -5217,7 +5353,7 @@ def render_file_admin_panel():
 def page_portal_admin():
     """Página empresarial para administrar la fuente de Cambios y Muertos."""
     user = st.session_state.get("user", {})
-    if user.get("permiso") != "Administrador":
+    if not is_admin(user):
         st.error("Acceso exclusivo para Administrador.")
         if st.button("Volver al portal", key="admin_back_unauthorized"):
             st.session_state["portal_view"] = "apps"
@@ -5305,7 +5441,7 @@ def page_portal_admin():
 
         save_col, process_col = st.columns(2)
         with save_col:
-            save_disabled = uploaded is None
+            save_disabled = uploaded is None or not can_write()
             if st.button(
                 "1. Guardar archivo",
                 key="admin_page_save_v150",
@@ -5329,7 +5465,7 @@ def page_portal_admin():
                     st.exception(exc)
 
         with process_col:
-            process_disabled = not ACTIVE_FILE.exists() or cache_valid()
+            process_disabled = not ACTIVE_FILE.exists() or cache_valid() or not can_write()
             if st.button(
                 "2. Procesar archivo activo",
                 key="admin_page_process_v150",
@@ -5367,6 +5503,7 @@ def page_portal_admin():
                 "Reprocesar archivo",
                 key="admin_page_reprocess_v150",
                 width="stretch",
+                disabled=not can_write(),
             ):
                 try:
                     process_excel(str(ACTIVE_FILE))
@@ -5387,6 +5524,7 @@ def page_portal_admin():
                 "Eliminar archivo activo",
                 key="admin_page_delete_v150",
                 width="stretch",
+                disabled=not can_write(),
             ):
                 file_name = meta.get("nombre_original", ACTIVE_FILE.name)
                 delete_active_file()
@@ -5462,7 +5600,7 @@ def render_app_portal():
 
             with app_col:
                 with st.container(key="app_card_shell"):
-                    if permiso == "Administrador":
+                    if normalize_role(st.session_state.get("user", {}).get("role", permiso)) in {"OWNER", "ADMIN"}:
                         with st.container(key="app_admin_menu"):
                             if st.button(
                                 "⋮",
@@ -5478,7 +5616,7 @@ def render_app_portal():
                         width="stretch",
                     ):
                         st.session_state["active_app"] = "Cambios y Muertos"
-                        st.session_state["nav_page"] = "Resumen"
+                        st.session_state["nav_page"] = "Centro Ejecutivo"
                         st.rerun()
 
             with future_col:
@@ -5499,7 +5637,7 @@ def nav_bar():
     # Lista local de respaldo: evita NameError aunque Streamlit conserve una
     # versión parcial del módulo durante un reinicio.
     pages = globals().get("REPORT_PAGES") or globals().get("PAGES") or [
-        "Resumen", "Por Día", "Reporte Semanal", "Reporte Mensual",
+        "Centro Ejecutivo", "Por Día", "Reporte Semanal", "Reporte Mensual",
         "Conversión", "Recuperación Económica", "Productividad",
         "Recorridos", "Ranking", "Macro", "Diagnóstico",
         "Configuración", "Usuarios",
@@ -5510,8 +5648,11 @@ def nav_bar():
         current = pages[0]
 
     permiso = st.session_state.get("user", {}).get("permiso", "Consulta")
-    if permiso != "Administrador":
-        pages = [p for p in pages if p not in ["Configuración", "Usuarios"]]
+    role = normalize_role(st.session_state.get("user", {}).get("role", permiso))
+    if role not in {"OWNER", "ADMIN"}:
+        pages = [p for p in pages if p not in ["Configuración", "Usuarios", "Diagnóstico", "Centro de Control"]]
+    elif role != "OWNER":
+        pages = [p for p in pages if p != "Centro de Control"]
 
     selected = st.radio(
         "Pestañas",
@@ -5705,44 +5846,194 @@ def executive_week_cards(op, co):
     st.markdown(html, unsafe_allow_html=True)
 
 
+
+def authorized_stores(op=None, co=None, user=None):
+    """Devuelve únicamente las tiendas disponibles dentro del alcance autenticado."""
+    user = user or st.session_state.get("user", {})
+    frames = []
+    for df in (op, co):
+        if df is not None and not df.empty and "Tienda" in df.columns:
+            frames.extend([canon_store(v) for v in df["Tienda"].dropna().tolist()])
+    stores = sorted({s for s in frames if s})
+    if stores:
+        return stores
+    scope_type = str(user.get("scope_type", "COMPANY")).upper()
+    scope_value = str(user.get("scope_value", "")).strip()
+    if scope_type in {"STORE", "REGION", "TEAM"} and scope_value:
+        return sorted({canon_store(v) for v in re.split(r"[,;|]", scope_value) if canon_store(v)})
+    return list(PROJECT_STORES)
+
+
+def user_experience_context(user=None):
+    user = user or st.session_state.get("user", {})
+    role = normalize_role(user.get("role", user.get("permiso")))
+    scope_type = str(user.get("scope_type", "COMPANY")).upper()
+    scope_value = str(user.get("scope_value", "")).strip()
+    label = {
+        "OWNER": "Vista integral y estado de la plataforma",
+        "ADMIN": "Administración funcional y calidad de la información",
+        "DIRECTOR": "Resumen consolidado de la compañía",
+        "REGIONAL": f"Resumen de las tiendas asignadas: {scope_value or 'Región'}",
+        "TIENDA": f"Resumen operativo de {scope_value or 'tu tienda'}",
+        "SUPERVISOR": f"Seguimiento operativo de {scope_value or 'tu equipo'}",
+        "CONSULTA": "Información autorizada en modo consulta",
+    }.get(role, "Información autorizada")
+    return role, scope_type, scope_value, label
+
+
+def recovery_executive_summary(co):
+    empty = {
+        "Dev Pzs": 0.0, "Piezas Recuperadas": 0.0, "% Recuperación Piezas": 0.0,
+        "Valor Devolución": 0.0, "Recuperación $": 0.0, "% Recuperación $": 0.0,
+        "Pendiente Pzs": 0.0, "Pendiente $": 0.0,
+    }
+    if co is None or co.empty:
+        return empty, pd.DataFrame()
+    try:
+        detail, _ = cached_recovery_fifo(co)
+    except Exception:
+        detail, _ = recovery_fifo_engine(co)
+    if detail is None or detail.empty:
+        return empty, pd.DataFrame()
+    dev = pd.to_numeric(detail.get("Dev Pzs", 0), errors="coerce").fillna(0).sum()
+    rec_pzs = pd.to_numeric(detail.get("Piezas Recuperadas", 0), errors="coerce").fillna(0).sum()
+    val_dev = pd.to_numeric(detail.get("Valor de la Devolución a Precio Neto", 0), errors="coerce").fillna(0).sum()
+    rec_money = pd.to_numeric(detail.get("Recuperación $", 0), errors="coerce").fillna(0).sum()
+    summary = {
+        "Dev Pzs": float(dev),
+        "Piezas Recuperadas": float(rec_pzs),
+        "% Recuperación Piezas": float(rec_pzs / dev * 100) if dev else 0.0,
+        "Valor Devolución": float(val_dev),
+        "Recuperación $": float(rec_money),
+        "% Recuperación $": float(rec_money / val_dev * 100) if val_dev else 0.0,
+        "Pendiente Pzs": float(max(dev - rec_pzs, 0)),
+        "Pendiente $": float(max(val_dev - rec_money, 0)),
+    }
+    return summary, detail
+
+
+def render_personalized_executive_header(user, op, co):
+    role, scope_type, scope_value, label = user_experience_context(user)
+    name = user.get("nombre", user.get("nomina", "Usuario"))
+    now = datetime.now(MX_TZ)
+    status = get_system_status()
+    scope_display = scope_value or ("Compañía" if scope_type == "COMPANY" else scope_type.title())
+    st.markdown(
+        f"""
+        <div style="background:linear-gradient(135deg,#10245F,#244D92);border-radius:22px;padding:24px 28px;color:white;margin-bottom:18px;box-shadow:0 14px 35px rgba(16,36,95,.18)">
+          <div style="font-size:13px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;opacity:.82">Centro Ejecutivo · {ROLE_LABELS.get(role, role)}</div>
+          <div style="font-size:30px;font-weight:900;margin-top:4px">Buenos días, {name}</div>
+          <div style="font-size:15px;margin-top:5px;opacity:.9">{label}</div>
+          <div style="display:flex;gap:18px;flex-wrap:wrap;margin-top:17px;font-size:13px;font-weight:700">
+            <span>📍 Alcance: {scope_display}</span>
+            <span>🕒 {now.strftime('%d/%m/%Y %H:%M')}</span>
+            <span>● Sistema: {SYSTEM_STATUS_LABELS.get(status.get('status','ACTIVE'), status.get('status','ACTIVE'))}</span>
+          </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def executive_insights(recovery_summary, recovery_detail, stores):
+    messages = []
+    if recovery_detail is not None and not recovery_detail.empty and "Tienda" in recovery_detail.columns:
+        grouped = recovery_detail.groupby("Tienda", as_index=False).agg({
+            "Dev Pzs": "sum", "Piezas Recuperadas": "sum",
+            "Valor de la Devolución a Precio Neto": "sum", "Recuperación $": "sum",
+        })
+        grouped["% Piezas"] = grouped["Piezas Recuperadas"] / grouped["Dev Pzs"].replace(0, np.nan) * 100
+        grouped["% Pesos"] = grouped["Recuperación $"] / grouped["Valor de la Devolución a Precio Neto"].replace(0, np.nan) * 100
+        grouped = grouped.fillna(0)
+        if not grouped.empty:
+            best = grouped.sort_values("% Piezas", ascending=False).iloc[0]
+            worst = grouped.sort_values("% Piezas", ascending=True).iloc[0]
+            messages.append(("success", f"Mejor recuperación en piezas: {best['Tienda']} con {best['% Piezas']:.1f}%."))
+            if len(grouped) > 1:
+                messages.append(("warning", f"Mayor oportunidad: {worst['Tienda']} con {worst['% Piezas']:.1f}% de recuperación."))
+    if recovery_summary.get("Pendiente Pzs", 0) > 0:
+        messages.append(("info", f"Existen {recovery_summary['Pendiente Pzs']:,.0f} piezas pendientes dentro del periodo disponible."))
+    return messages
+
 def page_resumen(op, co):
     op = reliable_operation(op, co)
     co = normalize_commercial_df(co)
-    st.markdown("## Dashboard Ejecutivo")
-    st.caption("Vista general acumulada de indicadores principales.")
+    user = st.session_state.get("user", {})
+    render_personalized_executive_header(user, op, co)
 
-    if op is None or op.empty:
-        st.info("Sin información operativa.")
+    if (op is None or op.empty) and (co is None or co.empty):
+        st.info("Sin información disponible dentro del alcance asignado.")
         return
 
-    op_dates = pd.to_datetime(op["Fecha"], errors="coerce").dropna()
-    co_dates = (
-        pd.to_datetime(co["Fecha"], errors="coerce").dropna()
-        if co is not None and not co.empty and "Fecha" in co.columns
-        else pd.Series(dtype="datetime64[ns]")
+    stores = authorized_stores(op, co, user)
+    recovery_summary, recovery_detail = recovery_executive_summary(co)
+
+    op_summary = {}
+    table = pd.DataFrame()
+    if op is not None and not op.empty:
+        dates = pd.to_datetime(op["Fecha"], errors="coerce").dropna()
+        if not dates.empty:
+            start, end = dates.min().normalize(), dates.max().normalize()
+            table = table_by_store(op, co, start, end, stores)
+            op_summary = summary_from_table(table)
+            st.caption(f"Información autorizada del {start.strftime('%d/%m/%Y')} al {end.strftime('%d/%m/%Y')}.")
+
+    st.markdown("### Pulso operativo")
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric("Recuperación piezas", fmt_pct(recovery_summary["% Recuperación Piezas"]))
+    c2.metric("Recuperación económica", fmt_pct(recovery_summary["% Recuperación $"]))
+    c3.metric("Pendiente piezas", fmt_num(recovery_summary["Pendiente Pzs"]))
+    c4.metric("Pendiente económico", fmt_money(recovery_summary["Pendiente $"]))
+
+    c5, c6, c7, c8 = st.columns(4)
+    c5.metric("Dev Pzs", fmt_num(recovery_summary["Dev Pzs"]))
+    c6.metric("Piezas recuperadas", fmt_num(recovery_summary["Piezas Recuperadas"]))
+    c7.metric("Valor devolución", fmt_money(recovery_summary["Valor Devolución"]))
+    c8.metric("Recuperación $", fmt_money(recovery_summary["Recuperación $"]))
+
+    pdf_summary = {
+        "Perfil": ROLE_LABELS.get(normalize_role(user.get("role", user.get("permiso"))), "Consulta"),
+        "Alcance": user.get("scope_value") or "Compañía",
+        **recovery_summary,
+    }
+    pdf_table = table if table is not None and not table.empty else recovery_detail.head(200)
+    generic_pdf_button(
+        "Centro Ejecutivo",
+        "Resumen personalizado conforme al perfil y alcance del usuario",
+        pdf_table,
+        pdf_summary,
+        file_name="PS_Operaciones_Ropa_Centro_Ejecutivo.pdf",
+        key="pdf_centro_ejecutivo_v03",
     )
 
-    all_dates = pd.concat(
-        [s for s in [op_dates, co_dates] if not s.empty],
-        ignore_index=True,
-    )
-    if all_dates.empty:
-        st.info("Sin fechas válidas.")
-        return
+    insight_col, status_col = st.columns([6.5, 3.5], gap="large")
+    with insight_col:
+        st.markdown("### Prioridades y hallazgos")
+        insights = executive_insights(recovery_summary, recovery_detail, stores)
+        if not insights:
+            st.info("No se detectaron hallazgos suficientes con la información disponible.")
+        for level, message in insights:
+            getattr(st, level)(message)
+    with status_col:
+        st.markdown("### Mi alcance")
+        st.write(f"**Perfil:** {ROLE_LABELS.get(normalize_role(user.get('role', user.get('permiso'))), 'Consulta')}")
+        st.write(f"**Asignación:** {user.get('scope_value') or 'Compañía'}")
+        st.write(f"**Tiendas visibles:** {len(stores)}")
+        st.write(f"**Modo:** {SYSTEM_STATUS_LABELS.get(get_system_status().get('status','ACTIVE'),'Activo')}")
 
-    # Las tarjetas superiores son acumuladas desde el primer registro hasta el último.
-    start = all_dates.min().normalize()
-    end = all_dates.max().normalize()
-    df = table_by_store(op, co, start, end, PROJECT_STORES)
+    if table is not None and not table.empty:
+        panel("Resumen operativo por tienda", table, height=380)
+        combined_chart(table, "Ingreso vs Acondicionado vs Ubicado — alcance autorizado")
 
-    kpis(summary_from_table(df))
-    st.caption(
-        f"Acumulado del {start.strftime('%d/%m/%Y')} al {end.strftime('%d/%m/%Y')}."
-    )
-
-    # Las tarjetas inferiores conservan el análisis de las últimas cuatro semanas.
-    executive_week_cards(op, co)
-    combined_chart(df, "Ingreso vs Habilitado vs Ubicado por tienda — Acumulado")
+    if recovery_detail is not None and not recovery_detail.empty:
+        macro = recovery_detail.groupby("Tienda", as_index=False).agg({
+            "Dev Pzs": "sum", "Piezas Recuperadas": "sum",
+            "Valor de la Devolución a Precio Neto": "sum", "Recuperación $": "sum",
+        })
+        macro["% Recuperación Piezas"] = macro["Piezas Recuperadas"] / macro["Dev Pzs"].replace(0, np.nan) * 100
+        macro["% Recuperación $"] = macro["Recuperación $"] / macro["Valor de la Devolución a Precio Neto"].replace(0, np.nan) * 100
+        macro = macro.fillna(0).sort_values("% Recuperación Piezas", ascending=False)
+        panel("Macro de recuperación por tienda", macro, height=390)
 
 
 def page_por_dia(op, co):
@@ -5777,7 +6068,8 @@ def page_por_dia(op, co):
 def page_semanal(op, co):
     op = reliable_operation(op, co)
     st.markdown("## Reporte Semanal")
-    tiendas = st.multiselect("Tiendas", PROJECT_STORES, default=PROJECT_STORES, key="sem_tiendas")
+    available_stores = authorized_stores(op, co)
+    tiendas = st.multiselect("Tiendas", available_stores, default=available_stores, key="sem_tiendas")
 
     week_pairs = available_iso_weeks(op, co)
     if not week_pairs:
@@ -5817,7 +6109,8 @@ def page_semanal(op, co):
 def page_mensual(op, co):
     op = reliable_operation(op, co)
     st.markdown("## Reporte Mensual")
-    tiendas = st.multiselect("Tiendas", PROJECT_STORES, default=PROJECT_STORES, key="mes_tiendas")
+    available_stores = authorized_stores(op, co)
+    tiendas = st.multiselect("Tiendas", available_stores, default=available_stores, key="mes_tiendas")
     meses = sorted(op["Mes"].dropna().unique().tolist()) if op is not None and not op.empty else []
     if not meses:
         st.info("Sin meses detectados.")
@@ -6391,7 +6684,8 @@ def page_productividad(op, co):
         start = st.date_input("Fecha inicio", value=pd.to_datetime(op["Fecha"].min()).date(), key="prod_ini")
     with c2:
         end = st.date_input("Fecha final", value=pd.to_datetime(op["Fecha"].max()).date(), key="prod_fin")
-    tiendas = st.multiselect("Tienda", PROJECT_STORES, default=PROJECT_STORES, key="prod_tiendas")
+    available_stores = authorized_stores(op, co)
+    tiendas = st.multiselect("Tienda", available_stores, default=available_stores, key="prod_tiendas")
     o = split_operation(op)
     o = o[(o["Fecha"] >= pd.to_datetime(start)) & (o["Fecha"] <= pd.to_datetime(end))]
     o = filter_stores(o, tiendas)
@@ -6470,37 +6764,77 @@ def page_diagnostico(op, co, diag):
 
 def page_configuracion():
     st.markdown("## Configuración")
+    if not is_admin():
+        st.warning("Acceso exclusivo para Administración.")
+        return
+    if not can_write():
+        st.warning("Modo Solo consulta: la configuración no puede modificarse.")
     st.info("Configuración de metas y orden de pestañas en preparación modular.")
     st.write("Meta productividad diaria: 784")
     st.write("Meta recorridos semanal: 47")
 
 
 def page_usuarios():
-    st.markdown("## Usuarios")
-    if st.session_state.get("user", {}).get("permiso") != "Administrador":
-        st.warning("Sólo administrador.")
+    st.markdown("## Usuarios y alcances")
+    if not is_admin():
+        st.warning("Acceso exclusivo para Administración.")
         return
 
+    role_options = ROLES if is_owner() else [r for r in ROLES if r != "OWNER"]
     with st.form("crear_usuario"):
         st.subheader("Crear / actualizar usuario")
-        nom = st.text_input("Nómina / Usuario")
-        nombre = st.text_input("Nombre")
-        permiso = st.selectbox("Tipo de permiso", ["Consulta", "Administrador"])
-        pwd = st.text_input("Contraseña", type="password")
+        c1, c2 = st.columns(2)
+        with c1:
+            nom = st.text_input("Nómina / Usuario")
+            nombre = st.text_input("Nombre")
+            correo = st.text_input("Correo")
+            role = st.selectbox("Perfil", role_options, format_func=lambda x: ROLE_LABELS.get(x, x))
+        with c2:
+            scope_type = st.selectbox("Tipo de alcance", ["COMPANY", "REGION", "STORE", "TEAM"])
+            scope_value = st.text_input("Asignación", help="Para varias tiendas usa comas, por ejemplo: Toluca, Vallejo")
+            pwd = st.text_input("Contraseña temporal", type="password")
         submitted = st.form_submit_button("Guardar usuario", type="primary")
         if submitted and nom and nombre and pwd:
-            upsert_user(nom, nombre, permiso, pwd)
-            st.success("Usuario guardado.")
-            st.rerun()
+            try:
+                upsert_user(nom, nombre, role, pwd, correo, scope_type, scope_value)
+                st.success("Usuario guardado. Se recomienda cambiar la contraseña en el primer acceso.")
+                st.rerun()
+            except Exception as exc:
+                st.error(str(exc))
 
-    users = list_users()
-    panel("Usuarios registrados", users, height=360)
-
+    panel("Usuarios registrados", list_users(), height=420)
     del_nom = st.text_input("Nómina a eliminar")
-    if st.button("Eliminar usuario") and del_nom:
-        delete_user(del_nom)
-        st.success("Usuario eliminado.")
-        st.rerun()
+    if st.button("Eliminar usuario", disabled=not can_write()) and del_nom:
+        try:
+            delete_user(del_nom); st.success("Usuario eliminado."); st.rerun()
+        except Exception as exc:
+            st.error(str(exc))
+
+
+def page_centro_control():
+    st.markdown("## Centro de Control del Sistema")
+    if not is_owner():
+        st.error("Acceso exclusivo para el Propietario del Sistema.")
+        return
+    current = get_system_status()
+    st.info(f"Estado actual: **{SYSTEM_STATUS_LABELS.get(current['status'], current['status'])}**")
+    if current.get("changed_at"):
+        st.caption(f"Último cambio: {current['changed_at']} · {current.get('changed_by','')}")
+    with st.form("system_control_form"):
+        status = st.selectbox("Nuevo estado", SYSTEM_STATUSES, index=SYSTEM_STATUSES.index(current.get("status", "ACTIVE")), format_func=lambda x: SYSTEM_STATUS_LABELS.get(x, x))
+        justification = st.text_area("Justificación obligatoria", placeholder="Describe el motivo del cambio (mínimo 10 caracteres).")
+        submitted = st.form_submit_button("Aplicar estado", type="primary")
+    if submitted:
+        try:
+            set_system_status(status, justification)
+            st.success("Estado actualizado y registrado en auditoría.")
+            st.rerun()
+        except Exception as exc:
+            st.error(str(exc))
+    con = sqlite3.connect(DB_FILE)
+    logs = pd.read_sql_query("SELECT creado AS Fecha,usuario AS Usuario,accion AS Acción,modulo AS Módulo,detalle AS Detalle FROM audit_logs ORDER BY id DESC LIMIT 200", con)
+    con.close()
+    panel("Auditoría reciente", logs, height=420)
 
 
 # ============================================================
@@ -6536,8 +6870,20 @@ if not cache_valid():
 
 op_all, co_all, diag_df = read_cache(ACTIVE_FILE.stat().st_mtime)
 
+# Seguridad por alcance: todos los módulos y exportaciones reciben solamente
+# la información autorizada para el usuario autenticado.
+op_all = apply_user_scope(op_all)
+co_all = apply_user_scope(co_all)
+
+_system = get_system_status()
+if _system["status"] in {"MAINTENANCE", "SUSPENDED"} and not is_owner():
+    st.error(_system.get("maintenance_text") or "PS Operaciones Ropa no está disponible temporalmente.")
+    st.stop()
+if _system["status"] == "READ_ONLY":
+    st.warning("La plataforma se encuentra en modo Solo consulta. Las acciones de modificación están bloqueadas.")
+
 ROUTES = {
-    "Resumen": lambda: page_resumen(op_all, co_all),
+    "Centro Ejecutivo": lambda: page_resumen(op_all, co_all),
     "Por Día": lambda: page_por_dia(op_all, co_all),
     "Reporte Semanal": lambda: page_semanal(op_all, co_all),
     "Reporte Mensual": lambda: page_mensual(op_all, co_all),
@@ -6548,8 +6894,9 @@ ROUTES = {
     "Ranking": lambda: page_ranking(op_all, co_all),
     "Macro": lambda: page_macro(op_all, co_all),
     "Diagnóstico": lambda: page_diagnostico(op_all, co_all, diag_df),
-    "Configuración": page_configuracion if st.session_state.get("user", {}).get("permiso") == "Administrador" else lambda: st.warning("Acceso exclusivo para Administrador."),
-    "Usuarios": page_usuarios if st.session_state.get("user", {}).get("permiso") == "Administrador" else lambda: st.warning("Acceso exclusivo para Administrador."),
+    "Configuración": page_configuracion if is_admin() else lambda: st.warning("Acceso exclusivo para Administrador."),
+    "Usuarios": page_usuarios if is_admin() else lambda: st.warning("Acceso exclusivo para Administración."),
+    "Centro de Control": page_centro_control if is_owner() else lambda: st.warning("Acceso exclusivo para el Propietario del Sistema."),
 }
 
 ROUTES.get(page, lambda: page_resumen(op_all, co_all))()

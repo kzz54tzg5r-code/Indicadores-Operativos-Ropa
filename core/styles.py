@@ -46,7 +46,7 @@ def apply_styles():
 
 def header(user, project):
     now = datetime.now(ZoneInfo("America/Mexico_City"))
-    title = project.get("nombre", "Indicadores Operaciones Ropa")
+    title = project.get("nombre", "PS Operaciones Ropa")
     sub = project.get("subtitulo", "Plataforma Ejecutiva de Recuperación de Mercancía")
     st.markdown(f"""
     <div class="top-header">

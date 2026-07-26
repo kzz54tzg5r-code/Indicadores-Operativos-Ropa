@@ -12,7 +12,7 @@ def pdf_bytes(title, df=None, resumen=None):
     styles = getSampleStyleSheet()
     story = [
         Paragraph(f"<b>{title}</b>", styles["Title"]),
-        Paragraph("Operaciones Ropa | Indicadores Operaciones Ropa", styles["Normal"]),
+        Paragraph("Operaciones Ropa | PS Operaciones Ropa", styles["Normal"]),
         Spacer(1, 10)
     ]
 

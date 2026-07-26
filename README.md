@@ -1,19 +1,34 @@
-# Indicadores Cambios y Muertos v15.0
+# PS Operaciones Ropa
 
-Arquitectura estable del portal:
+Plataforma Integral de Gestión Operativa del área de Operaciones Ropa.
 
-- Los tres puntos de Cambios y Muertos abren una página administrativa.
-- No se utilizan diálogos ni popovers para cargar archivos.
-- La página Administración incluye:
-  - estado del archivo;
-  - selección del Excel;
-  - guardar archivo;
-  - procesar archivo activo;
-  - reprocesar;
-  - eliminar;
-  - historial de movimientos.
-- La tarjeta Cambios y Muertos únicamente abre el indicador.
-- El logo Price Shoes dentro del indicador regresa al portal.
-- Permisos disponibles: Administrador y Consulta.
-- Configuración y Usuarios continúan exclusivos para Administrador.
-- Se conserva el lector comercial optimizado y el cálculo por ID/Venta Neta $.
+## Versión
+
+- Versión: `0.4.0`
+- Build: `2026.07.004`
+
+## Ejecutar localmente
+
+```bash
+pip install -r requirements.txt
+streamlit run app.py
+```
+
+## Seguridad
+
+- Las contraseñas nuevas se almacenan con Argon2id.
+- Los usuarios y alcances se administran en SQLite: `data/config/usuarios.db`.
+- `config/usuarios.json` está obsoleto y no contiene credenciales.
+- No suba archivos reales, bases de datos ni secretos a repositorios públicos.
+
+## Módulos existentes
+
+- Centro Ejecutivo.
+- Reportes diario, semanal y mensual.
+- Conversión y recuperación económica.
+- Productividad, recorridos y ranking.
+- Macro por tienda y detalle por ID/SKU.
+- Diagnóstico, usuarios y Centro de Control.
+- Exportación PDF en reportes autorizados.
+
+Consulte `MIGRACION_V0.4.md` para actualizar la aplicación.

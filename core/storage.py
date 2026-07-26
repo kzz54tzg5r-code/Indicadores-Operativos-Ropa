@@ -25,14 +25,14 @@ def write_json(name, data):
     (CONFIG / name).write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
 
 def load_users():
-    return read_json("usuarios.json", [{"nomina":"admin","nombre":"Administrador","correo":"","permiso":"Administrador","password":"admin123","activo":True}])
+    return []
 
 def save_users(users):
     write_json("usuarios.json", users)
 
 def load_project():
     return read_json("proyecto.json", {
-        "nombre": "Indicadores Operaciones Ropa",
+        "nombre": "PS Operaciones Ropa",
         "subtitulo": "Plataforma Ejecutiva de Recuperación de Mercancía",
         "tiendas_proyecto": ["Arco Norte", "Ecatepec", "Miravalle", "Puebla Sur", "Vallejo"],
         "pestanas": ["Dashboard", "Por Día", "Reporte Semanal", "Reporte Mensual", "Conversión", "Recuperación Económica", "Productividad", "Recorridos", "Rankings", "Macro", "Diagnóstico", "Configuración", "Usuarios"]

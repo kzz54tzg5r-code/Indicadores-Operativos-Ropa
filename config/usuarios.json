@@ -1,10 +1,4 @@
-[
-  {
-    "nomina": "admin",
-    "nombre": "Administrador",
-    "correo": "",
-    "permiso": "Administrador",
-    "password": "admin123",
-    "activo": true
-  }
-]
+{
+  "deprecated": true,
+  "message": "Los usuarios se administran en data/config/usuarios.db. Este archivo no contiene credenciales."
+}

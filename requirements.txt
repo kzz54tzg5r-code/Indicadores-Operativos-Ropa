@@ -7,3 +7,4 @@ streamlit-aggrid==1.2.0.post2
 numpy==2.5.1
 
 reportlab==4.4.5
+argon2-cffi==25.1.0
