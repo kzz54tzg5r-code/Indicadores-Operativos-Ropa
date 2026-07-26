@@ -2,10 +2,10 @@
 # -*- coding: utf-8 -*-
 import base64
 import json
+import hashlib
 import re
 import sqlite3
 import secrets
-import hashlib
 import unicodedata
 from datetime import datetime, date, timedelta
 from pathlib import Path
@@ -3127,7 +3127,9 @@ def _write_sessions(data):
 
 
 def _session_token_hash(token):
-    return hashlib.sha256(str(token).encode("utf-8")).hexdigest()
+    """Genera el hash del token de sesión de forma segura."""
+    import hashlib as _hashlib
+    return _hashlib.sha256(str(token).encode("utf-8")).hexdigest()
 
 
 def create_persistent_session(user):
