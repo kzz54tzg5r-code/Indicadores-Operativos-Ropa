@@ -31,6 +31,10 @@ META_FILE = CONFIG_DIR / "metadata.json"
 FILE_HISTORY = DATA_DIR / "file_history.json"
 DB_FILE = CONFIG_DIR / "usuarios.db"
 SESSION_FILE = CONFIG_DIR / "sessions.json"
+
+PROCESS_STATUS_FILE = CONFIG_DIR / "process_status.json"
+PROCESS_LOCK_FILE = CONFIG_DIR / "process.lock"
+PROCESS_LOG_FILE = CONFIG_DIR / "ultimo_error_proceso.txt"
 SESSION_TIMEOUT_HOURS = 8
 LOGO_FILE = ASSETS_DIR / "price_shoes_logo.png"
 

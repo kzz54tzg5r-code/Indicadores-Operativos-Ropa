@@ -6,8 +6,6 @@ import hashlib
 import gc
 import os
 import traceback
-import threading
-import time
 import re
 import sqlite3
 import secrets
@@ -36,6 +34,7 @@ from core.settings import (
     CACHE_DIR, CONFIG_DIR, ASSETS_DIR, ACTIVE_FILE, META_FILE, FILE_HISTORY, DB_FILE,
     SESSION_FILE, SESSION_TIMEOUT_HOURS, PROJECT_STORES, ROLES, ROLE_LABELS,
     SYSTEM_STATUSES, SYSTEM_STATUS_LABELS, LOGO_FILE,
+    PROCESS_STATUS_FILE, PROCESS_LOCK_FILE, PROCESS_LOG_FILE,
 )
 from core.security import hash_password, verify_password
 
@@ -68,6 +67,91 @@ LAVANDA = COLOR_BACKGROUND
 # ============================================================
 # UTILIDADES
 # ============================================================
+
+# ============================================================
+# ESTADO PERSISTENTE DEL PROCESAMIENTO
+# ============================================================
+def read_process_status():
+    """Lee el estado del procesamiento sin interrumpir la aplicación."""
+    default = {
+        "state": "idle",
+        "message": "",
+        "progress": 0,
+        "updated_at": "",
+    }
+    try:
+        if not PROCESS_STATUS_FILE.exists():
+            return default
+        payload = json.loads(PROCESS_STATUS_FILE.read_text(encoding="utf-8"))
+        if not isinstance(payload, dict):
+            return default
+        return {**default, **payload}
+    except Exception:
+        return default
+
+
+def write_process_status(state="idle", message="", progress=0, **extra):
+    """Guarda el estado de forma atómica."""
+    PROCESS_STATUS_FILE.parent.mkdir(parents=True, exist_ok=True)
+    payload = {
+        "state": str(state),
+        "message": str(message),
+        "progress": max(0, min(100, int(progress or 0))),
+        "updated_at": datetime.now(MX_TZ).isoformat(),
+        **extra,
+    }
+    temporary = PROCESS_STATUS_FILE.with_suffix(".json.tmp")
+    temporary.write_text(
+        json.dumps(payload, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+    temporary.replace(PROCESS_STATUS_FILE)
+    return payload
+
+
+def clear_process_status():
+    """Restablece los archivos temporales del procesamiento."""
+    for path in (PROCESS_STATUS_FILE, PROCESS_LOCK_FILE):
+        try:
+            path.unlink(missing_ok=True)
+        except Exception:
+            pass
+
+
+def process_is_locked():
+    """Evita iniciar dos procesamientos simultáneos."""
+    try:
+        if not PROCESS_LOCK_FILE.exists():
+            return False
+        age_seconds = (
+            datetime.now(MX_TZ).timestamp()
+            - PROCESS_LOCK_FILE.stat().st_mtime
+        )
+        if age_seconds > 7200:
+            PROCESS_LOCK_FILE.unlink(missing_ok=True)
+            return False
+        return True
+    except Exception:
+        return False
+
+
+def acquire_process_lock():
+    PROCESS_LOCK_FILE.parent.mkdir(parents=True, exist_ok=True)
+    if process_is_locked():
+        return False
+    PROCESS_LOCK_FILE.write_text(
+        datetime.now(MX_TZ).isoformat(),
+        encoding="utf-8",
+    )
+    return True
+
+
+def release_process_lock():
+    try:
+        PROCESS_LOCK_FILE.unlink(missing_ok=True)
+    except Exception:
+        pass
+
 def norm_text(x) -> str:
     if pd.isna(x):
         return ""
@@ -4045,6 +4129,7 @@ def clear_cache_files():
 
 
 def delete_active_file():
+    clear_process_status()
     if ACTIVE_FILE.exists():
         ACTIVE_FILE.unlink()
     if META_FILE.exists():
@@ -4186,7 +4271,7 @@ def create_persistent_session(user, remember=False):
     }
 
     _write_sessions(clean)
-    st.query_params["ps_auth"] = token
+    st.query_params["session"] = token
     if remember:
         st.query_params["remember_user"] = str(user.get("nomina", ""))
     else:
@@ -4200,31 +4285,13 @@ def create_persistent_session(user, remember=False):
     return token
 
 
-
-def migrate_legacy_auth_query_param():
-    """Migra enlaces antiguos ?session=... al parámetro propio ?ps_auth=..."""
-    legacy = st.query_params.get("session", "")
-    current = st.query_params.get("ps_auth", "")
-    if isinstance(legacy, list):
-        legacy = legacy[0] if legacy else ""
-    if isinstance(current, list):
-        current = current[0] if current else ""
-    if legacy and not current:
-        st.query_params["ps_auth"] = legacy
-    if legacy:
-        try:
-            del st.query_params["session"]
-        except Exception:
-            pass
-
-
 def restore_persistent_session():
     """Recupera la sesión mediante un token firmado por hash en el servidor."""
     if "user" in st.session_state:
         touch_persistent_session()
         return True
 
-    token = st.query_params.get("ps_auth", "")
+    token = st.query_params.get("session", "")
     if isinstance(token, list):
         token = token[0] if token else ""
     if not token:
@@ -4234,7 +4301,7 @@ def restore_persistent_session():
     row = sessions.get(_session_token_hash(token))
     if not row:
         try:
-            del st.query_params["ps_auth"]
+            del st.query_params["session"]
         except Exception:
             pass
         return False
@@ -4249,7 +4316,7 @@ def restore_persistent_session():
         sessions.pop(_session_token_hash(token), None)
         _write_sessions(sessions)
         try:
-            del st.query_params["ps_auth"]
+            del st.query_params["session"]
         except Exception:
             pass
         return False
@@ -4269,7 +4336,7 @@ def touch_persistent_session():
     """Renueva la sesión según el modo elegido al iniciar sesión."""
     token = (
         st.session_state.get("auth_token")
-        or st.query_params.get("ps_auth", "")
+        or st.query_params.get("session", "")
     )
     if isinstance(token, list):
         token = token[0] if token else ""
@@ -4294,7 +4361,7 @@ def touch_persistent_session():
 
 
 def clear_auth_session():
-    token = st.session_state.get("auth_token") or st.query_params.get("ps_auth", "")
+    token = st.session_state.get("auth_token") or st.query_params.get("session", "")
     if isinstance(token, list):
         token = token[0] if token else ""
     if token:
@@ -4307,7 +4374,7 @@ def clear_auth_session():
     ]:
         st.session_state.pop(key, None)
     try:
-        del st.query_params["ps_auth"]
+        del st.query_params["session"]
     except Exception:
         pass
 
@@ -4469,7 +4536,7 @@ def read_operation_sheet(file_path):
     Ingreso al area de acondicionado, Número de piezas, Hora Inicio y Hora Fin.
     """
     try:
-        xls = pd.ExcelFile(file_path, engine="calamine" if _excel_fast_engine_available() else "openpyxl")
+        xls = pd.ExcelFile(file_path, engine="openpyxl")
         sheet_names = list(xls.sheet_names)
     except Exception as exc:
         return pd.DataFrame(), pd.DataFrame([{
@@ -4508,10 +4575,10 @@ def read_operation_sheet(file_path):
     for tipo, sheet in sources:
         try:
             df = pd.read_excel(
-                xls,
+                file_path,
                 sheet_name=sheet,
+                engine="openpyxl",
                 header=0,
-                dtype=object,
             )
         except Exception as exc:
             diag.append({
@@ -4637,13 +4704,7 @@ def read_operation_sheet(file_path):
 
 def read_plantilla(file_path):
     try:
-        engine = "calamine" if _excel_fast_engine_available() else "openpyxl"
-        return pd.read_excel(
-            file_path,
-            sheet_name="Plantilla",
-            engine=engine,
-            dtype=object,
-        )
+        return pd.read_excel(file_path, sheet_name="Plantilla", engine="openpyxl")
     except Exception:
         return pd.DataFrame()
 
@@ -5306,154 +5367,42 @@ def read_monthly_dev(file_path, progress=None):
 
         return co, pd.DataFrame(diag_rows)
 
-    except Exception as exc:
-        file_size_mb = Path(file_path).stat().st_size / (1024 * 1024)
-        if file_size_mb <= 25:
-            return _read_monthly_dev_openpyxl(file_path, progress=progress)
-        raise RuntimeError(
-            "La lectura rápida de las hojas comerciales falló. "
-            "Para evitar que un archivo grande quede procesando durante horas, "
-            "se canceló el respaldo lento de OpenPyXL. "
-            f"Detalle original: {exc}"
-        ) from exc
-
-
-class FileProgress:
-    """Adaptador de progreso que no depende de una sesión Streamlit."""
-    def __init__(self):
-        self.value = 0.0
-        self.text = ""
-
-    def progress(self, value, text=""):
-        self.value = float(value)
-        self.text = str(text or "")
-        write_process_status(
-            "RUNNING",
-            self.text,
-            progress=self.value,
-        )
-        return self
-
-    def empty(self):
-        return None
-
-
-def read_process_status():
-    try:
-        if not PROCESS_STATUS_FILE.exists():
-            return {"state": "IDLE", "message": "", "progress": 0.0}
-        data = json.loads(PROCESS_STATUS_FILE.read_text(encoding="utf-8"))
-        return data if isinstance(data, dict) else {"state": "IDLE"}
     except Exception:
-        return {"state": "IDLE", "message": "", "progress": 0.0}
+        # El respaldo mantiene compatibilidad con cualquier estructura especial.
+        return _read_monthly_dev_openpyxl(file_path, progress=progress)
 
-
-def write_process_status(state, message="", progress=0.0, detail=""):
-    payload = {
-        "state": str(state),
-        "message": str(message),
-        "progress": max(0.0, min(1.0, float(progress or 0))),
-        "detail": str(detail or ""),
-        "updated_at": datetime.now(MX_TZ).isoformat(),
-    }
-    PROCESS_STATUS_FILE.parent.mkdir(parents=True, exist_ok=True)
-    tmp = PROCESS_STATUS_FILE.with_suffix(".tmp")
-    tmp.write_text(
-        json.dumps(payload, ensure_ascii=False, indent=2),
-        encoding="utf-8",
-    )
-    tmp.replace(PROCESS_STATUS_FILE)
-
-
-def processing_is_running():
-    status = read_process_status()
-    if status.get("state") != "RUNNING":
-        return False
-
-    # Si no se actualizó durante 20 minutos, el proceso anterior murió.
-    try:
-        updated = datetime.fromisoformat(status.get("updated_at", ""))
-        if datetime.now(MX_TZ) - updated > timedelta(minutes=20):
-            write_process_status(
-                "ERROR",
-                "El proceso dejó de responder.",
-                detail="El estado no se actualizó durante 20 minutos.",
-            )
-            PROCESS_LOCK_FILE.unlink(missing_ok=True)
-            return False
-    except Exception:
-        pass
-    return True
-
-
-def _background_process_worker():
-    try:
-        PROCESS_LOCK_FILE.parent.mkdir(parents=True, exist_ok=True)
-        PROCESS_LOCK_FILE.write_text(
-            str(os.getpid()),
-            encoding="utf-8",
-        )
-        write_process_status(
-            "RUNNING",
-            "Preparando el archivo...",
-            progress=0.01,
-        )
-        process_excel(
-            str(ACTIVE_FILE),
-            progress_adapter=FileProgress(),
-        )
-        if not cache_valid():
-            raise RuntimeError(
-                "El procesamiento terminó, pero el caché no quedó disponible."
-            )
-        write_process_status(
-            "DONE",
-            "Archivo procesado correctamente.",
-            progress=1.0,
-        )
-    except Exception as exc:
-        detail = traceback.format_exc()
-        write_process_status(
-            "ERROR",
-            "No fue posible procesar el archivo.",
-            progress=0.0,
-            detail=f"{type(exc).__name__}: {exc}\n\n{detail}",
-        )
-    finally:
-        PROCESS_LOCK_FILE.unlink(missing_ok=True)
-
-
-def start_background_processing():
-    if processing_is_running():
-        return False
-    if not ACTIVE_FILE.exists():
-        raise FileNotFoundError("No existe un archivo activo para procesar.")
-
-    write_process_status(
-        "RUNNING",
-        "Iniciando procesamiento...",
-        progress=0.0,
-    )
-    worker = threading.Thread(
-        target=_background_process_worker,
-        name="ps-operaciones-excel-worker",
-        daemon=True,
-    )
-    worker.start()
-    return True
-
-
-def process_excel(file_path, progress_adapter=None):
-    """Procesa el Excel sin depender de la conexión activa del navegador."""
+def process_excel(file_path):
+    """Procesa el Excel o reutiliza el caché cuando el archivo no cambió."""
     if cache_valid():
+        write_process_status(
+            state="complete",
+            message="Se reutilizó la información ya procesada.",
+            progress=100,
+        )
+        st.info("El archivo no cambió. Se reutilizó la información ya procesada.")
         return read_cache(ACTIVE_FILE.stat().st_mtime)
 
-    progress = progress_adapter or FileProgress()
-    progress.progress(0, text="Preparando archivo...")
+    if not acquire_process_lock():
+        raise RuntimeError(
+            "Ya existe un procesamiento en curso. Espera a que termine "
+            "o reinicia la aplicación si el proceso anterior fue interrumpido."
+        )
+
+    write_process_status(
+        state="running",
+        message="Preparando archivo...",
+        progress=1,
+    )
+    progress = st.progress(0, text="Preparando archivo...")
     stage = "inicio"
 
     try:
         stage = "lectura de operación"
+        write_process_status(
+            state="running",
+            message="Leyendo hojas operativas...",
+            progress=8,
+        )
         progress.progress(
             0.08,
             text="Leyendo Resultados productividad y Resultados productividad 2...",
@@ -5462,6 +5411,11 @@ def process_excel(file_path, progress_adapter=None):
         gc.collect()
 
         stage = "plantilla de colaboradores"
+        write_process_status(
+            state="running",
+            message="Leyendo plantilla de colaboradores...",
+            progress=24,
+        )
         progress.progress(0.24, text="Leyendo plantilla de colaboradores...")
         plantilla = read_plantilla(file_path)
         op = apply_nombre_map(op, plantilla)
@@ -5469,11 +5423,21 @@ def process_excel(file_path, progress_adapter=None):
         gc.collect()
 
         stage = "información comercial"
+        write_process_status(
+            state="running",
+            message="Leyendo hojas comerciales...",
+            progress=36,
+        )
         progress.progress(0.36, text="Leyendo hojas comerciales...")
         co, diag_co = read_monthly_dev(file_path, progress=progress)
         gc.collect()
 
         stage = "normalización"
+        write_process_status(
+            state="running",
+            message="Normalizando información...",
+            progress=88,
+        )
         progress.progress(0.88, text="Normalizando información...")
         op = normalize_operation_df(op)
         co = normalize_commercial_df(co)
@@ -5496,13 +5460,24 @@ def process_excel(file_path, progress_adapter=None):
                 diag = pd.concat([diag_fecha, diag], ignore_index=True, sort=False)
 
         stage = "guardado de caché"
+        write_process_status(
+            state="running",
+            message="Guardando caché estable...",
+            progress=95,
+        )
         progress.progress(0.95, text="Guardando caché estable...")
         write_cache(op, co, diag)
 
-        error_file = CONFIG_DIR / "ultimo_error_proceso.txt"
+        error_file = PROCESS_LOG_FILE
         error_file.unlink(missing_ok=True)
 
         progress.progress(1.0, text="Archivo procesado correctamente.")
+        write_process_status(
+            state="complete",
+            message="Archivo procesado correctamente.",
+            progress=100,
+        )
+        release_process_lock()
         return op, co, diag
 
     except Exception as exc:
@@ -5512,9 +5487,17 @@ def process_excel(file_path, progress_adapter=None):
             f"Detalle: {exc}\n\n"
             f"{traceback.format_exc()}"
         )
-        error_file = CONFIG_DIR / "ultimo_error_proceso.txt"
+        error_file = PROCESS_LOG_FILE
         error_file.parent.mkdir(parents=True, exist_ok=True)
         error_file.write_text(error_text, encoding="utf-8")
+        write_process_status(
+            state="error",
+            message=f"Falló el procesamiento durante: {stage}",
+            progress=0,
+            error_type=type(exc).__name__,
+            error_detail=str(exc),
+        )
+        release_process_lock()
         progress.empty()
         raise RuntimeError(
             f"Falló el procesamiento durante: {stage}. "
@@ -9025,54 +9008,79 @@ def page_carga_excel_v17():
                     st.exception(exc)
 
         with process_col:
-            running = processing_is_running()
             if st.button(
                 "2. Procesar archivo activo",
                 key="v202_process_excel",
                 type="primary",
                 width="stretch",
-                disabled=(
-                    not ACTIVE_FILE.exists()
-                    or not can_write()
-                    or running
-                ),
+                disabled=not ACTIVE_FILE.exists() or not can_write(),
             ):
+                status_box = st.status(
+                    "Procesando archivo activo...",
+                    expanded=True,
+                    state="running",
+                )
                 try:
-                    start_background_processing()
-                    st.success(
-                        "El procesamiento inició. Puedes permanecer en esta "
-                        "página o navegar a otra pestaña; el proceso continuará."
+                    status_box.write(
+                        "Leyendo hojas operativas y comerciales."
                     )
-                    st.rerun()
-                except Exception as exc:
-                    st.error(f"No fue posible iniciar el procesamiento: {exc}")
+                    process_excel(str(ACTIVE_FILE))
 
-        status = read_process_status()
-        state = status.get("state", "IDLE")
-        if state == "RUNNING":
-            st.progress(
-                float(status.get("progress", 0.0)),
-                text=status.get("message", "Procesando archivo..."),
-            )
-            st.info(
-                "El archivo se está procesando en segundo plano. "
-                "Presiona **Actualizar estado** para consultar el avance."
-            )
-            if st.button(
-                "Actualizar estado",
-                key="v206_refresh_process",
-                width="stretch",
-            ):
-                st.rerun()
-        elif state == "DONE":
-            st.success(status.get("message", "Archivo procesado correctamente."))
-            if cache_valid():
-                st.caption("La información ya está disponible en los reportes.")
-        elif state == "ERROR":
-            st.error(status.get("message", "No fue posible procesar el archivo."))
-            if status.get("detail"):
-                with st.expander("Ver detalle técnico"):
-                    st.code(status["detail"][-8000:], language="text")
+                    status_box.write(
+                        "Validando el caché generado."
+                    )
+                    st.cache_data.clear()
+
+                    if not cache_valid():
+                        raise RuntimeError(
+                            "El procesamiento terminó, pero el caché "
+                            "no quedó disponible."
+                        )
+
+                    append_file_history(
+                        "Proceso",
+                        meta.get(
+                            "nombre_original",
+                            ACTIVE_FILE.name,
+                        ),
+                        "Procesado",
+                        "Archivo procesado correctamente",
+                    )
+                    status_box.update(
+                        label="Archivo procesado correctamente.",
+                        state="complete",
+                        expanded=False,
+                    )
+                    st.success(
+                        "La información ya está disponible en los reportes."
+                    )
+                    st.session_state["nav_page"] = "Centro Ejecutivo"
+                    st.rerun()
+
+                except Exception as exc:
+                    status_box.update(
+                        label="No fue posible procesar el archivo.",
+                        state="error",
+                        expanded=True,
+                    )
+                    error_path = (
+                        CONFIG_DIR
+                        / "ultimo_error_proceso.txt"
+                    )
+                    st.error(
+                        "El archivo no quedó procesado. "
+                        "Consulta el detalle mostrado abajo."
+                    )
+                    if error_path.exists():
+                        st.code(
+                            error_path.read_text(
+                                encoding="utf-8",
+                                errors="replace",
+                            )[-6000:],
+                            language="text",
+                        )
+                    else:
+                        st.exception(exc)
 
         if ACTIVE_FILE.exists():
             st.divider()
