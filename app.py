@@ -3778,48 +3778,6 @@ div[data-testid="stAppViewContainer"] > div[style*="opacity"]{{
   filter:none!important;
 }}
 
-
-/* ===== V20.4: SIDEBAR CON ENCABEZADO FIJO ===== */
-@media(min-width:901px){{
-  [data-testid="stSidebar"]{{
-    overflow:hidden!important;
-  }}
-  [data-testid="stSidebar"] > div:first-child{{
-    height:100vh!important;
-    overflow:hidden!important;
-  }}
-  .v20-sidebar-brand{{
-    position:fixed!important;
-    top:0!important;
-    left:0!important;
-    width:var(--v20-sidebar)!important;
-    height:var(--v20-header)!important;
-    box-sizing:border-box!important;
-    z-index:5000!important;
-    background:#0A3067!important;
-  }}
-  [data-testid="stSidebar"] [role="radiogroup"]{{
-    position:absolute!important;
-    top:var(--v20-header)!important;
-    left:0!important;
-    right:0!important;
-    bottom:0!important;
-    margin:0!important;
-    padding:14px 12px 30px!important;
-    overflow-y:auto!important;
-    overflow-x:hidden!important;
-    scrollbar-width:thin!important;
-    scrollbar-color:rgba(255,255,255,.28) transparent!important;
-  }}
-  [data-testid="stSidebar"] [role="radiogroup"]::-webkit-scrollbar{{
-    width:7px!important;
-  }}
-  [data-testid="stSidebar"] [role="radiogroup"]::-webkit-scrollbar-thumb{{
-    background:rgba(255,255,255,.28)!important;
-    border-radius:8px!important;
-  }}
-}}
-
 </style>
 """,
         unsafe_allow_html=True,
@@ -3960,50 +3918,20 @@ def append_file_history(accion, archivo, estado, detalle=""):
 
 
 def save_uploaded_file(uploaded):
-    """
-    Guarda el archivo sin eliminar el caché cuando el contenido es idéntico.
-
-    Volver a seleccionar el mismo Excel ya procesado deja disponibles los
-    reportes inmediatamente.
-    """
-    uploaded_bytes = uploaded.getbuffer()
-    uploaded_hash = hashlib.sha256(uploaded_bytes).hexdigest()
-
-    previous_hash = ""
-    same_content = False
-
-    if ACTIVE_FILE.exists():
-        try:
-            previous_hash = _file_sha256(ACTIVE_FILE)
-            same_content = previous_hash == uploaded_hash
-        except Exception:
-            same_content = False
-
-    if not same_content:
-        ACTIVE_FILE.write_bytes(uploaded_bytes)
-        clear_cache_files()
-    elif not ACTIVE_FILE.exists():
-        ACTIVE_FILE.write_bytes(uploaded_bytes)
-
+    ACTIVE_FILE.write_bytes(uploaded.getbuffer())
     META_FILE.write_text(
         json.dumps(
             {
                 "nombre_original": uploaded.name,
                 "fecha_carga": datetime.now(MX_TZ).strftime("%Y-%m-%d %H:%M:%S"),
                 "mtime": ACTIVE_FILE.stat().st_mtime,
-                "sha256": uploaded_hash,
-                "mismo_contenido": same_content,
             },
             ensure_ascii=False,
             indent=2,
         ),
         encoding="utf-8",
     )
-
-    return {
-        "same_content": same_content,
-        "sha256": uploaded_hash,
-    }
+    clear_cache_files()
 
 
 def clear_cache_files():
@@ -4032,52 +3960,19 @@ def cache_paths():
     }
 
 
-def _file_sha256(path, chunk_size=4 * 1024 * 1024):
-    digest = hashlib.sha256()
-    with open(path, "rb") as source:
-        while True:
-            chunk = source.read(chunk_size)
-            if not chunk:
-                break
-            digest.update(chunk)
-    return digest.hexdigest()
-
-
 def cache_valid():
-    """
-    El caché depende del archivo, no de la versión visual de la aplicación.
-
-    Esto evita volver a procesar un Excel de 80 MB cada vez que se publica
-    una corrección de diseño.
-    """
     paths = cache_paths()
     op_exists = paths["op"].exists() or paths["op"].with_suffix(".pkl").exists()
     co_exists = paths["co"].exists() or paths["co"].with_suffix(".pkl").exists()
-
-    if (
-        not ACTIVE_FILE.exists()
-        or not paths["meta"].exists()
-        or not op_exists
-        or not co_exists
-    ):
+    if not ACTIVE_FILE.exists() or not paths["meta"].exists() or not op_exists or not co_exists:
         return False
-
     try:
         meta = json.loads(paths["meta"].read_text(encoding="utf-8"))
-        active_stat = ACTIVE_FILE.stat()
-
-        # Camino rápido para cachés ya existentes.
-        if float(meta.get("mtime", 0)) == float(active_stat.st_mtime):
-            return True
-
-        # Si el archivo fue guardado de nuevo, validar por contenido.
-        saved_hash = str(meta.get("sha256", "")).strip()
-        if saved_hash:
-            return saved_hash == _file_sha256(ACTIVE_FILE)
-
-        return False
+        return float(meta.get("mtime", 0)) == float(ACTIVE_FILE.stat().st_mtime) and meta.get("version") == APP_CACHE_VERSION
     except Exception:
         return False
+
+
 
 
 def _read_sessions():
@@ -4342,9 +4237,7 @@ def write_cache(op, co, diag):
         json.dumps(
             {
                 "mtime": ACTIVE_FILE.stat().st_mtime,
-                "sha256": _file_sha256(ACTIVE_FILE),
-                "data_schema": "ps-operaciones-cache-v3",
-                "version_visual": APP_CACHE_VERSION,
+                "version": APP_CACHE_VERSION,
                 "procesado": datetime.now(MX_TZ).strftime("%Y-%m-%d %H:%M:%S"),
             },
             ensure_ascii=False,
@@ -4595,7 +4488,7 @@ def read_plantilla(file_path):
         return pd.DataFrame()
 
 
-def _read_monthly_dev_openpyxl(file_path, progress=None):
+def read_monthly_dev(file_path, progress=None):
     """Lector comercial optimizado por bloques.
 
     Evita cargar cada hoja completa en memoria. Lee únicamente:
@@ -4982,287 +4875,8 @@ def _read_monthly_dev_openpyxl(file_path, progress=None):
     return co, diag
 
 
-def _excel_fast_engine_available():
-    try:
-        import python_calamine  # noqa: F401
-        return True
-    except Exception:
-        return False
-
-
-def read_monthly_dev(file_path, progress=None):
-    """
-    Lector comercial acelerado.
-
-    Usa Calamine (motor Rust) para leer únicamente las columnas requeridas.
-    Si el entorno no dispone del motor o una hoja tiene una estructura no
-    compatible, utiliza automáticamente el lector OpenPyXL anterior.
-    """
-    if not _excel_fast_engine_available():
-        return _read_monthly_dev_openpyxl(file_path, progress=progress)
-
-    try:
-        xls = pd.ExcelFile(file_path, engine="calamine")
-        monthly_sheets = [
-            sheet for sheet in xls.sheet_names
-            if norm_text(sheet) not in {
-                "RESULTADOS PRODUCTIVIDAD",
-                "RESULTADOS PRODUCTIVIDAD 2",
-                "RESULTADOS POR CHECKLIST",
-                "PLANTILLA",
-            }
-            and re.search(
-                r"(ABRIL|MAYO|JUNIO|JULIO|AGOSTO|SEPT|OCT|NOV|DIC|ENERO|FEBR|MARZO|26|25)",
-                norm_text(sheet),
-            )
-        ]
-
-        all_frames = []
-        diag_rows = []
-        total_sheets = max(1, len(monthly_sheets))
-
-        for sheet_number, sheet_name in enumerate(monthly_sheets, start=1):
-            if progress:
-                progress.progress(
-                    0.36 + (sheet_number - 1) / total_sheets * 0.46,
-                    text=f"Lectura rápida comercial: {sheet_name}",
-                )
-
-            top = pd.read_excel(
-                xls,
-                sheet_name=sheet_name,
-                header=None,
-                nrows=30,
-                dtype=object,
-            )
-            top = top.where(pd.notna(top), None)
-            top_rows = top.values.tolist()
-
-            header_idx = None
-            tienda_col = None
-            for row_index, row in enumerate(top_rows):
-                tienda_cols = [
-                    index for index, value in enumerate(row)
-                    if norm_text(value) in {"TIENDA", "TIENDAS"}
-                ]
-                has_dev = any(
-                    "DEV" in norm_text(value) and "PZS" in norm_text(value)
-                    for value in row
-                )
-                if tienda_cols and has_dev:
-                    header_idx = row_index
-                    tienda_col = tienda_cols[0]
-                    break
-
-            if header_idx is None or tienda_col is None:
-                diag_rows.append({
-                    "Tipo": "Centro Ejecutivo",
-                    "Hoja": sheet_name,
-                    "Estado": "No encontró Tienda/Tiendas + Dev Pzs",
-                    "Registros": 0,
-                })
-                continue
-
-            header_row = top_rows[header_idx]
-            date_row = (
-                top_rows[header_idx - 1]
-                if header_idx > 0
-                else [None] * len(header_row)
-            )
-
-            id_aliases = {
-                "ID", "SKU", "ID/SKU", "ID ARTICULO", "ID ARTÍCULO",
-                "ID MODELO", "MODELO ID", "MODELO", "CODIGO", "CÓDIGO",
-            }
-            description_aliases = {
-                "DESCRIPCION", "DESCRIPCIÓN", "DESC",
-                "DESCRIPCION ARTICULO", "DESCRIPCIÓN ARTÍCULO",
-                "ARTICULO", "ARTÍCULO",
-            }
-            color_aliases = {"COLOR", "COLOUR"}
-
-            id_col = next(
-                (i for i, value in enumerate(header_row)
-                 if norm_text(value) in id_aliases),
-                None,
-            )
-            description_col = next(
-                (i for i, value in enumerate(header_row)
-                 if norm_text(value) in description_aliases),
-                None,
-            )
-            color_col = next(
-                (i for i, value in enumerate(header_row)
-                 if norm_text(value) in color_aliases),
-                None,
-            )
-
-            date_by_col = {}
-            current_date = pd.NaT
-            for col_idx in range(len(header_row)):
-                parsed = parse_date(
-                    date_row[col_idx] if col_idx < len(date_row) else None
-                )
-                if pd.notna(parsed):
-                    current_date = parsed
-                date_by_col[col_idx] = current_date
-
-            blocks = {}
-            for col_idx, header in enumerate(header_row):
-                header_norm = norm_text(header)
-                fecha = date_by_col.get(col_idx, pd.NaT)
-                if pd.isna(fecha):
-                    continue
-                fecha = pd.to_datetime(fecha).normalize()
-
-                if "DEV" in header_norm and "PZS" in header_norm:
-                    blocks.setdefault(fecha, {})["dev_col"] = col_idx
-                elif (
-                    ("VENTA" in header_norm or "VENTAS" in header_norm)
-                    and ("PZS" in header_norm or "NETA" in header_norm)
-                    and "$" not in str(header)
-                ):
-                    blocks.setdefault(fecha, {})["vta_pzs_col"] = col_idx
-                elif (
-                    ("VENTA" in header_norm or "NETA" in header_norm)
-                    and (
-                        "$" in str(header)
-                        or "IMP" in header_norm
-                        or " EN " in f" {header_norm} "
-                    )
-                ):
-                    blocks.setdefault(fecha, {})["vta_imp_col"] = col_idx
-
-            blocks = {date_key: cols for date_key, cols in blocks.items() if cols}
-            if not blocks:
-                diag_rows.append({
-                    "Tipo": "Centro Ejecutivo",
-                    "Hoja": sheet_name,
-                    "Estado": "No encontró bloques comerciales",
-                    "Registros": 0,
-                })
-                continue
-
-            required_cols = {tienda_col}
-            for optional_col in (id_col, description_col, color_col):
-                if optional_col is not None:
-                    required_cols.add(optional_col)
-            for block_cols in blocks.values():
-                required_cols.update(block_cols.values())
-
-            selected_cols = sorted(required_cols)
-            original_to_local = {
-                original: local
-                for local, original in enumerate(selected_cols)
-            }
-
-            data = pd.read_excel(
-                xls,
-                sheet_name=sheet_name,
-                header=header_idx,
-                usecols=selected_cols,
-                dtype=object,
-            )
-
-            stores = data.iloc[:, original_to_local[tienda_col]].map(canon_store)
-            valid_store = stores.astype(str).str.strip().ne("")
-
-            def clean_text_column(original_col):
-                if original_col is None:
-                    return pd.Series("", index=data.index, dtype="object")
-                values = data.iloc[:, original_to_local[original_col]]
-                values = values.fillna("").astype(str).str.strip()
-                return values.mask(values.str.lower().isin(["none", "nan"]), "")
-
-            item_ids = clean_text_column(id_col)
-            descriptions = clean_text_column(description_col)
-            colors_series = clean_text_column(color_col)
-
-            sheet_frames = []
-            for fecha, block_cols in blocks.items():
-                def numeric_value(key):
-                    original = block_cols.get(key)
-                    if original is None:
-                        return pd.Series(0.0, index=data.index)
-                    return pd.to_numeric(
-                        data.iloc[:, original_to_local[original]],
-                        errors="coerce",
-                    ).fillna(0.0)
-
-                dev = numeric_value("dev_col")
-                vta_pzs = numeric_value("vta_pzs_col")
-                vta_imp = numeric_value("vta_imp_col")
-                mask = valid_store & ((dev != 0) | (vta_pzs != 0) | (vta_imp != 0))
-
-                if not mask.any():
-                    continue
-
-                sheet_frames.append(pd.DataFrame({
-                    "Hoja": sheet_name,
-                    "Fecha": fecha,
-                    "Fecha_txt": fecha.strftime("%Y-%m-%d"),
-                    "Tienda": stores[mask].values,
-                    "Dev_Pzs": dev[mask].values,
-                    "Vta_Pzs": vta_pzs[mask].values,
-                    "Vta_Imp": vta_imp[mask].values,
-                    "Costo_Dev": 0.0,
-                    "ID": item_ids[mask].values,
-                    "Descripción": descriptions[mask].values,
-                    "Color": colors_series[mask].values,
-                }))
-
-            if sheet_frames:
-                sheet_result = pd.concat(sheet_frames, ignore_index=True)
-                all_frames.append(sheet_result)
-                diag_rows.append({
-                    "Tipo": "Centro Ejecutivo",
-                    "Hoja": sheet_name,
-                    "Estado": "OK · Lectura rápida",
-                    "Fechas detectadas": len(blocks),
-                    "Registros": len(sheet_result),
-                    "Dev Pzs": float(sheet_result["Dev_Pzs"].sum()),
-                    "Venta Pzs": float(sheet_result["Vta_Pzs"].sum()),
-                    "Venta $": float(sheet_result["Vta_Imp"].sum()),
-                })
-            else:
-                diag_rows.append({
-                    "Tipo": "Centro Ejecutivo",
-                    "Hoja": sheet_name,
-                    "Estado": "Sin valores comerciales",
-                    "Registros": 0,
-                })
-
-        if not all_frames:
-            return pd.DataFrame(), pd.DataFrame(diag_rows)
-
-        co = pd.concat(all_frames, ignore_index=True)
-        co["Fecha"] = pd.to_datetime(co["Fecha"], errors="coerce")
-        co = co[co["Fecha"].notna()]
-        co["Tienda"] = co["Tienda"].map(canon_store)
-
-        co = co.groupby(
-            ["Hoja", "Fecha", "Fecha_txt", "Tienda", "ID", "Descripción", "Color"],
-            as_index=False,
-            dropna=False,
-        )[["Dev_Pzs", "Vta_Pzs", "Vta_Imp", "Costo_Dev"]].sum()
-
-        iso = co["Fecha"].dt.isocalendar()
-        co["Año ISO"] = iso.year.astype(int)
-        co["Semana ISO"] = iso.week.astype(int)
-        co["Mes"] = co["Fecha"].dt.to_period("M").astype(str)
-
-        return co, pd.DataFrame(diag_rows)
-
-    except Exception:
-        # El respaldo mantiene compatibilidad con cualquier estructura especial.
-        return _read_monthly_dev_openpyxl(file_path, progress=progress)
-
 def process_excel(file_path):
-    """Procesa el Excel o reutiliza el caché cuando el archivo no cambió."""
-    if cache_valid():
-        st.info("El archivo no cambió. Se reutilizó la información ya procesada.")
-        return read_cache(ACTIVE_FILE.stat().st_mtime)
-
+    """Procesa el Excel una sola vez y conserva el error exacto por etapa."""
     progress = st.progress(0, text="Preparando archivo...")
     stage = "inicio"
 

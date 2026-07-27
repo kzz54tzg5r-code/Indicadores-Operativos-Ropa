@@ -8,4 +8,3 @@ numpy==2.5.1
 
 reportlab==4.4.5
 argon2-cffi==25.1.0
-python-calamine
