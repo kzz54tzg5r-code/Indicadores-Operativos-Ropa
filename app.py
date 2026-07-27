@@ -3779,42 +3779,69 @@ div[data-testid="stAppViewContainer"] > div[style*="opacity"]{{
 }}
 
 
-/* ===== V20.4: SIDEBAR CON ENCABEZADO FIJO ===== */
+/* ===== V20.5: SIDEBAR VISIBLE Y ENCABEZADO FIJO ===== */
 @media(min-width:901px){{
   [data-testid="stSidebar"]{{
-    overflow:hidden!important;
-  }}
-  [data-testid="stSidebar"] > div:first-child{{
-    height:100vh!important;
-    overflow:hidden!important;
-  }}
-  .v20-sidebar-brand{{
-    position:fixed!important;
-    top:0!important;
-    left:0!important;
-    width:var(--v20-sidebar)!important;
-    height:var(--v20-header)!important;
-    box-sizing:border-box!important;
-    z-index:5000!important;
-    background:#0A3067!important;
-  }}
-  [data-testid="stSidebar"] [role="radiogroup"]{{
-    position:absolute!important;
-    top:var(--v20-header)!important;
-    left:0!important;
-    right:0!important;
-    bottom:0!important;
-    margin:0!important;
-    padding:14px 12px 30px!important;
     overflow-y:auto!important;
     overflow-x:hidden!important;
     scrollbar-width:thin!important;
     scrollbar-color:rgba(255,255,255,.28) transparent!important;
   }}
-  [data-testid="stSidebar"] [role="radiogroup"]::-webkit-scrollbar{{
+
+  [data-testid="stSidebar"] > div:first-child{{
+    min-height:100vh!important;
+    height:auto!important;
+    overflow:visible!important;
+  }}
+
+  .v20-sidebar-brand{{
+    position:sticky!important;
+    top:0!important;
+    left:auto!important;
+    width:100%!important;
+    min-height:var(--v20-header)!important;
+    height:var(--v20-header)!important;
+    box-sizing:border-box!important;
+    z-index:5000!important;
+    background:#0A3067!important;
+  }}
+
+  [data-testid="stSidebar"] [role="radiogroup"]{{
+    position:static!important;
+    display:flex!important;
+    flex-direction:column!important;
+    width:100%!important;
+    height:auto!important;
+    min-height:0!important;
+    margin:0!important;
+    padding:14px 12px 30px!important;
+    overflow:visible!important;
+    transform:none!important;
+    clip:auto!important;
+    opacity:1!important;
+  }}
+
+  [data-testid="stSidebar"] [role="radiogroup"] > label{{
+    display:flex!important;
+    visibility:visible!important;
+    opacity:1!important;
+    width:100%!important;
+    min-height:43px!important;
+    flex:0 0 auto!important;
+  }}
+
+  [data-testid="stSidebar"] [role="radiogroup"] > label *,
+  [data-testid="stSidebar"] [role="radiogroup"] > label p,
+  [data-testid="stSidebar"] [role="radiogroup"] > label span{{
+    visibility:visible!important;
+    opacity:1!important;
+  }}
+
+  [data-testid="stSidebar"]::-webkit-scrollbar{{
     width:7px!important;
   }}
-  [data-testid="stSidebar"] [role="radiogroup"]::-webkit-scrollbar-thumb{{
+
+  [data-testid="stSidebar"]::-webkit-scrollbar-thumb{{
     background:rgba(255,255,255,.28)!important;
     border-radius:8px!important;
   }}
