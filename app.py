@@ -9267,7 +9267,13 @@ def page_configuracion_metas_v17():
 
 
 def page_carga_excel_v17():
-    """Carga y procesamiento reanudable para archivos Excel grandes."""
+    """
+    Carga y procesamiento reanudable.
+
+    El selector de 80 MB solo se monta cuando el usuario realmente va a
+    cargar o reemplazar el archivo. Después de guardarlo se desmonta para
+    evitar ClientDisconnect al navegar entre pestañas.
+    """
     _v17_title(
         "Carga de Excel",
         "Procesa el archivo por etapas para evitar reinicios por memoria.",
@@ -9280,6 +9286,9 @@ def page_carga_excel_v17():
             "Administrador o Propietario."
         )
         return
+
+    st.session_state.setdefault("upload_replace_mode", False)
+    st.session_state.setdefault("upload_widget_nonce", 0)
 
     meta = {}
     if META_FILE.exists():
@@ -9320,7 +9329,9 @@ def page_carga_excel_v17():
                 progress_value / 100,
                 text=f"Avance acumulado: {progress_value}%",
             )
-            st.markdown(f"**Etapa actual:** {stage_state.get('step', 'initialize')}")
+            st.markdown(
+                f"**Etapa actual:** {stage_state.get('step', 'initialize')}"
+            )
             st.caption(stage_state.get("message", ""))
 
             sheets = stage_state.get("commercial_sheets", [])
@@ -9332,55 +9343,103 @@ def page_carga_excel_v17():
 
         st.markdown(
             """
-            **Nuevo flujo por etapas**
+            **Flujo por etapas**
 
             1. Guarda el archivo una sola vez.  
-            2. Presiona **Procesar siguiente etapa**.  
-            3. Cada ejecución procesa una hoja o bloque y libera memoria.  
-            4. Si Streamlit se reinicia, continúa desde la última etapa guardada.  
+            2. Procesa una etapa por ejecución.  
+            3. Cada etapa queda guardada.  
+            4. Puedes cambiar de pestaña sin volver a subir el Excel.  
             5. La última etapa consolida los reportes.
             """
         )
 
     with upload_col:
         st.markdown(
-            '<div class="admin-section-title">Archivo y procesamiento por etapas</div>',
+            '<div class="admin-section-title">Archivo y procesamiento</div>',
             unsafe_allow_html=True,
         )
 
-        uploaded = st.file_uploader(
-            "Selecciona un archivo Excel",
-            type=["xlsx"],
-            key="v20x2_excel_uploader",
-            help="Al guardar un archivo diferente se reinician las etapas.",
-        )
+        has_active_file = ACTIVE_FILE.exists()
+        replace_mode = bool(st.session_state.get("upload_replace_mode", False))
 
-        if uploaded is not None:
+        if has_active_file and not replace_mode:
             st.info(
-                f"Seleccionado: **{uploaded.name}** · "
-                f"{uploaded.size / (1024 * 1024):,.1f} MB"
+                "El archivo ya está guardado en el servidor. "
+                "No es necesario mantenerlo seleccionado en el navegador."
             )
+            action_a, action_b = st.columns(2)
+            with action_a:
+                if st.button(
+                    "Seleccionar otro archivo",
+                    key="v20x3_enable_replace",
+                    width="stretch",
+                ):
+                    st.session_state["upload_replace_mode"] = True
+                    st.session_state["upload_widget_nonce"] += 1
+                    st.rerun()
+            with action_b:
+                st.caption(
+                    "Esto evita que una carga de 80 MB se interrumpa "
+                    "al cambiar de pestaña."
+                )
+            uploaded = None
+        else:
+            uploader_key = (
+                f"v20x3_excel_uploader_"
+                f"{st.session_state['upload_widget_nonce']}"
+            )
+            uploaded = st.file_uploader(
+                "Selecciona un archivo Excel",
+                type=["xlsx"],
+                key=uploader_key,
+                help=(
+                    "Espera a que termine la carga antes de presionar Guardar. "
+                    "Después de guardarlo, el selector se cerrará automáticamente."
+                ),
+            )
+
+            if uploaded is not None:
+                st.info(
+                    f"Seleccionado: **{uploaded.name}** · "
+                    f"{uploaded.size / (1024 * 1024):,.1f} MB"
+                )
+
+            if has_active_file:
+                if st.button(
+                    "Cancelar reemplazo",
+                    key="v20x3_cancel_replace",
+                    width="stretch",
+                ):
+                    st.session_state["upload_replace_mode"] = False
+                    st.session_state["upload_widget_nonce"] += 1
+                    st.rerun()
 
         save_col, process_col = st.columns(2)
 
         with save_col:
             if st.button(
                 "1. Guardar archivo",
-                key="v20x2_save_excel",
+                key="v20x3_save_excel",
                 type="primary",
                 width="stretch",
                 disabled=uploaded is None or not can_write(),
             ):
                 try:
                     result = save_uploaded_file(uploaded)
+
                     if not result.get("same_content", False):
                         clear_staged_processing()
+
                     append_file_history(
                         "Carga",
                         uploaded.name,
                         "Guardado",
                         "Archivo guardado para procesamiento por etapas",
                     )
+
+                    # Desmontar el uploader inmediatamente después del guardado.
+                    st.session_state["upload_replace_mode"] = False
+                    st.session_state["upload_widget_nonce"] += 1
                     st.success("Archivo guardado correctamente.")
                     st.rerun()
                 except Exception as exc:
@@ -9399,7 +9458,7 @@ def page_carga_excel_v17():
 
             if st.button(
                 process_label,
-                key="v20x2_process_next",
+                key="v20x3_process_next",
                 type="primary",
                 width="stretch",
                 disabled=(
@@ -9414,14 +9473,18 @@ def page_carga_excel_v17():
                         expanded=True,
                     ) as status_box:
                         previous = read_staged_state()
-                        status_box.write(previous.get("message", "Preparando etapa."))
+                        status_box.write(
+                            previous.get("message", "Preparando etapa.")
+                        )
                         result = process_next_stage(str(ACTIVE_FILE))
-                        status_box.write(result.get("message", "Etapa terminada."))
+                        status_box.write(
+                            result.get("message", "Etapa terminada.")
+                        )
                         status_box.update(
                             label=(
                                 "Procesamiento completo."
                                 if result.get("status") == "complete"
-                                else "Etapa terminada. Puedes continuar con la siguiente."
+                                else "Etapa terminada. Continúa con la siguiente."
                             ),
                             state="complete",
                             expanded=False,
@@ -9435,20 +9498,19 @@ def page_carga_excel_v17():
                             "Archivo procesado por etapas correctamente",
                         )
                         st.success(
-                            "La información ya está disponible en todos los reportes."
+                            "La información ya está disponible en los reportes."
                         )
                         st.session_state["nav_page"] = "Centro Ejecutivo"
                     else:
                         st.success(
-                            "Esta etapa terminó y quedó guardada. "
+                            "La etapa quedó guardada. "
                             "Presiona nuevamente para continuar."
                         )
                     st.rerun()
 
                 except Exception as exc:
                     st.error(
-                        "La etapa no terminó, pero las etapas anteriores "
-                        "se conservaron. Puedes volver a intentarlo."
+                        "La etapa no terminó, pero las anteriores se conservaron."
                     )
                     if PROCESS_LOG_FILE.exists():
                         st.code(
@@ -9465,13 +9527,13 @@ def page_carga_excel_v17():
             action_col, restart_col = st.columns(2)
             with action_col:
                 st.caption(
-                    "No cierres la aplicación durante la etapa actual. "
-                    "Al terminar puedes salir y continuar después."
+                    "Al terminar cada etapa puedes navegar a otra página "
+                    "y continuar después."
                 )
             with restart_col:
                 if st.button(
                     "Reiniciar etapas",
-                    key="v20x2_restart_stages",
+                    key="v20x3_restart_stages",
                     width="stretch",
                     disabled=not can_write(),
                 ):
@@ -9484,13 +9546,15 @@ def page_carga_excel_v17():
             st.divider()
             if st.button(
                 "Eliminar archivo activo",
-                key="v20x2_delete_active",
+                key="v20x3_delete_active",
                 width="stretch",
                 disabled=not can_write(),
             ):
                 file_name = meta.get("nombre_original", ACTIVE_FILE.name)
                 delete_active_file()
                 clear_staged_processing()
+                st.session_state["upload_replace_mode"] = False
+                st.session_state["upload_widget_nonce"] += 1
                 append_file_history(
                     "Eliminación",
                     file_name,
