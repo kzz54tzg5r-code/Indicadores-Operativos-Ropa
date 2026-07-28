@@ -9,6 +9,7 @@ import traceback
 import re
 import sqlite3
 import secrets
+import shutil
 import unicodedata
 from datetime import datetime, date, timedelta
 from pathlib import Path
@@ -4127,9 +4128,16 @@ def save_uploaded_file(uploaded):
 def clear_cache_files():
     for p in CACHE_DIR.glob("*"):
         try:
-            p.unlink()
+            if p.is_dir():
+                shutil.rmtree(p, ignore_errors=True)
+            else:
+                p.unlink()
         except Exception:
             pass
+    try:
+        STAGE_STATE_FILE.unlink(missing_ok=True)
+    except Exception:
+        pass
     st.cache_data.clear()
 
 
@@ -4500,6 +4508,419 @@ def read_cache(mtime):
     op = normalize_operation_df(op)
     co = normalize_commercial_df(co)
     return op, co, diag
+
+# ============================================================
+# PROCESAMIENTO POR ETAPAS — ARCHIVOS GRANDES
+# ============================================================
+STAGE_DIR = CACHE_DIR / "staged_processing"
+STAGE_STATE_FILE = CONFIG_DIR / "staged_processing.json"
+
+
+def staged_paths():
+    return {
+        "operation": STAGE_DIR / "operation.parquet",
+        "diag_operation": STAGE_DIR / "diag_operation.parquet",
+        "state": STAGE_STATE_FILE,
+    }
+
+
+def _write_stage_frame(path, frame):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    frame = frame if frame is not None else pd.DataFrame()
+    temp = path.with_suffix(path.suffix + ".tmp")
+    fallback = path.with_suffix(".pkl")
+    fallback_temp = fallback.with_suffix(".pkl.tmp")
+    try:
+        frame.to_parquet(temp, index=False)
+        os.replace(temp, path)
+        fallback.unlink(missing_ok=True)
+        fallback_temp.unlink(missing_ok=True)
+    except Exception:
+        temp.unlink(missing_ok=True)
+        frame.to_pickle(fallback_temp)
+        os.replace(fallback_temp, fallback)
+        path.unlink(missing_ok=True)
+
+
+def _read_stage_frame(path):
+    fallback = path.with_suffix(".pkl")
+    if path.exists():
+        return pd.read_parquet(path)
+    if fallback.exists():
+        return pd.read_pickle(fallback)
+    return pd.DataFrame()
+
+
+def clear_staged_processing():
+    try:
+        shutil.rmtree(STAGE_DIR, ignore_errors=True)
+    except Exception:
+        pass
+    try:
+        STAGE_STATE_FILE.unlink(missing_ok=True)
+    except Exception:
+        pass
+
+
+def _commercial_sheet_names(file_path):
+    for engine in ("calamine", "openpyxl"):
+        try:
+            xls = pd.ExcelFile(file_path, engine=engine)
+            return [
+                sheet for sheet in xls.sheet_names
+                if norm_text(sheet) not in {
+                    "RESULTADOS PRODUCTIVIDAD",
+                    "RESULTADOS PRODUCTIVIDAD 2",
+                    "RESULTADOS POR CHECKLIST",
+                    "PLANTILLA",
+                }
+                and re.search(
+                    r"(ABRIL|MAYO|JUNIO|JULIO|AGOSTO|SEPT|OCT|NOV|DIC|ENERO|FEBR|MARZO|26|25)",
+                    norm_text(sheet),
+                )
+            ]
+        except Exception:
+            continue
+    raise RuntimeError("No fue posible obtener la lista de hojas del Excel.")
+
+
+def _active_file_identity():
+    if not ACTIVE_FILE.exists():
+        return {}
+    meta = {}
+    if META_FILE.exists():
+        try:
+            meta = json.loads(META_FILE.read_text(encoding="utf-8"))
+        except Exception:
+            meta = {}
+    stat = ACTIVE_FILE.stat()
+    return {
+        "mtime": float(stat.st_mtime),
+        "size": int(stat.st_size),
+        "sha256": str(meta.get("sha256", "")),
+    }
+
+
+def read_staged_state():
+    default = {
+        "status": "idle",
+        "step": "initialize",
+        "commercial_sheets": [],
+        "commercial_index": 0,
+        "completed_steps": 0,
+        "total_steps": 1,
+        "message": "Listo para iniciar.",
+        "file_identity": {},
+        "last_error": "",
+    }
+    try:
+        if not STAGE_STATE_FILE.exists():
+            return default
+        payload = json.loads(STAGE_STATE_FILE.read_text(encoding="utf-8"))
+        if not isinstance(payload, dict):
+            return default
+        return {**default, **payload}
+    except Exception:
+        return default
+
+
+def write_staged_state(state):
+    STAGE_STATE_FILE.parent.mkdir(parents=True, exist_ok=True)
+    state = dict(state)
+    state["updated_at"] = datetime.now(MX_TZ).isoformat()
+    temp = STAGE_STATE_FILE.with_suffix(".json.tmp")
+    temp.write_text(
+        json.dumps(state, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+    os.replace(temp, STAGE_STATE_FILE)
+    return state
+
+
+def initialize_staged_processing(file_path):
+    clear_staged_processing()
+    STAGE_DIR.mkdir(parents=True, exist_ok=True)
+    commercial_sheets = _commercial_sheet_names(file_path)
+    state = {
+        "status": "ready",
+        "step": "operation",
+        "commercial_sheets": commercial_sheets,
+        "commercial_index": 0,
+        "completed_steps": 0,
+        # Operación + cada hoja comercial + consolidación final.
+        "total_steps": 2 + len(commercial_sheets),
+        "message": "Preparado para procesar las hojas operativas.",
+        "file_identity": _active_file_identity(),
+        "last_error": "",
+    }
+    write_staged_state(state)
+    write_process_status(
+        state="ready",
+        message=state["message"],
+        progress=0,
+    )
+    return state
+
+
+def _staged_state_matches_active_file(state):
+    return state.get("file_identity", {}) == _active_file_identity()
+
+
+def staged_progress_percent(state):
+    total = max(1, int(state.get("total_steps", 1)))
+    completed = max(0, int(state.get("completed_steps", 0)))
+    return min(100, round(completed / total * 100))
+
+
+def process_next_stage(file_path):
+    """
+    Procesa solamente una etapa por ejecución.
+
+    De esta forma Streamlit no mantiene el libro completo y todos los
+    DataFrames simultáneamente en memoria.
+    """
+    if cache_valid():
+        state = read_staged_state()
+        state.update({
+            "status": "complete",
+            "step": "complete",
+            "completed_steps": state.get("total_steps", 1),
+            "message": "La información ya está procesada y disponible.",
+            "file_identity": _active_file_identity(),
+            "last_error": "",
+        })
+        write_staged_state(state)
+        return state
+
+    state = read_staged_state()
+    if (
+        state.get("status") == "idle"
+        or not _staged_state_matches_active_file(state)
+    ):
+        return initialize_staged_processing(file_path)
+
+    if not acquire_process_lock():
+        raise RuntimeError(
+            "Existe otra etapa en ejecución. Espera unos segundos y vuelve a intentarlo."
+        )
+
+    current_step = state.get("step", "operation")
+    try:
+        state["status"] = "running"
+        state["last_error"] = ""
+
+        if current_step == "operation":
+            state["message"] = (
+                "Procesando Resultados productividad, "
+                "Resultados productividad 2 y Plantilla."
+            )
+            write_staged_state(state)
+            write_process_status(
+                state="running",
+                message=state["message"],
+                progress=staged_progress_percent(state),
+            )
+
+            op, diag_op = read_operation_sheet(file_path)
+            plantilla = read_plantilla(file_path)
+            op = apply_nombre_map(op, plantilla)
+            del plantilla
+            op = normalize_operation_df(op)
+
+            _write_stage_frame(staged_paths()["operation"], op)
+            _write_stage_frame(staged_paths()["diag_operation"], diag_op)
+            del op, diag_op
+            gc.collect()
+
+            state["completed_steps"] = 1
+            if state.get("commercial_sheets"):
+                state["step"] = "commercial"
+                state["message"] = (
+                    "Operación terminada. La siguiente etapa procesará "
+                    f"{state['commercial_sheets'][0]}."
+                )
+            else:
+                state["step"] = "finalize"
+                state["message"] = "Operación terminada. Falta consolidar el caché."
+
+        elif current_step == "commercial":
+            sheets = state.get("commercial_sheets", [])
+            index = int(state.get("commercial_index", 0))
+            if index >= len(sheets):
+                state["step"] = "finalize"
+                state["message"] = "Todas las hojas comerciales están listas."
+            else:
+                sheet_name = sheets[index]
+                state["message"] = f"Procesando hoja comercial: {sheet_name}."
+                write_staged_state(state)
+                write_process_status(
+                    state="running",
+                    message=state["message"],
+                    progress=staged_progress_percent(state),
+                )
+
+                co_sheet, diag_sheet = read_monthly_dev(
+                    file_path,
+                    progress=None,
+                    only_sheets=[sheet_name],
+                )
+                co_sheet = normalize_commercial_df(co_sheet)
+
+                safe_index = f"{index:03d}"
+                _write_stage_frame(
+                    STAGE_DIR / f"commercial_{safe_index}.parquet",
+                    co_sheet,
+                )
+                _write_stage_frame(
+                    STAGE_DIR / f"diag_commercial_{safe_index}.parquet",
+                    diag_sheet,
+                )
+                del co_sheet, diag_sheet
+                gc.collect()
+
+                state["commercial_index"] = index + 1
+                state["completed_steps"] = 1 + index + 1
+
+                if state["commercial_index"] >= len(sheets):
+                    state["step"] = "finalize"
+                    state["message"] = (
+                        "Hojas comerciales terminadas. "
+                        "La siguiente etapa consolidará la información."
+                    )
+                else:
+                    state["message"] = (
+                        f"{sheet_name} terminada. Siguiente: "
+                        f"{sheets[state['commercial_index']]}."
+                    )
+
+        elif current_step == "finalize":
+            state["message"] = "Consolidando archivos parciales y creando el caché."
+            write_staged_state(state)
+            write_process_status(
+                state="running",
+                message=state["message"],
+                progress=staged_progress_percent(state),
+            )
+
+            op = _read_stage_frame(staged_paths()["operation"])
+            diag_frames = [
+                _read_stage_frame(staged_paths()["diag_operation"])
+            ]
+
+            commercial_frames = []
+            for index, _sheet in enumerate(state.get("commercial_sheets", [])):
+                commercial_frames.append(
+                    _read_stage_frame(
+                        STAGE_DIR / f"commercial_{index:03d}.parquet"
+                    )
+                )
+                diag_frames.append(
+                    _read_stage_frame(
+                        STAGE_DIR / f"diag_commercial_{index:03d}.parquet"
+                    )
+                )
+
+            commercial_frames = [
+                frame for frame in commercial_frames
+                if frame is not None and not frame.empty
+            ]
+            co = (
+                pd.concat(commercial_frames, ignore_index=True, sort=False)
+                if commercial_frames
+                else pd.DataFrame()
+            )
+            co = normalize_commercial_df(co)
+
+            diag_frames = [
+                frame for frame in diag_frames
+                if frame is not None and not frame.empty
+            ]
+            diag = (
+                pd.concat(diag_frames, ignore_index=True, sort=False)
+                if diag_frames
+                else pd.DataFrame()
+            )
+
+            if op is not None and not op.empty and "Fecha" in op.columns:
+                fechas_op = pd.to_datetime(op["Fecha"], errors="coerce").dropna()
+                if not fechas_op.empty:
+                    diag_fecha = pd.DataFrame([{
+                        "Hoja": "VALIDACIÓN FECHAS OPERACIÓN",
+                        "Tipo": "Control",
+                        "Estado": "OK",
+                        "Filas válidas": len(fechas_op),
+                        "Fecha mínima": fechas_op.min().strftime("%Y-%m-%d"),
+                        "Fecha máxima": fechas_op.max().strftime("%Y-%m-%d"),
+                    }])
+                    diag = pd.concat(
+                        [diag_fecha, diag],
+                        ignore_index=True,
+                        sort=False,
+                    )
+
+            write_cache(op, co, diag)
+            del op, co, diag, commercial_frames, diag_frames
+            gc.collect()
+
+            state["completed_steps"] = state.get("total_steps", 1)
+            state["step"] = "complete"
+            state["status"] = "complete"
+            state["message"] = "Archivo procesado correctamente."
+            PROCESS_LOG_FILE.unlink(missing_ok=True)
+
+        elif current_step == "complete":
+            state["status"] = "complete"
+            state["message"] = "La información ya está disponible."
+
+        else:
+            raise RuntimeError(f"Etapa desconocida: {current_step}")
+
+        if state.get("status") != "complete":
+            state["status"] = "ready"
+
+        write_staged_state(state)
+        write_process_status(
+            state=state["status"],
+            message=state["message"],
+            progress=staged_progress_percent(state),
+        )
+        return state
+
+    except Exception as exc:
+        error_text = (
+            f"Etapa: {current_step}\n"
+            f"Tipo: {type(exc).__name__}\n"
+            f"Detalle: {exc}\n\n"
+            f"{traceback.format_exc()}"
+        )
+        PROCESS_LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
+        PROCESS_LOG_FILE.write_text(error_text, encoding="utf-8")
+        state["status"] = "error"
+        state["last_error"] = str(exc)
+        state["message"] = (
+            f"Falló la etapa {current_step}. "
+            "Puedes volver a intentar sin perder las etapas terminadas."
+        )
+        write_staged_state(state)
+        write_process_status(
+            state="error",
+            message=state["message"],
+            progress=staged_progress_percent(state),
+            error_detail=str(exc),
+        )
+        raise
+    finally:
+        release_process_lock()
+        gc.collect()
+
+
+def process_excel(file_path):
+    """
+    Compatibilidad con botones antiguos.
+
+    Cada llamada procesa una sola etapa y conserva lo ya terminado.
+    """
+    return process_next_stage(file_path)
 
 # ============================================================
 # PROCESAMIENTO DEL EXCEL
@@ -5169,7 +5590,7 @@ def _excel_fast_engine_available():
         return False
 
 
-def read_monthly_dev(file_path, progress=None):
+def read_monthly_dev(file_path, progress=None, only_sheets=None):
     """
     Lector comercial acelerado.
 
@@ -5195,6 +5616,13 @@ def read_monthly_dev(file_path, progress=None):
                 norm_text(sheet),
             )
         ]
+
+        if only_sheets:
+            requested = {norm_text(sheet) for sheet in only_sheets}
+            monthly_sheets = [
+                sheet for sheet in monthly_sheets
+                if norm_text(sheet) in requested
+            ]
 
         all_frames = []
         diag_rows = []
@@ -5435,139 +5863,6 @@ def read_monthly_dev(file_path, progress=None):
     except Exception:
         # El respaldo mantiene compatibilidad con cualquier estructura especial.
         return _read_monthly_dev_openpyxl(file_path, progress=progress)
-
-def process_excel(file_path):
-    """Procesa el Excel o reutiliza el caché cuando el archivo no cambió."""
-    if cache_valid():
-        write_process_status(
-            state="complete",
-            message="Se reutilizó la información ya procesada.",
-            progress=100,
-        )
-        st.info("El archivo no cambió. Se reutilizó la información ya procesada.")
-        return read_cache(ACTIVE_FILE.stat().st_mtime)
-
-    if not acquire_process_lock():
-        raise RuntimeError(
-            "Ya existe un procesamiento en curso. Espera a que termine "
-            "o reinicia la aplicación si el proceso anterior fue interrumpido."
-        )
-
-    write_process_status(
-        state="running",
-        message="Preparando archivo...",
-        progress=1,
-    )
-    progress = st.progress(0, text="Preparando archivo...")
-    stage = "inicio"
-
-    try:
-        stage = "lectura de operación"
-        write_process_status(
-            state="running",
-            message="Leyendo hojas operativas...",
-            progress=8,
-        )
-        progress.progress(
-            0.08,
-            text="Leyendo Resultados productividad y Resultados productividad 2...",
-        )
-        op, diag_op = read_operation_sheet(file_path)
-        gc.collect()
-
-        stage = "plantilla de colaboradores"
-        write_process_status(
-            state="running",
-            message="Leyendo plantilla de colaboradores...",
-            progress=24,
-        )
-        progress.progress(0.24, text="Leyendo plantilla de colaboradores...")
-        plantilla = read_plantilla(file_path)
-        op = apply_nombre_map(op, plantilla)
-        del plantilla
-        gc.collect()
-
-        stage = "información comercial"
-        write_process_status(
-            state="running",
-            message="Leyendo hojas comerciales...",
-            progress=36,
-        )
-        progress.progress(0.36, text="Leyendo hojas comerciales...")
-        co, diag_co = read_monthly_dev(file_path, progress=progress)
-        gc.collect()
-
-        stage = "normalización"
-        write_process_status(
-            state="running",
-            message="Normalizando información...",
-            progress=88,
-        )
-        progress.progress(0.88, text="Normalizando información...")
-        op = normalize_operation_df(op)
-        co = normalize_commercial_df(co)
-
-        diag = pd.concat([diag_op, diag_co], ignore_index=True, sort=False)
-        del diag_op, diag_co
-        gc.collect()
-
-        if op is not None and not op.empty and "Fecha" in op.columns:
-            fechas_op = pd.to_datetime(op["Fecha"], errors="coerce").dropna()
-            if not fechas_op.empty:
-                diag_fecha = pd.DataFrame([{
-                    "Hoja": "VALIDACIÓN FECHAS OPERACIÓN",
-                    "Tipo": "Control",
-                    "Estado": "OK",
-                    "Filas válidas": len(fechas_op),
-                    "Fecha mínima": fechas_op.min().strftime("%Y-%m-%d"),
-                    "Fecha máxima": fechas_op.max().strftime("%Y-%m-%d"),
-                }])
-                diag = pd.concat([diag_fecha, diag], ignore_index=True, sort=False)
-
-        stage = "guardado de caché"
-        write_process_status(
-            state="running",
-            message="Guardando caché estable...",
-            progress=95,
-        )
-        progress.progress(0.95, text="Guardando caché estable...")
-        write_cache(op, co, diag)
-
-        error_file = PROCESS_LOG_FILE
-        error_file.unlink(missing_ok=True)
-
-        progress.progress(1.0, text="Archivo procesado correctamente.")
-        write_process_status(
-            state="complete",
-            message="Archivo procesado correctamente.",
-            progress=100,
-        )
-        release_process_lock()
-        return op, co, diag
-
-    except Exception as exc:
-        error_text = (
-            f"Etapa: {stage}\n"
-            f"Tipo: {type(exc).__name__}\n"
-            f"Detalle: {exc}\n\n"
-            f"{traceback.format_exc()}"
-        )
-        error_file = PROCESS_LOG_FILE
-        error_file.parent.mkdir(parents=True, exist_ok=True)
-        error_file.write_text(error_text, encoding="utf-8")
-        write_process_status(
-            state="error",
-            message=f"Falló el procesamiento durante: {stage}",
-            progress=0,
-            error_type=type(exc).__name__,
-            error_detail=str(exc),
-        )
-        release_process_lock()
-        progress.empty()
-        raise RuntimeError(
-            f"Falló el procesamiento durante: {stage}. "
-            "El detalle quedó guardado en ultimo_error_proceso.txt."
-        ) from exc
 
 
 def split_operation(op):
@@ -8972,15 +9267,18 @@ def page_configuracion_metas_v17():
 
 
 def page_carga_excel_v17():
-    """Carga y procesamiento accesibles desde la navegación principal."""
+    """Carga y procesamiento reanudable para archivos Excel grandes."""
     _v17_title(
         "Carga de Excel",
-        "Selecciona, guarda y procesa la fuente operativa de Cambios y Muertos.",
+        "Procesa el archivo por etapas para evitar reinicios por memoria.",
     )
 
     user = st.session_state.get("user", {})
     if not is_admin(user):
-        st.error("Esta función está disponible únicamente para Administrador o Propietario.")
+        st.error(
+            "Esta función está disponible únicamente para "
+            "Administrador o Propietario."
+        )
         return
 
     meta = {}
@@ -8989,6 +9287,8 @@ def page_carga_excel_v17():
             meta = json.loads(META_FILE.read_text(encoding="utf-8"))
         except Exception:
             meta = {}
+
+    stage_state = read_staged_state()
 
     status_col, upload_col = st.columns([3.0, 7.0], gap="large")
 
@@ -9003,42 +9303,56 @@ def page_carga_excel_v17():
             st.markdown(
                 f"**Nombre:** {meta.get('nombre_original', ACTIVE_FILE.name)}"
             )
-            try:
-                st.caption(
-                    f"Tamaño: {ACTIVE_FILE.stat().st_size / (1024 * 1024):,.1f} MB"
-                )
-            except Exception:
-                pass
+            st.caption(
+                f"Tamaño: {ACTIVE_FILE.stat().st_size / (1024 * 1024):,.1f} MB"
+            )
 
             if cache_valid():
                 st.success("Procesado y disponible")
             else:
-                st.warning("Pendiente de procesar")
+                st.warning("Procesamiento pendiente o incompleto")
         else:
             st.info("Todavía no hay un archivo cargado.")
 
+        if ACTIVE_FILE.exists() and not cache_valid():
+            progress_value = staged_progress_percent(stage_state)
+            st.progress(
+                progress_value / 100,
+                text=f"Avance acumulado: {progress_value}%",
+            )
+            st.markdown(f"**Etapa actual:** {stage_state.get('step', 'initialize')}")
+            st.caption(stage_state.get("message", ""))
+
+            sheets = stage_state.get("commercial_sheets", [])
+            index = int(stage_state.get("commercial_index", 0))
+            if sheets:
+                st.caption(
+                    f"Hojas comerciales terminadas: {index} de {len(sheets)}"
+                )
+
         st.markdown(
             """
-            **Flujo recomendado**
+            **Nuevo flujo por etapas**
 
-            1. Seleccionar el archivo Excel.  
-            2. Guardar el archivo.  
-            3. Procesar el archivo activo.  
-            4. Consultar los indicadores.
+            1. Guarda el archivo una sola vez.  
+            2. Presiona **Procesar siguiente etapa**.  
+            3. Cada ejecución procesa una hoja o bloque y libera memoria.  
+            4. Si Streamlit se reinicia, continúa desde la última etapa guardada.  
+            5. La última etapa consolida los reportes.
             """
         )
 
     with upload_col:
         st.markdown(
-            '<div class="admin-section-title">Seleccionar y procesar Excel</div>',
+            '<div class="admin-section-title">Archivo y procesamiento por etapas</div>',
             unsafe_allow_html=True,
         )
 
         uploaded = st.file_uploader(
             "Selecciona un archivo Excel",
             type=["xlsx"],
-            key="v202_excel_uploader",
-            help="El archivo seleccionado sustituirá la fuente activa al guardarlo.",
+            key="v20x2_excel_uploader",
+            help="Al guardar un archivo diferente se reinician las etapas.",
         )
 
         if uploaded is not None:
@@ -9052,19 +9366,20 @@ def page_carga_excel_v17():
         with save_col:
             if st.button(
                 "1. Guardar archivo",
-                key="v202_save_excel",
+                key="v20x2_save_excel",
                 type="primary",
                 width="stretch",
                 disabled=uploaded is None or not can_write(),
             ):
                 try:
-                    with st.spinner("Guardando archivo..."):
-                        save_uploaded_file(uploaded)
+                    result = save_uploaded_file(uploaded)
+                    if not result.get("same_content", False):
+                        clear_staged_processing()
                     append_file_history(
                         "Carga",
                         uploaded.name,
                         "Guardado",
-                        "Archivo guardado y pendiente de procesamiento",
+                        "Archivo guardado para procesamiento por etapas",
                     )
                     st.success("Archivo guardado correctamente.")
                     st.rerun()
@@ -9073,72 +9388,71 @@ def page_carga_excel_v17():
                     st.exception(exc)
 
         with process_col:
+            if cache_valid():
+                process_label = "Información procesada"
+            elif stage_state.get("status") == "idle":
+                process_label = "2. Preparar procesamiento"
+            elif stage_state.get("step") == "finalize":
+                process_label = "2. Consolidar información"
+            else:
+                process_label = "2. Procesar siguiente etapa"
+
             if st.button(
-                "2. Procesar archivo activo",
-                key="v202_process_excel",
+                process_label,
+                key="v20x2_process_next",
                 type="primary",
                 width="stretch",
-                disabled=not ACTIVE_FILE.exists() or not can_write(),
+                disabled=(
+                    not ACTIVE_FILE.exists()
+                    or not can_write()
+                    or cache_valid()
+                ),
             ):
-                status_box = st.status(
-                    "Procesando por primera vez. Un archivo de 80 MB puede tardar varios minutos...",
-                    expanded=True,
-                    state="running",
-                )
                 try:
-                    status_box.write(
-                        "Leyendo hojas operativas y comerciales."
-                    )
-                    process_excel(str(ACTIVE_FILE))
-
-                    status_box.write(
-                        "Validando el caché generado."
-                    )
-                    st.cache_data.clear()
-
-                    if not cache_valid():
-                        raise RuntimeError(
-                            "El procesamiento terminó, pero el caché "
-                            "no quedó disponible."
+                    with st.status(
+                        "Ejecutando solamente una etapa...",
+                        expanded=True,
+                    ) as status_box:
+                        previous = read_staged_state()
+                        status_box.write(previous.get("message", "Preparando etapa."))
+                        result = process_next_stage(str(ACTIVE_FILE))
+                        status_box.write(result.get("message", "Etapa terminada."))
+                        status_box.update(
+                            label=(
+                                "Procesamiento completo."
+                                if result.get("status") == "complete"
+                                else "Etapa terminada. Puedes continuar con la siguiente."
+                            ),
+                            state="complete",
+                            expanded=False,
                         )
 
-                    append_file_history(
-                        "Proceso",
-                        meta.get(
-                            "nombre_original",
-                            ACTIVE_FILE.name,
-                        ),
-                        "Procesado",
-                        "Archivo procesado correctamente",
-                    )
-                    status_box.update(
-                        label="Archivo procesado correctamente.",
-                        state="complete",
-                        expanded=False,
-                    )
-                    st.success(
-                        "La información ya está disponible en los reportes."
-                    )
-                    st.session_state["nav_page"] = "Centro Ejecutivo"
+                    if result.get("status") == "complete" and cache_valid():
+                        append_file_history(
+                            "Proceso",
+                            meta.get("nombre_original", ACTIVE_FILE.name),
+                            "Procesado",
+                            "Archivo procesado por etapas correctamente",
+                        )
+                        st.success(
+                            "La información ya está disponible en todos los reportes."
+                        )
+                        st.session_state["nav_page"] = "Centro Ejecutivo"
+                    else:
+                        st.success(
+                            "Esta etapa terminó y quedó guardada. "
+                            "Presiona nuevamente para continuar."
+                        )
                     st.rerun()
 
                 except Exception as exc:
-                    status_box.update(
-                        label="No fue posible procesar el archivo.",
-                        state="error",
-                        expanded=True,
-                    )
-                    error_path = (
-                        CONFIG_DIR
-                        / "ultimo_error_proceso.txt"
-                    )
                     st.error(
-                        "El archivo no quedó procesado. "
-                        "Consulta el detalle mostrado abajo."
+                        "La etapa no terminó, pero las etapas anteriores "
+                        "se conservaron. Puedes volver a intentarlo."
                     )
-                    if error_path.exists():
+                    if PROCESS_LOG_FILE.exists():
                         st.code(
-                            error_path.read_text(
+                            PROCESS_LOG_FILE.read_text(
                                 encoding="utf-8",
                                 errors="replace",
                             )[-6000:],
@@ -9147,16 +9461,36 @@ def page_carga_excel_v17():
                     else:
                         st.exception(exc)
 
+        if ACTIVE_FILE.exists() and not cache_valid():
+            action_col, restart_col = st.columns(2)
+            with action_col:
+                st.caption(
+                    "No cierres la aplicación durante la etapa actual. "
+                    "Al terminar puedes salir y continuar después."
+                )
+            with restart_col:
+                if st.button(
+                    "Reiniciar etapas",
+                    key="v20x2_restart_stages",
+                    width="stretch",
+                    disabled=not can_write(),
+                ):
+                    clear_staged_processing()
+                    clear_process_status()
+                    st.success("Se reinició el avance por etapas.")
+                    st.rerun()
+
         if ACTIVE_FILE.exists():
             st.divider()
             if st.button(
                 "Eliminar archivo activo",
-                key="v202_delete_active",
+                key="v20x2_delete_active",
                 width="stretch",
                 disabled=not can_write(),
             ):
                 file_name = meta.get("nombre_original", ACTIVE_FILE.name)
                 delete_active_file()
+                clear_staged_processing()
                 append_file_history(
                     "Eliminación",
                     file_name,
