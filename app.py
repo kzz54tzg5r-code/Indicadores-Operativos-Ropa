@@ -4074,35 +4074,40 @@ def append_file_history(accion, archivo, estado, detalle=""):
 
 def save_uploaded_file(uploaded):
     """
-    Guarda el archivo sin eliminar el caché cuando el contenido es idéntico.
-
-    Volver a seleccionar el mismo Excel ya procesado deja disponibles los
-    reportes inmediatamente.
+    Guarda el archivo una sola vez y conserva el caché cuando el contenido
+    seleccionado coincide con el archivo activo.
     """
-    uploaded_bytes = uploaded.getbuffer()
+    uploaded_bytes = bytes(uploaded.getbuffer())
     uploaded_hash = hashlib.sha256(uploaded_bytes).hexdigest()
 
-    previous_hash = ""
-    same_content = False
-
-    if ACTIVE_FILE.exists():
+    previous_meta = {}
+    if META_FILE.exists():
         try:
-            previous_hash = _file_sha256(ACTIVE_FILE)
-            same_content = previous_hash == uploaded_hash
+            previous_meta = json.loads(
+                META_FILE.read_text(encoding="utf-8")
+            )
         except Exception:
-            same_content = False
+            previous_meta = {}
+
+    same_content = (
+        ACTIVE_FILE.exists()
+        and previous_meta.get("sha256") == uploaded_hash
+        and ACTIVE_FILE.stat().st_size == len(uploaded_bytes)
+    )
 
     if not same_content:
-        ACTIVE_FILE.write_bytes(uploaded_bytes)
+        temporary_file = ACTIVE_FILE.with_suffix(".xlsx.tmp")
+        temporary_file.write_bytes(uploaded_bytes)
+        temporary_file.replace(ACTIVE_FILE)
         clear_cache_files()
-    elif not ACTIVE_FILE.exists():
-        ACTIVE_FILE.write_bytes(uploaded_bytes)
 
     META_FILE.write_text(
         json.dumps(
             {
                 "nombre_original": uploaded.name,
-                "fecha_carga": datetime.now(MX_TZ).strftime("%Y-%m-%d %H:%M:%S"),
+                "fecha_carga": datetime.now(MX_TZ).strftime(
+                    "%Y-%m-%d %H:%M:%S"
+                ),
                 "mtime": ACTIVE_FILE.stat().st_mtime,
                 "sha256": uploaded_hash,
                 "mismo_contenido": same_content,
@@ -4456,7 +4461,14 @@ def write_cache(op, co, diag):
         json.dumps(
             {
                 "mtime": ACTIVE_FILE.stat().st_mtime,
-                "sha256": _file_sha256(ACTIVE_FILE),
+                "sha256": (
+                    json.loads(META_FILE.read_text(encoding="utf-8")).get(
+                        "sha256",
+                        "",
+                    )
+                    if META_FILE.exists()
+                    else ""
+                ),
                 "data_schema": "ps-operaciones-cache-v3",
                 "version_visual": APP_CACHE_VERSION,
                 "procesado": datetime.now(MX_TZ).strftime("%Y-%m-%d %H:%M:%S"),
@@ -4525,39 +4537,35 @@ def apply_nombre_map(op, plantilla):
 
 
 def read_operation_sheet(file_path):
-    """Lee y une las dos hojas operativas sin eliminar el histórico.
-
-    Fuentes:
-    - Resultados productividad
-    - Resultados productividad 2
-
-    La segunda hoja reconoce:
-    Occurrence, Fecha, Ubicación, Tabla, Nómina, Actividad Realizada,
-    Ingreso al area de acondicionado, Número de piezas, Hora Inicio y Hora Fin.
-    """
+    """Lee las hojas operativas con Calamine y usa OpenPyXL como respaldo."""
+    engine = "calamine"
     try:
-        xls = pd.ExcelFile(file_path, engine="openpyxl")
+        xls = pd.ExcelFile(file_path, engine=engine)
         sheet_names = list(xls.sheet_names)
-    except Exception as exc:
-        return pd.DataFrame(), pd.DataFrame([{
-            "Hoja": "Libro",
-            "Tipo": "Error",
-            "Estado": f"No fue posible abrir el archivo: {exc}",
-        }])
+    except Exception:
+        engine = "openpyxl"
+        try:
+            xls = pd.ExcelFile(file_path, engine=engine)
+            sheet_names = list(xls.sheet_names)
+        except Exception as exc:
+            return pd.DataFrame(), pd.DataFrame([{
+                "Hoja": "Libro",
+                "Tipo": "Error",
+                "Estado": f"No fue posible abrir el archivo: {exc}",
+            }])
 
-    normalized = {norm_text(s): s for s in sheet_names}
+    normalized = {norm_text(sheet): sheet for sheet in sheet_names}
     sources = []
 
-    for wanted, tipo in [
+    for wanted, source_type in [
         ("RESULTADOS PRODUCTIVIDAD", "Histórica"),
         ("RESULTADOS PRODUCTIVIDAD 2", "Nueva"),
     ]:
-        real = normalized.get(wanted)
-        if real:
-            sources.append((tipo, real))
+        real_name = normalized.get(wanted)
+        if real_name:
+            sources.append((source_type, real_name))
 
-    # Alias permitido para pruebas o archivos previos.
-    if not any(tipo == "Nueva" for tipo, _ in sources):
+    if not any(source_type == "Nueva" for source_type, _ in sources):
         alias = normalized.get("RESULTADOS POR CHECKLIST")
         if alias:
             sources.append(("Nueva", alias))
@@ -4570,143 +4578,200 @@ def read_operation_sheet(file_path):
         }])
 
     frames = []
-    diag = []
+    diagnostics = []
 
-    for tipo, sheet in sources:
+    for source_type, sheet_name in sources:
         try:
             df = pd.read_excel(
-                file_path,
-                sheet_name=sheet,
-                engine="openpyxl",
+                xls,
+                sheet_name=sheet_name,
                 header=0,
+                dtype=object,
             )
         except Exception as exc:
-            diag.append({
-                "Hoja": sheet,
-                "Tipo": tipo,
+            diagnostics.append({
+                "Hoja": sheet_name,
+                "Tipo": source_type,
                 "Estado": f"Error de lectura: {exc}",
             })
             continue
 
-        # Limpiar encabezados invisibles o espacios.
-        df.columns = [str(c).strip() for c in df.columns]
+        df.columns = [str(column).strip() for column in df.columns]
 
-        c_occ = find_col(df.columns, ["Occurrence", "Ocurrence", "Ocurrencia", "Folio"])
-        c_fecha = find_col(df.columns, ["Fecha", "Fecha s", "Fecha captura"])
-        c_tienda = find_col(df.columns, ["Tienda", "Ubicación", "Ubicacion", "Sucursal"])
-        c_tabla = find_col(df.columns, ["Tabla"])
-        c_nombre = find_col(df.columns, ["Nombre", "Nómina", "Nomina", "Colaborador", "Usuario"])
-        c_actividad = find_col(df.columns, ["Actividad Realizada", "Actividad"])
-        c_motivo = find_col(df.columns, [
-            "Motivo de ingreso",
-            "Ingreso al area de acondicionado",
-            "Ingreso al área de acondicionado",
-            "Motivo",
-        ])
-        c_piezas = find_col(df.columns, [
-            "Número de piezas", "Numero de piezas",
-            "Número de Piezas", "Numero de Piezas",
-            "Piezas", "Cantidad",
-        ])
+        occurrence_col = find_col(
+            df.columns,
+            ["Occurrence", "Ocurrence", "Ocurrencia", "Folio"],
+        )
+        date_col = find_col(
+            df.columns,
+            ["Fecha", "Fecha s", "Fecha captura"],
+        )
+        store_col = find_col(
+            df.columns,
+            ["Tienda", "Ubicación", "Ubicacion", "Sucursal"],
+        )
+        table_col = find_col(df.columns, ["Tabla"])
+        employee_col = find_col(
+            df.columns,
+            ["Nombre", "Nómina", "Nomina", "Colaborador", "Usuario"],
+        )
+        activity_col = find_col(
+            df.columns,
+            ["Actividad Realizada", "Actividad"],
+        )
+        reason_col = find_col(
+            df.columns,
+            [
+                "Motivo de ingreso",
+                "Ingreso al area de acondicionado",
+                "Ingreso al área de acondicionado",
+                "Motivo",
+            ],
+        )
+        pieces_col = find_col(
+            df.columns,
+            [
+                "Número de piezas",
+                "Numero de piezas",
+                "Número de Piezas",
+                "Numero de Piezas",
+                "Piezas",
+                "Cantidad",
+            ],
+        )
 
         missing = []
-        for label, col in [
-            ("Fecha", c_fecha),
-            ("Tienda/Ubicación", c_tienda),
-            ("Actividad", c_actividad),
-            ("Motivo", c_motivo),
-            ("Número de piezas", c_piezas),
+        for label, column in [
+            ("Fecha", date_col),
+            ("Tienda/Ubicación", store_col),
+            ("Actividad", activity_col),
+            ("Motivo", reason_col),
+            ("Número de piezas", pieces_col),
         ]:
-            if col is None:
+            if column is None:
                 missing.append(label)
 
         if missing:
-            diag.append({
-                "Hoja": sheet,
-                "Tipo": tipo,
+            diagnostics.append({
+                "Hoja": sheet_name,
+                "Tipo": source_type,
                 "Estado": "Faltan columnas: " + ", ".join(missing),
-                "Encabezados encontrados": " | ".join(df.columns.astype(str).tolist()),
+                "Encabezados encontrados": " | ".join(
+                    df.columns.astype(str).tolist()
+                ),
             })
             continue
 
-        op = pd.DataFrame({
-            "Occurrence": df[c_occ].astype(str).str.strip() if c_occ else "",
-            "Fecha": df[c_fecha].map(parse_date),
-            "Tienda": df[c_tienda].map(canon_store),
-            "Tabla": df[c_tabla].astype(str).str.strip() if c_tabla else "",
-            "Nombre": df[c_nombre].astype(str).str.strip() if c_nombre else "",
-            "Actividad": df[c_actividad].astype(str).str.strip(),
-            "Motivo": df[c_motivo].astype(str).str.strip(),
-            "Piezas": df[c_piezas].map(safe_num),
-            "Hoja origen": sheet,
-            "Prioridad fuente": 2 if tipo == "Nueva" else 1,
+        operation = pd.DataFrame({
+            "Occurrence": (
+                df[occurrence_col].astype(str).str.strip()
+                if occurrence_col else ""
+            ),
+            "Fecha": df[date_col].map(parse_date),
+            "Tienda": df[store_col].map(canon_store),
+            "Tabla": (
+                df[table_col].astype(str).str.strip()
+                if table_col else ""
+            ),
+            "Nombre": (
+                df[employee_col].astype(str).str.strip()
+                if employee_col else ""
+            ),
+            "Actividad": df[activity_col].astype(str).str.strip(),
+            "Motivo": df[reason_col].astype(str).str.strip(),
+            "Piezas": pd.to_numeric(
+                df[pieces_col],
+                errors="coerce",
+            ).fillna(0),
+            "Hoja origen": sheet_name,
+            "Prioridad fuente": 2 if source_type == "Nueva" else 1,
         })
 
-        op = op.dropna(subset=["Fecha"])
-        op = op[op["Tienda"].astype(str).str.strip().ne("")]
-        op = op[op["Actividad"].map(norm_text).ne("")]
-        op = op[pd.to_numeric(op["Piezas"], errors="coerce").fillna(0).ge(0)]
+        operation = operation.dropna(subset=["Fecha"])
+        operation = operation[
+            operation["Tienda"].astype(str).str.strip().ne("")
+        ]
+        operation = operation[
+            operation["Actividad"].map(norm_text).ne("")
+        ]
+        operation = operation[
+            pd.to_numeric(
+                operation["Piezas"],
+                errors="coerce",
+            ).fillna(0).ge(0)
+        ]
 
-        # No recortar la hoja histórica: se conserva todo lo anterior.
-        # Tampoco se recorta la hoja nueva; la deduplicación decide qué registro conservar.
-        op["Semana ISO"] = op["Fecha"].dt.isocalendar().week.astype(int)
-        op["Año ISO"] = op["Fecha"].dt.isocalendar().year.astype(int)
-        op["Mes"] = op["Fecha"].dt.to_period("M").astype(str)
+        operation["Semana ISO"] = (
+            operation["Fecha"].dt.isocalendar().week.astype(int)
+        )
+        operation["Año ISO"] = (
+            operation["Fecha"].dt.isocalendar().year.astype(int)
+        )
+        operation["Mes"] = (
+            operation["Fecha"].dt.to_period("M").astype(str)
+        )
 
-        frames.append(op)
-        diag.append({
-            "Hoja": sheet,
-            "Tipo": tipo,
-            "Estado": "OK",
+        frames.append(operation)
+        diagnostics.append({
+            "Hoja": sheet_name,
+            "Tipo": source_type,
+            "Estado": f"OK · motor {engine}",
             "Filas leídas": len(df),
-            "Filas válidas": len(op),
-            "Fecha mínima": op["Fecha"].min().strftime("%Y-%m-%d") if not op.empty else "",
-            "Fecha máxima": op["Fecha"].max().strftime("%Y-%m-%d") if not op.empty else "",
-            "Actividad": c_actividad,
-            "Motivo": c_motivo,
-            "Piezas": c_piezas,
-            "Tienda": c_tienda,
+            "Filas válidas": len(operation),
+            "Fecha mínima": (
+                operation["Fecha"].min().strftime("%Y-%m-%d")
+                if not operation.empty else ""
+            ),
+            "Fecha máxima": (
+                operation["Fecha"].max().strftime("%Y-%m-%d")
+                if not operation.empty else ""
+            ),
+            "Actividad": activity_col,
         })
+
+        del df
 
     if not frames:
-        return pd.DataFrame(), pd.DataFrame(diag)
+        return pd.DataFrame(), pd.DataFrame(diagnostics)
 
     result = pd.concat(frames, ignore_index=True)
 
-    # La nueva hoja tiene prioridad únicamente cuando el registro realmente se repite.
-    result = result.sort_values("Prioridad fuente")
-    dedupe_cols = [
-        "Occurrence", "Fecha", "Tienda", "Actividad", "Motivo", "Piezas", "Nombre"
+    # Priorizar la segunda hoja cuando exista un registro duplicado.
+    duplicate_columns = [
+        column for column in
+        [
+            "Occurrence",
+            "Fecha",
+            "Tienda",
+            "Nombre",
+            "Actividad",
+            "Motivo",
+            "Piezas",
+        ]
+        if column in result.columns
     ]
-    dedupe_cols = [c for c in dedupe_cols if c in result.columns]
-    result = result.drop_duplicates(subset=dedupe_cols, keep="last")
-    result = result.drop(columns=["Prioridad fuente"], errors="ignore")
+    result = result.sort_values("Prioridad fuente")
+    result = result.drop_duplicates(
+        subset=duplicate_columns,
+        keep="last",
+    )
 
-    result = normalize_operation_df(result)
-
-    # Resumen total para que el diagnóstico confirme la unión.
-    diag.insert(0, {
-        "Hoja": "TOTAL OPERACIÓN",
-        "Tipo": "Consolidado",
-        "Estado": "OK",
-        "Filas leídas": "",
-        "Filas válidas": len(result),
-        "Fecha mínima": result["Fecha"].min().strftime("%Y-%m-%d") if not result.empty else "",
-        "Fecha máxima": result["Fecha"].max().strftime("%Y-%m-%d") if not result.empty else "",
-        "Actividad": "",
-        "Motivo": "",
-        "Piezas": f"{pd.to_numeric(result['Piezas'], errors='coerce').fillna(0).sum():,.0f}",
-        "Tienda": f"{result['Tienda'].nunique()} tiendas",
-    })
-
-    return result, pd.DataFrame(diag)
+    return result, pd.DataFrame(diagnostics)
 
 
 def read_plantilla(file_path):
-    try:
-        return pd.read_excel(file_path, sheet_name="Plantilla", engine="openpyxl")
-    except Exception:
-        return pd.DataFrame()
+    """Lee únicamente la hoja Plantilla con el motor más rápido disponible."""
+    for engine in ("calamine", "openpyxl"):
+        try:
+            return pd.read_excel(
+                file_path,
+                sheet_name="Plantilla",
+                engine=engine,
+                dtype=object,
+            )
+        except Exception:
+            continue
+    return pd.DataFrame()
 
 
 def _read_monthly_dev_openpyxl(file_path, progress=None):
@@ -9016,7 +9081,7 @@ def page_carga_excel_v17():
                 disabled=not ACTIVE_FILE.exists() or not can_write(),
             ):
                 status_box = st.status(
-                    "Procesando archivo activo...",
+                    "Procesando por primera vez. Un archivo de 80 MB puede tardar varios minutos...",
                     expanded=True,
                     state="running",
                 )
