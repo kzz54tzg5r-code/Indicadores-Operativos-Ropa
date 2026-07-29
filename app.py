@@ -7669,11 +7669,31 @@ def nav_bar():
         current = "Centro Ejecutivo"
         st.session_state["nav_page"] = current
 
+    # Los callbacks se ejecutan antes de que Streamlit vuelva a ejecutar el script.
+    # Después de una actualización o reinicio, la clave del widget puede no existir
+    # todavía; por eso nunca debe accederse con corchetes directamente.
     def _desktop_changed():
-        st.session_state["nav_page"] = st.session_state["v20_sidebar_navigation"]
+        selected = st.session_state.get(
+            "v20_sidebar_navigation",
+            st.session_state.get("nav_page", "Centro Ejecutivo"),
+        )
+        if selected in pages:
+            st.session_state["nav_page"] = selected
 
     def _mobile_changed():
-        st.session_state["nav_page"] = st.session_state["v20_mobile_navigation"]
+        selected = st.session_state.get(
+            "v20_mobile_navigation",
+            st.session_state.get("nav_page", "Centro Ejecutivo"),
+        )
+        if selected in pages:
+            st.session_state["nav_page"] = selected
+
+    # Inicialización defensiva para sesiones nuevas, sesiones recordadas y
+    # despliegues que conservan un estado de widgets de una versión anterior.
+    if st.session_state.get("v20_sidebar_navigation") not in pages:
+        st.session_state["v20_sidebar_navigation"] = current
+    if st.session_state.get("v20_mobile_navigation") not in pages:
+        st.session_state["v20_mobile_navigation"] = current
 
     with st.sidebar:
         st.markdown(
