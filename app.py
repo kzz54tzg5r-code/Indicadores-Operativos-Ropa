@@ -4490,6 +4490,19 @@ def write_cache(op, co, diag):
 
 
 @st.cache_data(show_spinner=False)
+def read_diag_cache(mtime):
+    """Carga solo el diagnóstico, sin abrir operación ni comercial."""
+    paths = cache_paths()
+    parquet_path = paths["diag"]
+    pickle_path = parquet_path.with_suffix(".pkl")
+    if parquet_path.exists():
+        return pd.read_parquet(parquet_path)
+    if pickle_path.exists():
+        return pd.read_pickle(pickle_path)
+    return pd.DataFrame()
+
+
+@st.cache_data(show_spinner=False)
 def read_cache(mtime):
     paths = cache_paths()
 
@@ -9071,21 +9084,42 @@ ADMIN_WITHOUT_DATA_PAGES = {
     "Perfil de Usuario",
 }
 
-if ACTIVE_FILE.exists() and cache_valid():
-    op_all, co_all, diag_df = read_cache(ACTIVE_FILE.stat().st_mtime)
+# Carga diferida:
+# Las páginas administrativas no necesitan abrir los Parquet operativos ni
+# comerciales. Esto evita cargar toda la base al entrar a Carga de Excel,
+# Administración, Configuración, Perfil o Centro de Control.
+DATA_PAGES = {
+    "Centro Ejecutivo",
+    "Operación Diaria",
+    "Reporte Semanal",
+    "Reporte Mensual",
+    "Productividad",
+    "Recuperación",
+    "Recorridos",
+    "Reportes",
+    "Detalle por Tienda",
+    "Detalle por Colaborador",
+    "Alertas Inteligentes",
+    "Inteligencia Operativa",
+}
 
-    # Seguridad por alcance: todos los módulos y exportaciones reciben solamente
-    # la información autorizada para el usuario autenticado.
-    op_all = apply_user_scope(op_all)
-    co_all = apply_user_scope(co_all)
-else:
-    # Las páginas administrativas deben poder abrirse aunque todavía no exista
-    # un archivo, precisamente para permitir cargarlo y procesarlo.
-    op_all = pd.DataFrame()
-    co_all = pd.DataFrame()
-    diag_df = pd.DataFrame()
+op_all = pd.DataFrame()
+co_all = pd.DataFrame()
+diag_df = pd.DataFrame()
 
-    if page not in ADMIN_WITHOUT_DATA_PAGES:
+needs_data = page in DATA_PAGES
+
+if needs_data:
+    if ACTIVE_FILE.exists() and cache_valid():
+        with st.spinner("Cargando únicamente la información necesaria..."):
+            op_all, co_all, diag_df = read_cache(
+                ACTIVE_FILE.stat().st_mtime
+            )
+
+            # Seguridad por alcance.
+            op_all = apply_user_scope(op_all)
+            co_all = apply_user_scope(co_all)
+    else:
         if not ACTIVE_FILE.exists():
             st.warning(
                 "No hay un archivo activo. Abre **Carga de Excel** para seleccionar, "
@@ -9094,8 +9128,12 @@ else:
         else:
             st.warning(
                 "El archivo está guardado, pero todavía no está procesado. "
-                "Abre **Carga de Excel** y presiona **Procesar archivo activo**."
+                "Abre **Carga de Excel** y continúa con el procesamiento por etapas."
             )
+
+elif page == "Diagnóstico del Archivo":
+    if ACTIVE_FILE.exists() and cache_valid():
+        diag_df = read_diag_cache(ACTIVE_FILE.stat().st_mtime)
 
 _system = get_system_status()
 if _system["status"] in {"MAINTENANCE", "SUSPENDED"} and not is_owner():
