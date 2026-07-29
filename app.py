@@ -4633,32 +4633,111 @@ def staged_progress_percent(state):
 
 
 def _append_parquet_files(paths, output_path):
-    """Combina Parquet secuencialmente sin cargar todos los DataFrames."""
+    """Combina Parquet por lotes usando un esquema común y estable.
+
+    Algunas hojas guardan ``Piezas`` como entero y otras como decimal. PyArrow
+    exige que todos los lotes escritos en un mismo archivo tengan exactamente
+    el mismo esquema. Esta función inspecciona primero los esquemas parciales,
+    promueve tipos numéricos incompatibles a ``float64`` y después escribe cada
+    lote sin cargar los DataFrames completos en memoria.
+    """
+    import pyarrow as pa
     import pyarrow.parquet as pq
-    writer = None
+
+    valid_paths = [Path(path) for path in paths if Path(path).exists()]
     tmp = output_path.with_suffix(output_path.suffix + ".tmp")
+    writer = None
+
     try:
-        for path in paths:
-            if not path.exists():
-                continue
-            parquet = pq.ParquetFile(path)
-            for batch in parquet.iter_batches(batch_size=50000):
-                table = __import__('pyarrow').Table.from_batches([batch])
-                if writer is None:
-                    writer = pq.ParquetWriter(tmp, table.schema, compression="snappy")
-                writer.write_table(table)
-                del table, batch
-                gc.collect()
-        if writer is not None:
-            writer.close(); writer = None
-            os.replace(tmp, output_path)
-        else:
+        if not valid_paths:
             pd.DataFrame().to_parquet(tmp, index=False)
             os.replace(tmp, output_path)
+            return
+
+        schemas = [pq.ParquetFile(path).schema_arrow.remove_metadata() for path in valid_paths]
+
+        # Mantener el orden de columnas del primer archivo y agregar cualquier
+        # columna adicional que aparezca posteriormente.
+        column_order = []
+        for schema in schemas:
+            for name in schema.names:
+                if name not in column_order:
+                    column_order.append(name)
+
+        def promoted_type(name):
+            types = []
+            for schema in schemas:
+                index = schema.get_field_index(name)
+                if index >= 0:
+                    types.append(schema.field(index).type)
+
+            if not types:
+                return pa.null()
+            if all(item.equals(types[0]) for item in types):
+                return types[0]
+            if any(pa.types.is_floating(item) for item in types) and all(
+                pa.types.is_integer(item) or pa.types.is_floating(item)
+                for item in types
+            ):
+                return pa.float64()
+            if all(pa.types.is_integer(item) for item in types):
+                return pa.int64()
+            if all(pa.types.is_string(item) or pa.types.is_large_string(item) for item in types):
+                return pa.large_string()
+            if all(pa.types.is_timestamp(item) for item in types):
+                return pa.timestamp("us")
+            # Para mezclas inesperadas se conserva la información como texto.
+            return pa.large_string()
+
+        target_schema = pa.schema([
+            pa.field(name, promoted_type(name), nullable=True)
+            for name in column_order
+        ])
+
+        writer = pq.ParquetWriter(
+            tmp,
+            target_schema,
+            compression="snappy",
+            use_dictionary=True,
+        )
+
+        for path in valid_paths:
+            parquet = pq.ParquetFile(path)
+            for batch in parquet.iter_batches(batch_size=25000):
+                table = pa.Table.from_batches([batch]).remove_column(0) if False else pa.Table.from_batches([batch])
+
+                arrays = []
+                for field in target_schema:
+                    if field.name in table.column_names:
+                        column = table[field.name]
+                        try:
+                            column = column.cast(field.type, safe=False)
+                        except Exception:
+                            # Último respaldo para valores incompatibles.
+                            column = column.cast(pa.large_string(), safe=False)
+                            if not field.type.equals(pa.large_string()):
+                                column = column.cast(field.type, safe=False)
+                    else:
+                        column = pa.nulls(table.num_rows, type=field.type)
+                    arrays.append(column)
+
+                normalized = pa.Table.from_arrays(
+                    arrays,
+                    schema=target_schema,
+                )
+                writer.write_table(normalized)
+                del normalized, arrays, table, batch
+                gc.collect()
+
+        writer.close()
+        writer = None
+        os.replace(tmp, output_path)
+
     finally:
         if writer is not None:
             writer.close()
         tmp.unlink(missing_ok=True)
+
 
 
 def _write_final_cache_meta():
