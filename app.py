@@ -4510,416 +4510,265 @@ def read_cache(mtime):
     return op, co, diag
 
 # ============================================================
-# PROCESAMIENTO POR ETAPAS — ARCHIVOS GRANDES
+# PROCESAMIENTO LOW MEMORY — UNA HOJA POR EJECUCIÓN
 # ============================================================
 STAGE_DIR = CACHE_DIR / "staged_processing"
 STAGE_STATE_FILE = CONFIG_DIR / "staged_processing.json"
 
 
-def staged_paths():
-    return {
-        "operation": STAGE_DIR / "operation.parquet",
-        "diag_operation": STAGE_DIR / "diag_operation.parquet",
-        "state": STAGE_STATE_FILE,
-    }
+def _stage_path(prefix, index):
+    return STAGE_DIR / f"{prefix}_{index:03d}.parquet"
 
 
 def _write_stage_frame(path, frame):
     path.parent.mkdir(parents=True, exist_ok=True)
     frame = frame if frame is not None else pd.DataFrame()
     temp = path.with_suffix(path.suffix + ".tmp")
-    fallback = path.with_suffix(".pkl")
-    fallback_temp = fallback.with_suffix(".pkl.tmp")
-    try:
-        frame.to_parquet(temp, index=False)
-        os.replace(temp, path)
-        fallback.unlink(missing_ok=True)
-        fallback_temp.unlink(missing_ok=True)
-    except Exception:
-        temp.unlink(missing_ok=True)
-        frame.to_pickle(fallback_temp)
-        os.replace(fallback_temp, fallback)
-        path.unlink(missing_ok=True)
-
-
-def _read_stage_frame(path):
-    fallback = path.with_suffix(".pkl")
-    if path.exists():
-        return pd.read_parquet(path)
-    if fallback.exists():
-        return pd.read_pickle(fallback)
-    return pd.DataFrame()
+    frame.to_parquet(temp, index=False)
+    os.replace(temp, path)
 
 
 def clear_staged_processing():
-    try:
-        shutil.rmtree(STAGE_DIR, ignore_errors=True)
-    except Exception:
-        pass
-    try:
-        STAGE_STATE_FILE.unlink(missing_ok=True)
-    except Exception:
-        pass
+    shutil.rmtree(STAGE_DIR, ignore_errors=True)
+    STAGE_STATE_FILE.unlink(missing_ok=True)
 
 
-def _commercial_sheet_names(file_path):
+def _sheet_names(file_path):
     for engine in ("calamine", "openpyxl"):
         try:
-            xls = pd.ExcelFile(file_path, engine=engine)
-            return [
-                sheet for sheet in xls.sheet_names
-                if norm_text(sheet) not in {
-                    "RESULTADOS PRODUCTIVIDAD",
-                    "RESULTADOS PRODUCTIVIDAD 2",
-                    "RESULTADOS POR CHECKLIST",
-                    "PLANTILLA",
-                }
-                and re.search(
-                    r"(ABRIL|MAYO|JUNIO|JULIO|AGOSTO|SEPT|OCT|NOV|DIC|ENERO|FEBR|MARZO|26|25)",
-                    norm_text(sheet),
-                )
-            ]
+            with pd.ExcelFile(file_path, engine=engine) as xls:
+                return list(xls.sheet_names)
         except Exception:
             continue
     raise RuntimeError("No fue posible obtener la lista de hojas del Excel.")
 
 
+def _operation_sheet_names(file_path):
+    names = _sheet_names(file_path)
+    normalized = {norm_text(name): name for name in names}
+    result = []
+    for wanted in ("RESULTADOS PRODUCTIVIDAD", "RESULTADOS PRODUCTIVIDAD 2"):
+        if wanted in normalized:
+            result.append(normalized[wanted])
+    if len(result) < 2 and "RESULTADOS POR CHECKLIST" in normalized:
+        result.append(normalized["RESULTADOS POR CHECKLIST"])
+    return result
+
+
+def _commercial_sheet_names(file_path):
+    return [
+        sheet for sheet in _sheet_names(file_path)
+        if norm_text(sheet) not in {
+            "RESULTADOS PRODUCTIVIDAD", "RESULTADOS PRODUCTIVIDAD 2",
+            "RESULTADOS POR CHECKLIST", "PLANTILLA",
+        }
+        and re.search(
+            r"(ABRIL|MAYO|JUNIO|JULIO|AGOSTO|SEPT|OCT|NOV|DIC|ENERO|FEBR|MARZO|26|25)",
+            norm_text(sheet),
+        )
+    ]
+
+
 def _active_file_identity():
     if not ACTIVE_FILE.exists():
         return {}
+    stat = ACTIVE_FILE.stat()
     meta = {}
     if META_FILE.exists():
         try:
             meta = json.loads(META_FILE.read_text(encoding="utf-8"))
         except Exception:
-            meta = {}
-    stat = ACTIVE_FILE.stat()
-    return {
-        "mtime": float(stat.st_mtime),
-        "size": int(stat.st_size),
-        "sha256": str(meta.get("sha256", "")),
-    }
+            pass
+    return {"mtime": float(stat.st_mtime), "size": int(stat.st_size), "sha256": str(meta.get("sha256", ""))}
 
 
 def read_staged_state():
     default = {
-        "status": "idle",
-        "step": "initialize",
-        "commercial_sheets": [],
-        "commercial_index": 0,
-        "completed_steps": 0,
-        "total_steps": 1,
-        "message": "Listo para iniciar.",
-        "file_identity": {},
-        "last_error": "",
+        "status": "idle", "step": "initialize",
+        "operation_sheets": [], "operation_index": 0,
+        "commercial_sheets": [], "commercial_index": 0,
+        "completed_steps": 0, "total_steps": 1,
+        "message": "Listo para iniciar.", "file_identity": {}, "last_error": "",
     }
     try:
-        if not STAGE_STATE_FILE.exists():
-            return default
-        payload = json.loads(STAGE_STATE_FILE.read_text(encoding="utf-8"))
-        if not isinstance(payload, dict):
-            return default
-        return {**default, **payload}
+        if STAGE_STATE_FILE.exists():
+            data = json.loads(STAGE_STATE_FILE.read_text(encoding="utf-8"))
+            if isinstance(data, dict):
+                return {**default, **data}
     except Exception:
-        return default
+        pass
+    return default
 
 
 def write_staged_state(state):
     STAGE_STATE_FILE.parent.mkdir(parents=True, exist_ok=True)
     state = dict(state)
     state["updated_at"] = datetime.now(MX_TZ).isoformat()
-    temp = STAGE_STATE_FILE.with_suffix(".json.tmp")
-    temp.write_text(
-        json.dumps(state, ensure_ascii=False, indent=2),
-        encoding="utf-8",
-    )
-    os.replace(temp, STAGE_STATE_FILE)
+    tmp = STAGE_STATE_FILE.with_suffix(".json.tmp")
+    tmp.write_text(json.dumps(state, ensure_ascii=False, indent=2), encoding="utf-8")
+    os.replace(tmp, STAGE_STATE_FILE)
     return state
 
 
 def initialize_staged_processing(file_path):
     clear_staged_processing()
     STAGE_DIR.mkdir(parents=True, exist_ok=True)
+    operation_sheets = _operation_sheet_names(file_path)
     commercial_sheets = _commercial_sheet_names(file_path)
+    total = len(operation_sheets) + len(commercial_sheets) + 1
     state = {
-        "status": "ready",
-        "step": "operation",
-        "commercial_sheets": commercial_sheets,
-        "commercial_index": 0,
-        "completed_steps": 0,
-        # Operación + cada hoja comercial + consolidación final.
-        "total_steps": 2 + len(commercial_sheets),
-        "message": "Preparado para procesar las hojas operativas.",
-        "file_identity": _active_file_identity(),
-        "last_error": "",
+        "status": "ready", "step": "operation" if operation_sheets else "commercial",
+        "operation_sheets": operation_sheets, "operation_index": 0,
+        "commercial_sheets": commercial_sheets, "commercial_index": 0,
+        "completed_steps": 0, "total_steps": max(1, total),
+        "message": "Preparado. Cada clic procesará únicamente una hoja.",
+        "file_identity": _active_file_identity(), "last_error": "",
     }
     write_staged_state(state)
-    write_process_status(
-        state="ready",
-        message=state["message"],
-        progress=0,
-    )
     return state
 
 
-def _staged_state_matches_active_file(state):
-    return state.get("file_identity", {}) == _active_file_identity()
-
-
 def staged_progress_percent(state):
-    total = max(1, int(state.get("total_steps", 1)))
-    completed = max(0, int(state.get("completed_steps", 0)))
-    return min(100, round(completed / total * 100))
+    return min(100, round(int(state.get("completed_steps", 0)) / max(1, int(state.get("total_steps", 1))) * 100))
+
+
+def _append_parquet_files(paths, output_path):
+    """Combina Parquet secuencialmente sin cargar todos los DataFrames."""
+    import pyarrow.parquet as pq
+    writer = None
+    tmp = output_path.with_suffix(output_path.suffix + ".tmp")
+    try:
+        for path in paths:
+            if not path.exists():
+                continue
+            parquet = pq.ParquetFile(path)
+            for batch in parquet.iter_batches(batch_size=50000):
+                table = __import__('pyarrow').Table.from_batches([batch])
+                if writer is None:
+                    writer = pq.ParquetWriter(tmp, table.schema, compression="snappy")
+                writer.write_table(table)
+                del table, batch
+                gc.collect()
+        if writer is not None:
+            writer.close(); writer = None
+            os.replace(tmp, output_path)
+        else:
+            pd.DataFrame().to_parquet(tmp, index=False)
+            os.replace(tmp, output_path)
+    finally:
+        if writer is not None:
+            writer.close()
+        tmp.unlink(missing_ok=True)
+
+
+def _write_final_cache_meta():
+    paths = cache_paths()
+    meta = {}
+    if META_FILE.exists():
+        try: meta = json.loads(META_FILE.read_text(encoding="utf-8"))
+        except Exception: pass
+    temp = paths["meta"].with_suffix(".json.tmp")
+    temp.write_text(json.dumps({
+        "mtime": ACTIVE_FILE.stat().st_mtime,
+        "sha256": meta.get("sha256", ""),
+        "data_schema": "ps-operaciones-cache-low-memory-v1",
+        "version_visual": APP_CACHE_VERSION,
+        "procesado": datetime.now(MX_TZ).strftime("%Y-%m-%d %H:%M:%S"),
+    }, ensure_ascii=False, indent=2), encoding="utf-8")
+    os.replace(temp, paths["meta"])
 
 
 def process_next_stage(file_path):
-    """
-    Procesa solamente una etapa por ejecución.
-
-    De esta forma Streamlit no mantiene el libro completo y todos los
-    DataFrames simultáneamente en memoria.
-    """
     if cache_valid():
         state = read_staged_state()
-        state.update({
-            "status": "complete",
-            "step": "complete",
-            "completed_steps": state.get("total_steps", 1),
-            "message": "La información ya está procesada y disponible.",
-            "file_identity": _active_file_identity(),
-            "last_error": "",
-        })
-        write_staged_state(state)
-        return state
+        state.update({"status":"complete","step":"complete","completed_steps":state.get("total_steps",1),"message":"Información disponible."})
+        return write_staged_state(state)
 
     state = read_staged_state()
-    if (
-        state.get("status") == "idle"
-        or not _staged_state_matches_active_file(state)
-    ):
+    if state.get("status") == "idle" or state.get("file_identity") != _active_file_identity():
         return initialize_staged_processing(file_path)
-
     if not acquire_process_lock():
-        raise RuntimeError(
-            "Existe otra etapa en ejecución. Espera unos segundos y vuelve a intentarlo."
-        )
+        raise RuntimeError("Ya existe una etapa en ejecución.")
 
-    current_step = state.get("step", "operation")
     try:
         state["status"] = "running"
-        state["last_error"] = ""
+        step = state.get("step")
 
-        if current_step == "operation":
-            state["message"] = (
-                "Procesando Resultados productividad, "
-                "Resultados productividad 2 y Plantilla."
-            )
-            write_staged_state(state)
-            write_process_status(
-                state="running",
-                message=state["message"],
-                progress=staged_progress_percent(state),
-            )
-
-            op, diag_op = read_operation_sheet(file_path)
-            plantilla = read_plantilla(file_path)
-            op = apply_nombre_map(op, plantilla)
-            del plantilla
-            op = normalize_operation_df(op)
-
-            _write_stage_frame(staged_paths()["operation"], op)
-            _write_stage_frame(staged_paths()["diag_operation"], diag_op)
-            del op, diag_op
-            gc.collect()
-
-            state["completed_steps"] = 1
-            if state.get("commercial_sheets"):
-                state["step"] = "commercial"
-                state["message"] = (
-                    "Operación terminada. La siguiente etapa procesará "
-                    f"{state['commercial_sheets'][0]}."
-                )
+        if step == "operation":
+            idx = int(state.get("operation_index", 0))
+            sheets = state.get("operation_sheets", [])
+            if idx >= len(sheets):
+                state["step"] = "commercial" if state.get("commercial_sheets") else "finalize"
             else:
-                state["step"] = "finalize"
-                state["message"] = "Operación terminada. Falta consolidar el caché."
-
-        elif current_step == "commercial":
-            sheets = state.get("commercial_sheets", [])
-            index = int(state.get("commercial_index", 0))
-            if index >= len(sheets):
-                state["step"] = "finalize"
-                state["message"] = "Todas las hojas comerciales están listas."
-            else:
-                sheet_name = sheets[index]
-                state["message"] = f"Procesando hoja comercial: {sheet_name}."
+                sheet = sheets[idx]
+                state["message"] = f"Procesando hoja operativa: {sheet}"
                 write_staged_state(state)
-                write_process_status(
-                    state="running",
-                    message=state["message"],
-                    progress=staged_progress_percent(state),
-                )
-
-                co_sheet, diag_sheet = read_monthly_dev(
-                    file_path,
-                    progress=None,
-                    only_sheets=[sheet_name],
-                )
-                co_sheet = normalize_commercial_df(co_sheet)
-
-                safe_index = f"{index:03d}"
-                _write_stage_frame(
-                    STAGE_DIR / f"commercial_{safe_index}.parquet",
-                    co_sheet,
-                )
-                _write_stage_frame(
-                    STAGE_DIR / f"diag_commercial_{safe_index}.parquet",
-                    diag_sheet,
-                )
-                del co_sheet, diag_sheet
+                op, diag = read_operation_sheet(file_path, only_sheets=[sheet])
+                plantilla = read_plantilla(file_path)
+                op = apply_nombre_map(op, plantilla)
+                del plantilla
+                op = normalize_operation_df(op)
+                _write_stage_frame(_stage_path("operation", idx), op)
+                _write_stage_frame(_stage_path("diag_operation", idx), diag)
+                del op, diag
                 gc.collect()
+                state["operation_index"] = idx + 1
+                state["completed_steps"] += 1
+                if state["operation_index"] >= len(sheets):
+                    state["step"] = "commercial" if state.get("commercial_sheets") else "finalize"
+                state["message"] = f"Hoja {sheet} terminada."
 
-                state["commercial_index"] = index + 1
-                state["completed_steps"] = 1 + index + 1
+        elif step == "commercial":
+            idx = int(state.get("commercial_index", 0))
+            sheets = state.get("commercial_sheets", [])
+            if idx >= len(sheets):
+                state["step"] = "finalize"
+            else:
+                sheet = sheets[idx]
+                state["message"] = f"Procesando hoja comercial: {sheet}"
+                write_staged_state(state)
+                co, diag = read_monthly_dev(file_path, progress=None, only_sheets=[sheet])
+                co = normalize_commercial_df(co)
+                _write_stage_frame(_stage_path("commercial", idx), co)
+                _write_stage_frame(_stage_path("diag_commercial", idx), diag)
+                del co, diag
+                gc.collect()
+                state["commercial_index"] = idx + 1
+                state["completed_steps"] += 1
+                if state["commercial_index"] >= len(sheets): state["step"] = "finalize"
+                state["message"] = f"Hoja {sheet} terminada."
 
-                if state["commercial_index"] >= len(sheets):
-                    state["step"] = "finalize"
-                    state["message"] = (
-                        "Hojas comerciales terminadas. "
-                        "La siguiente etapa consolidará la información."
-                    )
-                else:
-                    state["message"] = (
-                        f"{sheet_name} terminada. Siguiente: "
-                        f"{sheets[state['commercial_index']]}."
-                    )
-
-        elif current_step == "finalize":
-            state["message"] = "Consolidando archivos parciales y creando el caché."
+        elif step == "finalize":
+            state["message"] = "Consolidando archivos sin cargarlos completos en memoria."
             write_staged_state(state)
-            write_process_status(
-                state="running",
-                message=state["message"],
-                progress=staged_progress_percent(state),
-            )
-
-            op = _read_stage_frame(staged_paths()["operation"])
-            diag_frames = [
-                _read_stage_frame(staged_paths()["diag_operation"])
-            ]
-
-            commercial_frames = []
-            for index, _sheet in enumerate(state.get("commercial_sheets", [])):
-                commercial_frames.append(
-                    _read_stage_frame(
-                        STAGE_DIR / f"commercial_{index:03d}.parquet"
-                    )
-                )
-                diag_frames.append(
-                    _read_stage_frame(
-                        STAGE_DIR / f"diag_commercial_{index:03d}.parquet"
-                    )
-                )
-
-            commercial_frames = [
-                frame for frame in commercial_frames
-                if frame is not None and not frame.empty
-            ]
-            co = (
-                pd.concat(commercial_frames, ignore_index=True, sort=False)
-                if commercial_frames
-                else pd.DataFrame()
-            )
-            co = normalize_commercial_df(co)
-
-            diag_frames = [
-                frame for frame in diag_frames
-                if frame is not None and not frame.empty
-            ]
-            diag = (
-                pd.concat(diag_frames, ignore_index=True, sort=False)
-                if diag_frames
-                else pd.DataFrame()
-            )
-
-            if op is not None and not op.empty and "Fecha" in op.columns:
-                fechas_op = pd.to_datetime(op["Fecha"], errors="coerce").dropna()
-                if not fechas_op.empty:
-                    diag_fecha = pd.DataFrame([{
-                        "Hoja": "VALIDACIÓN FECHAS OPERACIÓN",
-                        "Tipo": "Control",
-                        "Estado": "OK",
-                        "Filas válidas": len(fechas_op),
-                        "Fecha mínima": fechas_op.min().strftime("%Y-%m-%d"),
-                        "Fecha máxima": fechas_op.max().strftime("%Y-%m-%d"),
-                    }])
-                    diag = pd.concat(
-                        [diag_fecha, diag],
-                        ignore_index=True,
-                        sort=False,
-                    )
-
-            write_cache(op, co, diag)
-            del op, co, diag, commercial_frames, diag_frames
-            gc.collect()
-
-            state["completed_steps"] = state.get("total_steps", 1)
-            state["step"] = "complete"
-            state["status"] = "complete"
+            paths = cache_paths()
+            op_parts = [_stage_path("operation", i) for i in range(len(state.get("operation_sheets", [])))]
+            co_parts = [_stage_path("commercial", i) for i in range(len(state.get("commercial_sheets", [])))]
+            diag_parts = ([_stage_path("diag_operation", i) for i in range(len(state.get("operation_sheets", [])))] +
+                          [_stage_path("diag_commercial", i) for i in range(len(state.get("commercial_sheets", [])))])
+            _append_parquet_files(op_parts, paths["op"])
+            _append_parquet_files(co_parts, paths["co"])
+            _append_parquet_files(diag_parts, paths["diag"])
+            _write_final_cache_meta()
+            st.cache_data.clear()
+            state["completed_steps"] = state["total_steps"]
+            state["step"] = "complete"; state["status"] = "complete"
             state["message"] = "Archivo procesado correctamente."
-            PROCESS_LOG_FILE.unlink(missing_ok=True)
 
-        elif current_step == "complete":
-            state["status"] = "complete"
-            state["message"] = "La información ya está disponible."
-
-        else:
-            raise RuntimeError(f"Etapa desconocida: {current_step}")
-
-        if state.get("status") != "complete":
-            state["status"] = "ready"
-
-        write_staged_state(state)
-        write_process_status(
-            state=state["status"],
-            message=state["message"],
-            progress=staged_progress_percent(state),
-        )
-        return state
-
+        state["status"] = "complete" if state.get("step") == "complete" else "ready"
+        write_process_status(state=state["status"], message=state["message"], progress=staged_progress_percent(state))
+        return write_staged_state(state)
     except Exception as exc:
-        error_text = (
-            f"Etapa: {current_step}\n"
-            f"Tipo: {type(exc).__name__}\n"
-            f"Detalle: {exc}\n\n"
-            f"{traceback.format_exc()}"
-        )
-        PROCESS_LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
-        PROCESS_LOG_FILE.write_text(error_text, encoding="utf-8")
-        state["status"] = "error"
-        state["last_error"] = str(exc)
-        state["message"] = (
-            f"Falló la etapa {current_step}. "
-            "Puedes volver a intentar sin perder las etapas terminadas."
-        )
+        state["status"] = "error"; state["last_error"] = str(exc)
+        state["message"] = "La etapa falló; las anteriores se conservaron."
         write_staged_state(state)
-        write_process_status(
-            state="error",
-            message=state["message"],
-            progress=staged_progress_percent(state),
-            error_detail=str(exc),
-        )
+        PROCESS_LOG_FILE.write_text(traceback.format_exc(), encoding="utf-8")
         raise
     finally:
-        release_process_lock()
-        gc.collect()
+        release_process_lock(); gc.collect()
 
 
 def process_excel(file_path):
-    """
-    Compatibilidad con botones antiguos.
-
-    Cada llamada procesa una sola etapa y conserva lo ya terminado.
-    """
     return process_next_stage(file_path)
 
 # ============================================================
@@ -4957,7 +4806,7 @@ def apply_nombre_map(op, plantilla):
     return op
 
 
-def read_operation_sheet(file_path):
+def read_operation_sheet(file_path, only_sheets=None):
     """Lee las hojas operativas con Calamine y usa OpenPyXL como respaldo."""
     engine = "calamine"
     try:
@@ -4991,11 +4840,19 @@ def read_operation_sheet(file_path):
         if alias:
             sources.append(("Nueva", alias))
 
+    if only_sheets:
+        requested = {norm_text(name) for name in only_sheets}
+        sources = [
+            (source_type, sheet_name)
+            for source_type, sheet_name in sources
+            if norm_text(sheet_name) in requested
+        ]
+
     if not sources:
         return pd.DataFrame(), pd.DataFrame([{
             "Hoja": "Resultados productividad",
             "Tipo": "Operación",
-            "Estado": "No se encontraron las hojas operativas",
+            "Estado": "No se encontraron las hojas operativas solicitadas",
         }])
 
     frames = []
