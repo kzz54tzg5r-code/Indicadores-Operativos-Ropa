@@ -7632,6 +7632,14 @@ def render_app_portal():
 
 
 def nav_bar():
+    """
+    Navegación estable sin callbacks.
+
+    Los callbacks de widgets pueden ejecutarse antes de que Streamlit restaure
+    todas las claves de session_state después de una actualización. Para evitar
+    KeyError y pantallas "Oh no", la navegación se resuelve con los valores
+    devueltos directamente por los widgets.
+    """
     role = normalize_role(
         st.session_state.get("user", {}).get("role")
         or st.session_state.get("user", {}).get("permiso", "Consulta")
@@ -7654,7 +7662,6 @@ def nav_bar():
         "Inteligencia Operativa",
     ]
 
-    # OWNER y ADMIN comparten los permisos administrativos funcionales.
     if role_level() >= ROLE_LEVEL["ADMIN"]:
         pages.extend([
             "Centro de Control",
@@ -7669,31 +7676,10 @@ def nav_bar():
         current = "Centro Ejecutivo"
         st.session_state["nav_page"] = current
 
-    # Los callbacks se ejecutan antes de que Streamlit vuelva a ejecutar el script.
-    # Después de una actualización o reinicio, la clave del widget puede no existir
-    # todavía; por eso nunca debe accederse con corchetes directamente.
-    def _desktop_changed():
-        selected = st.session_state.get(
-            "v20_sidebar_navigation",
-            st.session_state.get("nav_page", "Centro Ejecutivo"),
-        )
-        if selected in pages:
-            st.session_state["nav_page"] = selected
-
-    def _mobile_changed():
-        selected = st.session_state.get(
-            "v20_mobile_navigation",
-            st.session_state.get("nav_page", "Centro Ejecutivo"),
-        )
-        if selected in pages:
-            st.session_state["nav_page"] = selected
-
-    # Inicialización defensiva para sesiones nuevas, sesiones recordadas y
-    # despliegues que conservan un estado de widgets de una versión anterior.
-    if st.session_state.get("v20_sidebar_navigation") not in pages:
-        st.session_state["v20_sidebar_navigation"] = current
-    if st.session_state.get("v20_mobile_navigation") not in pages:
-        st.session_state["v20_mobile_navigation"] = current
+    # Se usan claves nuevas para no heredar estados incompatibles de versiones
+    # anteriores guardados en el navegador o en una sesión restaurada.
+    desktop_key = "v20x33_sidebar_navigation"
+    mobile_key = "v20x33_mobile_navigation"
 
     with st.sidebar:
         st.markdown(
@@ -7705,25 +7691,34 @@ def nav_bar():
             """,
             unsafe_allow_html=True,
         )
-        st.radio(
+
+        desktop_value = st.radio(
             "Navegación",
             pages,
             index=pages.index(current),
             label_visibility="collapsed",
-            key="v20_sidebar_navigation",
-            on_change=_desktop_changed,
+            key=desktop_key,
         )
 
+    # El selector móvil permanece disponible, pero no usa callback.
     with st.container(key="v20_mobile_nav_container"):
-        st.selectbox(
+        mobile_value = st.selectbox(
             "Sección",
             pages,
-            index=pages.index(st.session_state.get("nav_page", current)),
-            key="v20_mobile_navigation",
-            on_change=_mobile_changed,
+            index=pages.index(current),
+            key=mobile_key,
         )
 
-    return st.session_state.get("nav_page", current)
+    # En escritorio prevalece el radio. En móvil el CSS oculta el radio y el
+    # selectbox puede cambiar; detectamos cuál cambió respecto a nav_page.
+    chosen = current
+    if desktop_value in pages and desktop_value != current:
+        chosen = desktop_value
+    elif mobile_value in pages and mobile_value != current:
+        chosen = mobile_value
+
+    st.session_state["nav_page"] = chosen
+    return chosen
 
 
 def reliable_data_horizon(op, co):
