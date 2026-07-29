@@ -7633,12 +7633,15 @@ def render_app_portal():
 
 def nav_bar():
     """
-    Navegación estable sin callbacks.
+    Navegación estable con una sola fuente de verdad.
 
-    Los callbacks de widgets pueden ejecutarse antes de que Streamlit restaure
-    todas las claves de session_state después de una actualización. Para evitar
-    KeyError y pantallas "Oh no", la navegación se resuelve con los valores
-    devueltos directamente por los widgets.
+    La versión anterior mantenía simultáneamente un radio de escritorio y un
+    selectbox móvil. Al seleccionar "Carga de Excel", el radio quedaba en esa
+    página, pero el selectbox conservaba "Centro Ejecutivo" y sobrescribía la
+    selección. Por eso el menú marcaba Carga de Excel mientras se mostraba el
+    Centro Ejecutivo.
+
+    Esta versión usa únicamente el radio lateral para resolver la página.
     """
     role = normalize_role(
         st.session_state.get("user", {}).get("role")
@@ -7674,12 +7677,9 @@ def nav_bar():
     current = st.session_state.get("nav_page", "Centro Ejecutivo")
     if current not in pages:
         current = "Centro Ejecutivo"
-        st.session_state["nav_page"] = current
 
-    # Se usan claves nuevas para no heredar estados incompatibles de versiones
-    # anteriores guardados en el navegador o en una sesión restaurada.
-    desktop_key = "v20x33_sidebar_navigation"
-    mobile_key = "v20x33_mobile_navigation"
+    # Clave nueva para no recuperar el valor incompatible de versiones previas.
+    navigation_key = "v20x34_sidebar_navigation"
 
     with st.sidebar:
         st.markdown(
@@ -7692,33 +7692,16 @@ def nav_bar():
             unsafe_allow_html=True,
         )
 
-        desktop_value = st.radio(
+        selected = st.radio(
             "Navegación",
             pages,
             index=pages.index(current),
             label_visibility="collapsed",
-            key=desktop_key,
+            key=navigation_key,
         )
 
-    # El selector móvil permanece disponible, pero no usa callback.
-    with st.container(key="v20_mobile_nav_container"):
-        mobile_value = st.selectbox(
-            "Sección",
-            pages,
-            index=pages.index(current),
-            key=mobile_key,
-        )
-
-    # En escritorio prevalece el radio. En móvil el CSS oculta el radio y el
-    # selectbox puede cambiar; detectamos cuál cambió respecto a nav_page.
-    chosen = current
-    if desktop_value in pages and desktop_value != current:
-        chosen = desktop_value
-    elif mobile_value in pages and mobile_value != current:
-        chosen = mobile_value
-
-    st.session_state["nav_page"] = chosen
-    return chosen
+    st.session_state["nav_page"] = selected
+    return selected
 
 
 def reliable_data_horizon(op, co):
