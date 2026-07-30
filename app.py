@@ -9502,6 +9502,121 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
+
+
+# V20X.3.6.4 — menú lateral siempre recuperable
+st.markdown(
+    """
+    <style>
+    /* ESCRITORIO: el menú queda siempre visible y no puede quedar atrapado
+       en estado contraído después de una actualización o una sesión antigua. */
+    @media (min-width:901px){
+      :root{--v20-sidebar:280px!important;}
+
+      [data-testid="stSidebar"]{
+        display:block!important;
+        visibility:visible!important;
+        opacity:1!important;
+        position:fixed!important;
+        left:0!important;
+        top:0!important;
+        bottom:0!important;
+        width:280px!important;
+        min-width:280px!important;
+        max-width:280px!important;
+        transform:none!important;
+        translate:none!important;
+        z-index:10000!important;
+      }
+      [data-testid="stSidebar"] > div:first-child{
+        width:280px!important;
+        min-width:280px!important;
+        max-width:280px!important;
+        transform:none!important;
+      }
+      [data-testid="stMain"]{
+        margin-left:280px!important;
+        width:calc(100vw - 280px)!important;
+        max-width:calc(100vw - 280px)!important;
+      }
+      .v20-header{
+        left:280px!important;
+        width:calc(100vw - 280px)!important;
+        max-width:calc(100vw - 280px)!important;
+        padding-left:30px!important;
+      }
+
+      /* Ocultamos el control de colapsar en escritorio para evitar que vuelva
+         a desaparecer el menú por los conflictos de CSS de Streamlit. */
+      [data-testid="stSidebarCollapseButton"],
+      [data-testid="stSidebar"] button[kind="header"]{
+        display:none!important;
+      }
+      [data-testid="collapsedControl"],
+      [data-testid="stSidebarCollapsedControl"]{
+        display:none!important;
+      }
+    }
+
+    /* MÓVIL/TABLET: conservar el menú como panel lateral superpuesto y dejar
+       visible el control nativo para abrirlo y cerrarlo. */
+    @media (max-width:900px){
+      :root{--v20-sidebar:270px!important;}
+      [data-testid="stSidebar"]{
+        display:block!important;
+        visibility:visible!important;
+        opacity:1!important;
+        position:fixed!important;
+        top:0!important;
+        bottom:0!important;
+        width:270px!important;
+        min-width:270px!important;
+        max-width:270px!important;
+        z-index:10000!important;
+      }
+      [data-testid="stSidebar"] > div:first-child{
+        width:270px!important;
+        min-width:270px!important;
+        max-width:270px!important;
+      }
+      [data-testid="stMain"]{
+        margin-left:0!important;
+        width:100vw!important;
+        max-width:100vw!important;
+      }
+      .v20-header{
+        left:0!important;
+        width:100vw!important;
+        max-width:100vw!important;
+        padding-left:66px!important;
+      }
+      [data-testid="collapsedControl"],
+      [data-testid="stSidebarCollapsedControl"]{
+        display:flex!important;
+        visibility:visible!important;
+        opacity:1!important;
+        position:fixed!important;
+        top:12px!important;
+        left:12px!important;
+        z-index:100000!important;
+      }
+    }
+
+    /* El contenido siempre usa el ancho real disponible. */
+    [data-testid="stMainBlockContainer"],
+    [data-testid="stAppViewBlockContainer"],
+    .block-container{
+      width:100%!important;
+      max-width:100%!important;
+      min-width:0!important;
+      box-sizing:border-box!important;
+      overflow-x:hidden!important;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
 if not login_sidebar():
     st.stop()
 
