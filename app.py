@@ -7716,7 +7716,196 @@ def render_app_portal():
           padding-left:clamp(18px,3vw,44px)!important;
           padding-right:clamp(18px,3vw,44px)!important;
         }
-        </style>
+        
+
+/* =========================================================
+   V20X.3.6.2 — SIDEBAR RECUPERABLE Y AJUSTE RESPONSIVE
+   ========================================================= */
+
+/* Permitir que Streamlit muestre el control nativo para volver a abrir
+   el menú lateral después de contraerlo. */
+header[data-testid="stHeader"]{{
+  display:block!important;
+  position:fixed!important;
+  top:0!important;
+  left:0!important;
+  width:0!important;
+  height:0!important;
+  min-height:0!important;
+  background:transparent!important;
+  box-shadow:none!important;
+  z-index:7000!important;
+}}
+
+[data-testid="collapsedControl"]{{
+  display:flex!important;
+  position:fixed!important;
+  top:14px!important;
+  left:14px!important;
+  width:44px!important;
+  height:44px!important;
+  align-items:center!important;
+  justify-content:center!important;
+  border-radius:10px!important;
+  background:#173B73!important;
+  box-shadow:0 5px 14px rgba(23,59,115,.25)!important;
+  z-index:8000!important;
+}}
+
+[data-testid="collapsedControl"] button{{
+  width:44px!important;
+  height:44px!important;
+  color:#FFFFFF!important;
+}}
+
+[data-testid="collapsedControl"] svg{{
+  fill:#FFFFFF!important;
+  color:#FFFFFF!important;
+}}
+
+/* Cuando el sidebar está contraído, eliminar el espacio reservado de 280 px. */
+body:has([data-testid="collapsedControl"]) [data-testid="stMain"]{{
+  margin-left:0!important;
+  width:100%!important;
+  max-width:100%!important;
+}}
+
+body:has([data-testid="collapsedControl"]) .v20-header{{
+  left:0!important;
+  padding-left:72px!important;
+}}
+
+body:has([data-testid="collapsedControl"]) .block-container{{
+  width:100%!important;
+  max-width:100%!important;
+  margin:0!important;
+}}
+
+/* Evitar que columnas, tarjetas, tablas y gráficas excedan el ancho disponible. */
+[data-testid="stMain"],
+[data-testid="stMainBlockContainer"],
+[data-testid="stAppViewBlockContainer"],
+.block-container{{
+  min-width:0!important;
+  max-width:100%!important;
+  overflow-x:hidden!important;
+  box-sizing:border-box!important;
+}}
+
+[data-testid="stHorizontalBlock"]{{
+  width:100%!important;
+  max-width:100%!important;
+  min-width:0!important;
+}}
+
+[data-testid="stColumn"]{{
+  min-width:0!important;
+  max-width:100%!important;
+  box-sizing:border-box!important;
+}}
+
+.ps-kpi-grid{{
+  display:grid!important;
+  grid-template-columns:repeat(5,minmax(0,1fr))!important;
+  gap:12px!important;
+  width:100%!important;
+  max-width:100%!important;
+}}
+
+.ps-kpi-card{{
+  min-width:0!important;
+  width:100%!important;
+  padding:16px 13px!important;
+  gap:12px!important;
+  overflow:hidden!important;
+  box-sizing:border-box!important;
+}}
+
+.ps-kpi-card > div:last-child{{
+  min-width:0!important;
+  overflow:hidden!important;
+}}
+
+.ps-kpi-icon{{
+  width:62px!important;
+  height:62px!important;
+  min-width:62px!important;
+  font-size:29px!important;
+}}
+
+.ps-kpi-title{{
+  font-size:13px!important;
+  overflow-wrap:anywhere!important;
+}}
+
+.ps-kpi-value{{
+  font-size:25px!important;
+  white-space:nowrap!important;
+}}
+
+.ps-kpi-sub{{
+  font-size:10px!important;
+  overflow-wrap:anywhere!important;
+}}
+
+[data-testid="stDataFrame"],
+[data-testid="stPlotlyChart"]{{
+  width:100%!important;
+  max-width:100%!important;
+  min-width:0!important;
+}}
+
+@media (min-width:901px) and (max-width:1280px){{
+  .ps-kpi-grid{{
+    grid-template-columns:repeat(3,minmax(0,1fr))!important;
+  }}
+}}
+
+@media (max-width:900px){{
+  [data-testid="collapsedControl"]{{
+    top:10px!important;
+    left:8px!important;
+    width:40px!important;
+    height:40px!important;
+  }}
+
+  body:has([data-testid="collapsedControl"]) .v20-header{{
+    padding-left:58px!important;
+  }}
+
+  .ps-kpi-grid{{
+    grid-template-columns:repeat(2,minmax(0,1fr))!important;
+    gap:10px!important;
+  }}
+
+  .ps-kpi-card{{
+    min-height:132px!important;
+    padding:14px 11px!important;
+  }}
+
+  .ps-kpi-icon{{
+    width:54px!important;
+    height:54px!important;
+    min-width:54px!important;
+    font-size:25px!important;
+  }}
+
+  .ps-kpi-value{{
+    font-size:22px!important;
+  }}
+}}
+
+@media (max-width:560px){{
+  .ps-kpi-grid{{
+    grid-template-columns:1fr!important;
+  }}
+
+  .ps-kpi-card{{
+    min-height:118px!important;
+  }}
+}}
+
+</style>
         """,
         unsafe_allow_html=True,
     )
