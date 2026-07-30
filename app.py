@@ -9617,6 +9617,111 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
+
+# V20X.3.6.5 — escritorio sin superposición del sidebar
+st.markdown(
+    """
+    <style>
+    @media (min-width:901px){
+      :root{--v20-sidebar:300px!important;--v20-header:74px!important;}
+
+      /* Dejar que el layout de Streamlit reserve el espacio del menú.
+         El error anterior era fijar el sidebar encima del contenido y,
+         además, agregar margen al main. */
+      [data-testid="stAppViewContainer"]{
+        display:flex!important;
+        align-items:stretch!important;
+        width:100%!important;
+        max-width:100%!important;
+        overflow-x:hidden!important;
+      }
+      [data-testid="stSidebar"]{
+        position:relative!important;
+        inset:auto!important;
+        flex:0 0 var(--v20-sidebar)!important;
+        width:var(--v20-sidebar)!important;
+        min-width:var(--v20-sidebar)!important;
+        max-width:var(--v20-sidebar)!important;
+        height:100vh!important;
+        transform:none!important;
+        translate:none!important;
+        z-index:1000!important;
+      }
+      [data-testid="stSidebar"] > div:first-child{
+        position:fixed!important;
+        top:0!important;
+        left:0!important;
+        bottom:0!important;
+        width:var(--v20-sidebar)!important;
+        min-width:var(--v20-sidebar)!important;
+        max-width:var(--v20-sidebar)!important;
+        overflow-y:auto!important;
+        box-sizing:border-box!important;
+      }
+      [data-testid="stMain"]{
+        position:relative!important;
+        flex:1 1 auto!important;
+        min-width:0!important;
+        margin-left:0!important;
+        width:auto!important;
+        max-width:none!important;
+        padding-top:var(--v20-header)!important;
+        overflow-x:hidden!important;
+      }
+      [data-testid="stMainBlockContainer"],
+      [data-testid="stAppViewBlockContainer"],
+      .block-container{
+        width:100%!important;
+        max-width:100%!important;
+        min-width:0!important;
+        margin:0!important;
+        padding-left:24px!important;
+        padding-right:24px!important;
+        box-sizing:border-box!important;
+        overflow-x:hidden!important;
+      }
+      .v20-header{
+        position:fixed!important;
+        top:0!important;
+        left:var(--v20-sidebar)!important;
+        right:0!important;
+        width:auto!important;
+        max-width:none!important;
+        height:var(--v20-header)!important;
+        padding:0 28px!important;
+        box-sizing:border-box!important;
+        z-index:2000!important;
+      }
+      [data-testid="stSidebarCollapseButton"],
+      [data-testid="collapsedControl"],
+      [data-testid="stSidebarCollapsedControl"]{
+        display:none!important;
+      }
+    }
+
+    @media (max-width:900px){
+      [data-testid="stAppViewContainer"]{display:block!important;}
+      [data-testid="stMain"]{
+        margin-left:0!important;
+        width:100%!important;
+        max-width:100%!important;
+      }
+      [data-testid="stMainBlockContainer"],
+      [data-testid="stAppViewBlockContainer"],
+      .block-container{
+        width:100%!important;
+        max-width:100%!important;
+        min-width:0!important;
+        padding-left:10px!important;
+        padding-right:10px!important;
+        box-sizing:border-box!important;
+      }
+    }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
 if not login_sidebar():
     st.stop()
 
