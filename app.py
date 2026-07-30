@@ -9395,6 +9395,113 @@ def page_centro_control():
 # ============================================================
 apply_styles()
 
+
+# V20X.3.6.3 — corrección global del menú contraído y ancho de reportes
+st.markdown(
+    """
+    <style>
+    /* Restaurar controles nativos de Streamlit que estilos anteriores ocultaban */
+    header[data-testid="stHeader"]{
+      display:block!important;
+      visibility:visible!important;
+      position:fixed!important;
+      inset:0 auto auto 0!important;
+      width:64px!important;
+      height:64px!important;
+      min-height:64px!important;
+      background:transparent!important;
+      pointer-events:none!important;
+      z-index:99999!important;
+    }
+    header[data-testid="stHeader"] *{pointer-events:auto!important;}
+
+    [data-testid="collapsedControl"],
+    [data-testid="stSidebarCollapsedControl"],
+    button[kind="header"]{
+      display:flex!important;
+      visibility:visible!important;
+      opacity:1!important;
+      position:fixed!important;
+      top:12px!important;
+      left:12px!important;
+      width:46px!important;
+      height:46px!important;
+      min-width:46px!important;
+      align-items:center!important;
+      justify-content:center!important;
+      background:#173B73!important;
+      color:#fff!important;
+      border-radius:10px!important;
+      box-shadow:0 5px 16px rgba(23,59,115,.28)!important;
+      z-index:100000!important;
+    }
+    [data-testid="collapsedControl"] svg,
+    [data-testid="stSidebarCollapsedControl"] svg,
+    button[kind="header"] svg{color:#fff!important;fill:#fff!important;}
+
+    /* El ancho se calcula según el estado real del sidebar, no por una clase auxiliar. */
+    [data-testid="stAppViewContainer"]:has([data-testid="stSidebar"][aria-expanded="false"]) [data-testid="stMain"],
+    [data-testid="stAppViewContainer"]:has([data-testid="stSidebar"][data-state="collapsed"]) [data-testid="stMain"],
+    [data-testid="stAppViewContainer"]:not(:has([data-testid="stSidebar"])) [data-testid="stMain"]{
+      margin-left:0!important;
+      width:100vw!important;
+      max-width:100vw!important;
+    }
+    [data-testid="stAppViewContainer"]:has([data-testid="stSidebar"][aria-expanded="false"]) .v20-header,
+    [data-testid="stAppViewContainer"]:has([data-testid="stSidebar"][data-state="collapsed"]) .v20-header,
+    [data-testid="stAppViewContainer"]:not(:has([data-testid="stSidebar"])) .v20-header{
+      left:0!important;
+      width:100vw!important;
+      padding-left:74px!important;
+    }
+
+    /* Fallback de Streamlit: al contraerse, el sidebar suele quedar con ancho 0 o transformado. */
+    [data-testid="stAppViewContainer"]:has([data-testid="stSidebar"][style*="width: 0"]) [data-testid="stMain"],
+    [data-testid="stAppViewContainer"]:has([data-testid="stSidebar"][style*="translateX"]) [data-testid="stMain"]{
+      margin-left:0!important;
+      width:100vw!important;
+      max-width:100vw!important;
+    }
+
+    [data-testid="stMainBlockContainer"],
+    [data-testid="stAppViewBlockContainer"],
+    .block-container{
+      width:100%!important;
+      max-width:100%!important;
+      min-width:0!important;
+      box-sizing:border-box!important;
+      padding-left:clamp(14px,2vw,28px)!important;
+      padding-right:clamp(14px,2vw,28px)!important;
+      overflow-x:hidden!important;
+    }
+    [data-testid="stHorizontalBlock"]{width:100%!important;max-width:100%!important;min-width:0!important;}
+    [data-testid="stColumn"]{min-width:0!important;max-width:100%!important;}
+
+    .ps-kpi-grid{
+      width:100%!important;
+      max-width:100%!important;
+      display:grid!important;
+      grid-template-columns:repeat(5,minmax(0,1fr))!important;
+      gap:12px!important;
+    }
+    .ps-kpi-card{width:100%!important;min-width:0!important;overflow:hidden!important;box-sizing:border-box!important;}
+    .ps-kpi-card>div:last-child{min-width:0!important;overflow:hidden!important;}
+    .ps-kpi-title,.ps-kpi-sub{overflow-wrap:anywhere!important;word-break:normal!important;}
+    .ps-kpi-value{white-space:nowrap!important;font-size:clamp(20px,1.6vw,28px)!important;}
+
+    [data-testid="stDataFrame"], [data-testid="stPlotlyChart"]{width:100%!important;max-width:100%!important;min-width:0!important;}
+
+    @media(max-width:1250px){.ps-kpi-grid{grid-template-columns:repeat(3,minmax(0,1fr))!important;}}
+    @media(max-width:800px){
+      .ps-kpi-grid{grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:10px!important;}
+      [data-testid="stMainBlockContainer"],.block-container{padding-left:10px!important;padding-right:10px!important;}
+    }
+    @media(max-width:520px){.ps-kpi-grid{grid-template-columns:1fr!important;}}
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
 if not login_sidebar():
     st.stop()
 
