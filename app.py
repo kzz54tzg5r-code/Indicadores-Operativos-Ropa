@@ -9224,7 +9224,7 @@ if not st.session_state.get("active_app"):
 render_header()
 page = nav_bar()
 
-ADMIN_WITHOUT_DATA_PAGES = {
+DATA_PAGES = {
     "Centro Ejecutivo",
     "Operación Diaria",
     "Reporte Semanal",
@@ -9232,6 +9232,7 @@ ADMIN_WITHOUT_DATA_PAGES = {
     "Productividad",
     "Recuperación",
     "Recorridos",
+    "Reportes",
     "Detalle por Tienda",
     "Detalle por Colaborador",
     "Alertas Inteligentes",
