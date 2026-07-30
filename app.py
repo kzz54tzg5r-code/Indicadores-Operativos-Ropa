@@ -7718,193 +7718,6 @@ def render_app_portal():
         }
         
 
-/* =========================================================
-   V20X.3.6.2 — SIDEBAR RECUPERABLE Y AJUSTE RESPONSIVE
-   ========================================================= */
-
-/* Permitir que Streamlit muestre el control nativo para volver a abrir
-   el menú lateral después de contraerlo. */
-header[data-testid="stHeader"]{{
-  display:block!important;
-  position:fixed!important;
-  top:0!important;
-  left:0!important;
-  width:0!important;
-  height:0!important;
-  min-height:0!important;
-  background:transparent!important;
-  box-shadow:none!important;
-  z-index:7000!important;
-}}
-
-[data-testid="collapsedControl"]{{
-  display:flex!important;
-  position:fixed!important;
-  top:14px!important;
-  left:14px!important;
-  width:44px!important;
-  height:44px!important;
-  align-items:center!important;
-  justify-content:center!important;
-  border-radius:10px!important;
-  background:#173B73!important;
-  box-shadow:0 5px 14px rgba(23,59,115,.25)!important;
-  z-index:8000!important;
-}}
-
-[data-testid="collapsedControl"] button{{
-  width:44px!important;
-  height:44px!important;
-  color:#FFFFFF!important;
-}}
-
-[data-testid="collapsedControl"] svg{{
-  fill:#FFFFFF!important;
-  color:#FFFFFF!important;
-}}
-
-/* Cuando el sidebar está contraído, eliminar el espacio reservado de 280 px. */
-body:has([data-testid="collapsedControl"]) [data-testid="stMain"]{{
-  margin-left:0!important;
-  width:100%!important;
-  max-width:100%!important;
-}}
-
-body:has([data-testid="collapsedControl"]) .v20-header{{
-  left:0!important;
-  padding-left:72px!important;
-}}
-
-body:has([data-testid="collapsedControl"]) .block-container{{
-  width:100%!important;
-  max-width:100%!important;
-  margin:0!important;
-}}
-
-/* Evitar que columnas, tarjetas, tablas y gráficas excedan el ancho disponible. */
-[data-testid="stMain"],
-[data-testid="stMainBlockContainer"],
-[data-testid="stAppViewBlockContainer"],
-.block-container{{
-  min-width:0!important;
-  max-width:100%!important;
-  overflow-x:hidden!important;
-  box-sizing:border-box!important;
-}}
-
-[data-testid="stHorizontalBlock"]{{
-  width:100%!important;
-  max-width:100%!important;
-  min-width:0!important;
-}}
-
-[data-testid="stColumn"]{{
-  min-width:0!important;
-  max-width:100%!important;
-  box-sizing:border-box!important;
-}}
-
-.ps-kpi-grid{{
-  display:grid!important;
-  grid-template-columns:repeat(5,minmax(0,1fr))!important;
-  gap:12px!important;
-  width:100%!important;
-  max-width:100%!important;
-}}
-
-.ps-kpi-card{{
-  min-width:0!important;
-  width:100%!important;
-  padding:16px 13px!important;
-  gap:12px!important;
-  overflow:hidden!important;
-  box-sizing:border-box!important;
-}}
-
-.ps-kpi-card > div:last-child{{
-  min-width:0!important;
-  overflow:hidden!important;
-}}
-
-.ps-kpi-icon{{
-  width:62px!important;
-  height:62px!important;
-  min-width:62px!important;
-  font-size:29px!important;
-}}
-
-.ps-kpi-title{{
-  font-size:13px!important;
-  overflow-wrap:anywhere!important;
-}}
-
-.ps-kpi-value{{
-  font-size:25px!important;
-  white-space:nowrap!important;
-}}
-
-.ps-kpi-sub{{
-  font-size:10px!important;
-  overflow-wrap:anywhere!important;
-}}
-
-[data-testid="stDataFrame"],
-[data-testid="stPlotlyChart"]{{
-  width:100%!important;
-  max-width:100%!important;
-  min-width:0!important;
-}}
-
-@media (min-width:901px) and (max-width:1280px){{
-  .ps-kpi-grid{{
-    grid-template-columns:repeat(3,minmax(0,1fr))!important;
-  }}
-}}
-
-@media (max-width:900px){{
-  [data-testid="collapsedControl"]{{
-    top:10px!important;
-    left:8px!important;
-    width:40px!important;
-    height:40px!important;
-  }}
-
-  body:has([data-testid="collapsedControl"]) .v20-header{{
-    padding-left:58px!important;
-  }}
-
-  .ps-kpi-grid{{
-    grid-template-columns:repeat(2,minmax(0,1fr))!important;
-    gap:10px!important;
-  }}
-
-  .ps-kpi-card{{
-    min-height:132px!important;
-    padding:14px 11px!important;
-  }}
-
-  .ps-kpi-icon{{
-    width:54px!important;
-    height:54px!important;
-    min-width:54px!important;
-    font-size:25px!important;
-  }}
-
-  .ps-kpi-value{{
-    font-size:22px!important;
-  }}
-}}
-
-@media (max-width:560px){{
-  .ps-kpi-grid{{
-    grid-template-columns:1fr!important;
-  }}
-
-  .ps-kpi-card{{
-    min-height:118px!important;
-  }}
-}}
-
 </style>
         """,
         unsafe_allow_html=True,
@@ -9396,331 +9209,223 @@ def page_centro_control():
 apply_styles()
 
 
-# V20X.3.6.3 — corrección global del menú contraído y ancho de reportes
+# V20X.4 — layout nativo estable, sin parches acumulados
 st.markdown(
     """
     <style>
-    /* Restaurar controles nativos de Streamlit que estilos anteriores ocultaban */
+    :root{
+      --ps-sidebar-width:292px;
+      --ps-header-height:76px;
+    }
+
+    html,body,[data-testid="stAppViewContainer"]{
+      overflow-x:hidden!important;
+      background:#F2F4F7!important;
+    }
+
+    /* Layout principal en flex: el sidebar reserva su espacio y nunca cubre el reporte. */
+    [data-testid="stAppViewContainer"]{
+      display:flex!important;
+      align-items:stretch!important;
+      width:100%!important;
+      min-height:100vh!important;
+    }
+
+    [data-testid="stSidebar"]{
+      position:relative!important;
+      inset:auto!important;
+      flex:0 0 var(--ps-sidebar-width)!important;
+      width:var(--ps-sidebar-width)!important;
+      min-width:var(--ps-sidebar-width)!important;
+      max-width:var(--ps-sidebar-width)!important;
+      height:100vh!important;
+      transform:none!important;
+      background:linear-gradient(180deg,#0A3067,#173B73)!important;
+      overflow:hidden!important;
+      z-index:20!important;
+    }
+
+    [data-testid="stSidebar"] > div:first-child{
+      position:sticky!important;
+      top:0!important;
+      width:100%!important;
+      height:100vh!important;
+      overflow-y:auto!important;
+      overflow-x:hidden!important;
+      box-sizing:border-box!important;
+    }
+
+    [data-testid="stMain"]{
+      position:relative!important;
+      flex:1 1 0!important;
+      width:0!important;
+      min-width:0!important;
+      max-width:none!important;
+      margin:0!important;
+      padding:0!important;
+      overflow-x:hidden!important;
+    }
+
+    [data-testid="stMainBlockContainer"],
+    [data-testid="stAppViewBlockContainer"],
+    .block-container{
+      width:100%!important;
+      max-width:100%!important;
+      min-width:0!important;
+      margin:0!important;
+      padding:22px clamp(16px,2.2vw,34px) 48px!important;
+      box-sizing:border-box!important;
+      overflow-x:hidden!important;
+    }
+
+    /* Header corporativo dentro del flujo del reporte: fijo visualmente, sin cálculos laterales. */
+    .v20-header{
+      position:sticky!important;
+      top:0!important;
+      left:auto!important;
+      right:auto!important;
+      width:100%!important;
+      max-width:100%!important;
+      height:var(--ps-header-height)!important;
+      padding:0 clamp(18px,2.2vw,32px)!important;
+      box-sizing:border-box!important;
+      z-index:15!important;
+    }
+
+    /* El contenido empieza debajo del header sticky, sin padding artificial acumulado. */
+    [data-testid="stMain"]{
+      padding-top:0!important;
+    }
+
+    [data-testid="stHorizontalBlock"]{
+      width:100%!important;
+      max-width:100%!important;
+      min-width:0!important;
+      align-items:stretch!important;
+    }
+    [data-testid="stColumn"]{
+      min-width:0!important;
+      max-width:100%!important;
+      box-sizing:border-box!important;
+      overflow:hidden!important;
+    }
+    [data-testid="stColumn"] > div{
+      min-width:0!important;
+      max-width:100%!important;
+    }
+
+    [data-testid="stDataFrame"],
+    [data-testid="stPlotlyChart"],
+    [data-testid="stFileUploader"]{
+      width:100%!important;
+      max-width:100%!important;
+      min-width:0!important;
+      box-sizing:border-box!important;
+    }
+
+    button[kind="primary"],button[kind="secondary"]{
+      max-width:100%!important;
+      box-sizing:border-box!important;
+    }
+
+    .ps-kpi-grid{
+      display:grid!important;
+      grid-template-columns:repeat(5,minmax(0,1fr))!important;
+      gap:12px!important;
+      width:100%!important;
+      max-width:100%!important;
+    }
+    .ps-kpi-card{
+      width:100%!important;
+      min-width:0!important;
+      overflow:hidden!important;
+      box-sizing:border-box!important;
+    }
+    .ps-kpi-card > div:last-child{min-width:0!important;overflow:hidden!important;}
+    .ps-kpi-title,.ps-kpi-sub{overflow-wrap:anywhere!important;}
+    .ps-kpi-value{white-space:nowrap!important;font-size:clamp(20px,1.6vw,28px)!important;}
+
+    /* Se mantiene visible el control nativo si el usuario contrae el menú. */
     header[data-testid="stHeader"]{
       display:block!important;
       visibility:visible!important;
-      position:fixed!important;
-      inset:0 auto auto 0!important;
-      width:64px!important;
-      height:64px!important;
-      min-height:64px!important;
       background:transparent!important;
-      pointer-events:none!important;
-      z-index:99999!important;
+      height:0!important;
+      min-height:0!important;
+      z-index:100!important;
     }
-    header[data-testid="stHeader"] *{pointer-events:auto!important;}
-
     [data-testid="collapsedControl"],
-    [data-testid="stSidebarCollapsedControl"],
-    button[kind="header"]{
+    [data-testid="stSidebarCollapsedControl"]{
       display:flex!important;
       visibility:visible!important;
       opacity:1!important;
       position:fixed!important;
-      top:12px!important;
-      left:12px!important;
-      width:46px!important;
-      height:46px!important;
-      min-width:46px!important;
-      align-items:center!important;
-      justify-content:center!important;
+      top:14px!important;
+      left:14px!important;
+      width:44px!important;
+      height:44px!important;
+      border-radius:10px!important;
       background:#173B73!important;
       color:#fff!important;
-      border-radius:10px!important;
-      box-shadow:0 5px 16px rgba(23,59,115,.28)!important;
-      z-index:100000!important;
-    }
-    [data-testid="collapsedControl"] svg,
-    [data-testid="stSidebarCollapsedControl"] svg,
-    button[kind="header"] svg{color:#fff!important;fill:#fff!important;}
-
-    /* El ancho se calcula según el estado real del sidebar, no por una clase auxiliar. */
-    [data-testid="stAppViewContainer"]:has([data-testid="stSidebar"][aria-expanded="false"]) [data-testid="stMain"],
-    [data-testid="stAppViewContainer"]:has([data-testid="stSidebar"][data-state="collapsed"]) [data-testid="stMain"],
-    [data-testid="stAppViewContainer"]:not(:has([data-testid="stSidebar"])) [data-testid="stMain"]{
-      margin-left:0!important;
-      width:100vw!important;
-      max-width:100vw!important;
-    }
-    [data-testid="stAppViewContainer"]:has([data-testid="stSidebar"][aria-expanded="false"]) .v20-header,
-    [data-testid="stAppViewContainer"]:has([data-testid="stSidebar"][data-state="collapsed"]) .v20-header,
-    [data-testid="stAppViewContainer"]:not(:has([data-testid="stSidebar"])) .v20-header{
-      left:0!important;
-      width:100vw!important;
-      padding-left:74px!important;
+      z-index:1000!important;
     }
 
-    /* Fallback de Streamlit: al contraerse, el sidebar suele quedar con ancho 0 o transformado. */
-    [data-testid="stAppViewContainer"]:has([data-testid="stSidebar"][style*="width: 0"]) [data-testid="stMain"],
-    [data-testid="stAppViewContainer"]:has([data-testid="stSidebar"][style*="translateX"]) [data-testid="stMain"]{
-      margin-left:0!important;
-      width:100vw!important;
-      max-width:100vw!important;
+    @media (max-width:1250px){
+      .ps-kpi-grid{grid-template-columns:repeat(3,minmax(0,1fr))!important;}
     }
 
-    [data-testid="stMainBlockContainer"],
-    [data-testid="stAppViewBlockContainer"],
-    .block-container{
-      width:100%!important;
-      max-width:100%!important;
-      min-width:0!important;
-      box-sizing:border-box!important;
-      padding-left:clamp(14px,2vw,28px)!important;
-      padding-right:clamp(14px,2vw,28px)!important;
-      overflow-x:hidden!important;
-    }
-    [data-testid="stHorizontalBlock"]{width:100%!important;max-width:100%!important;min-width:0!important;}
-    [data-testid="stColumn"]{min-width:0!important;max-width:100%!important;}
-
-    .ps-kpi-grid{
-      width:100%!important;
-      max-width:100%!important;
-      display:grid!important;
-      grid-template-columns:repeat(5,minmax(0,1fr))!important;
-      gap:12px!important;
-    }
-    .ps-kpi-card{width:100%!important;min-width:0!important;overflow:hidden!important;box-sizing:border-box!important;}
-    .ps-kpi-card>div:last-child{min-width:0!important;overflow:hidden!important;}
-    .ps-kpi-title,.ps-kpi-sub{overflow-wrap:anywhere!important;word-break:normal!important;}
-    .ps-kpi-value{white-space:nowrap!important;font-size:clamp(20px,1.6vw,28px)!important;}
-
-    [data-testid="stDataFrame"], [data-testid="stPlotlyChart"]{width:100%!important;max-width:100%!important;min-width:0!important;}
-
-    @media(max-width:1250px){.ps-kpi-grid{grid-template-columns:repeat(3,minmax(0,1fr))!important;}}
-    @media(max-width:800px){
-      .ps-kpi-grid{grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:10px!important;}
-      [data-testid="stMainBlockContainer"],.block-container{padding-left:10px!important;padding-right:10px!important;}
-    }
-    @media(max-width:520px){.ps-kpi-grid{grid-template-columns:1fr!important;}}
-    </style>
-    """,
-    unsafe_allow_html=True,
-)
-
-
-
-# V20X.3.6.4 — menú lateral siempre recuperable
-st.markdown(
-    """
-    <style>
-    /* ESCRITORIO: el menú queda siempre visible y no puede quedar atrapado
-       en estado contraído después de una actualización o una sesión antigua. */
-    @media (min-width:901px){
-      :root{--v20-sidebar:280px!important;}
-
-      [data-testid="stSidebar"]{
-        display:block!important;
-        visibility:visible!important;
-        opacity:1!important;
-        position:fixed!important;
-        left:0!important;
-        top:0!important;
-        bottom:0!important;
-        width:280px!important;
-        min-width:280px!important;
-        max-width:280px!important;
-        transform:none!important;
-        translate:none!important;
-        z-index:10000!important;
-      }
-      [data-testid="stSidebar"] > div:first-child{
-        width:280px!important;
-        min-width:280px!important;
-        max-width:280px!important;
-        transform:none!important;
-      }
-      [data-testid="stMain"]{
-        margin-left:280px!important;
-        width:calc(100vw - 280px)!important;
-        max-width:calc(100vw - 280px)!important;
-      }
-      .v20-header{
-        left:280px!important;
-        width:calc(100vw - 280px)!important;
-        max-width:calc(100vw - 280px)!important;
-        padding-left:30px!important;
-      }
-
-      /* Ocultamos el control de colapsar en escritorio para evitar que vuelva
-         a desaparecer el menú por los conflictos de CSS de Streamlit. */
-      [data-testid="stSidebarCollapseButton"],
-      [data-testid="stSidebar"] button[kind="header"]{
-        display:none!important;
-      }
-      [data-testid="collapsedControl"],
-      [data-testid="stSidebarCollapsedControl"]{
-        display:none!important;
-      }
-    }
-
-    /* MÓVIL/TABLET: conservar el menú como panel lateral superpuesto y dejar
-       visible el control nativo para abrirlo y cerrarlo. */
     @media (max-width:900px){
-      :root{--v20-sidebar:270px!important;}
+      :root{--ps-sidebar-width:276px;--ps-header-height:68px;}
+      [data-testid="stAppViewContainer"]{display:block!important;}
       [data-testid="stSidebar"]{
-        display:block!important;
-        visibility:visible!important;
-        opacity:1!important;
         position:fixed!important;
         top:0!important;
-        bottom:0!important;
-        width:270px!important;
-        min-width:270px!important;
-        max-width:270px!important;
-        z-index:10000!important;
-      }
-      [data-testid="stSidebar"] > div:first-child{
-        width:270px!important;
-        min-width:270px!important;
-        max-width:270px!important;
-      }
-      [data-testid="stMain"]{
-        margin-left:0!important;
-        width:100vw!important;
-        max-width:100vw!important;
-      }
-      .v20-header{
         left:0!important;
-        width:100vw!important;
-        max-width:100vw!important;
-        padding-left:66px!important;
-      }
-      [data-testid="collapsedControl"],
-      [data-testid="stSidebarCollapsedControl"]{
-        display:flex!important;
-        visibility:visible!important;
-        opacity:1!important;
-        position:fixed!important;
-        top:12px!important;
-        left:12px!important;
-        z-index:100000!important;
-      }
-    }
-
-    /* El contenido siempre usa el ancho real disponible. */
-    [data-testid="stMainBlockContainer"],
-    [data-testid="stAppViewBlockContainer"],
-    .block-container{
-      width:100%!important;
-      max-width:100%!important;
-      min-width:0!important;
-      box-sizing:border-box!important;
-      overflow-x:hidden!important;
-    }
-    </style>
-    """,
-    unsafe_allow_html=True,
-)
-
-
-# V20X.3.6.5 — escritorio sin superposición del sidebar
-st.markdown(
-    """
-    <style>
-    @media (min-width:901px){
-      :root{--v20-sidebar:300px!important;--v20-header:74px!important;}
-
-      /* Dejar que el layout de Streamlit reserve el espacio del menú.
-         El error anterior era fijar el sidebar encima del contenido y,
-         además, agregar margen al main. */
-      [data-testid="stAppViewContainer"]{
-        display:flex!important;
-        align-items:stretch!important;
-        width:100%!important;
-        max-width:100%!important;
-        overflow-x:hidden!important;
-      }
-      [data-testid="stSidebar"]{
-        position:relative!important;
-        inset:auto!important;
-        flex:0 0 var(--v20-sidebar)!important;
-        width:var(--v20-sidebar)!important;
-        min-width:var(--v20-sidebar)!important;
-        max-width:var(--v20-sidebar)!important;
-        height:100vh!important;
-        transform:none!important;
-        translate:none!important;
+        bottom:0!important;
+        width:var(--ps-sidebar-width)!important;
+        min-width:var(--ps-sidebar-width)!important;
+        max-width:var(--ps-sidebar-width)!important;
+        transform:translateX(-100%);
         z-index:1000!important;
       }
-      [data-testid="stSidebar"] > div:first-child{
-        position:fixed!important;
-        top:0!important;
-        left:0!important;
-        bottom:0!important;
-        width:var(--v20-sidebar)!important;
-        min-width:var(--v20-sidebar)!important;
-        max-width:var(--v20-sidebar)!important;
-        overflow-y:auto!important;
-        box-sizing:border-box!important;
+      [data-testid="stSidebar"][aria-expanded="true"],
+      [data-testid="stSidebar"][data-state="expanded"]{
+        transform:translateX(0)!important;
       }
       [data-testid="stMain"]{
-        position:relative!important;
-        flex:1 1 auto!important;
-        min-width:0!important;
-        margin-left:0!important;
-        width:auto!important;
-        max-width:none!important;
-        padding-top:var(--v20-header)!important;
-        overflow-x:hidden!important;
-      }
-      [data-testid="stMainBlockContainer"],
-      [data-testid="stAppViewBlockContainer"],
-      .block-container{
         width:100%!important;
-        max-width:100%!important;
         min-width:0!important;
         margin:0!important;
-        padding-left:24px!important;
-        padding-right:24px!important;
-        box-sizing:border-box!important;
-        overflow-x:hidden!important;
       }
       .v20-header{
-        position:fixed!important;
-        top:0!important;
-        left:var(--v20-sidebar)!important;
-        right:0!important;
-        width:auto!important;
-        max-width:none!important;
-        height:var(--v20-header)!important;
-        padding:0 28px!important;
-        box-sizing:border-box!important;
-        z-index:2000!important;
+        padding-left:64px!important;
       }
-      [data-testid="stSidebarCollapseButton"],
-      [data-testid="collapsedControl"],
-      [data-testid="stSidebarCollapsedControl"]{
-        display:none!important;
+      [data-testid="stMainBlockContainer"],.block-container{
+        padding:14px 10px 38px!important;
       }
+      [data-testid="stHorizontalBlock"]{
+        flex-wrap:wrap!important;
+        gap:10px!important;
+      }
+      [data-testid="stColumn"]{
+        flex:1 1 100%!important;
+        width:100%!important;
+        min-width:100%!important;
+      }
+      .ps-kpi-grid{grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:10px!important;}
     }
 
-    @media (max-width:900px){
-      [data-testid="stAppViewContainer"]{display:block!important;}
-      [data-testid="stMain"]{
-        margin-left:0!important;
-        width:100%!important;
-        max-width:100%!important;
-      }
-      [data-testid="stMainBlockContainer"],
-      [data-testid="stAppViewBlockContainer"],
-      .block-container{
-        width:100%!important;
-        max-width:100%!important;
-        min-width:0!important;
-        padding-left:10px!important;
-        padding-right:10px!important;
-        box-sizing:border-box!important;
-      }
+    @media (max-width:520px){
+      .ps-kpi-grid{grid-template-columns:1fr!important;}
+      .v20-header-brand span{display:none!important;}
+      .v20-header-account-copy small{display:none!important;}
     }
     </style>
     """,
     unsafe_allow_html=True,
 )
+
+
 
 if not login_sidebar():
     st.stop()
@@ -9888,7 +9593,7 @@ def page_configuracion_metas_v17():
 
 
 def page_carga_excel_v17():
-    """Carga y procesamiento reanudable para archivos Excel grandes."""
+    """Carga y procesamiento por etapas con layout estable para PC y móvil."""
     _v17_title(
         "Carga de Excel",
         "Procesa el archivo por etapas para evitar reinicios por memoria.",
@@ -9896,10 +9601,7 @@ def page_carga_excel_v17():
 
     user = st.session_state.get("user", {})
     if not is_admin(user):
-        st.error(
-            "Esta función está disponible únicamente para "
-            "Administrador o Propietario."
-        )
+        st.error("Esta función está disponible únicamente para Administrador o Propietario.")
         return
 
     meta = {}
@@ -9911,215 +9613,134 @@ def page_carga_excel_v17():
 
     stage_state = read_staged_state()
 
-    status_col, upload_col = st.columns([3.0, 7.0], gap="large")
+    st.markdown('<div class="admin-section-title">Estado de la fuente</div>', unsafe_allow_html=True)
+    state_cols = st.columns(3, gap="medium")
 
-    with status_col:
-        st.markdown(
-            '<div class="admin-section-title">Estado de la fuente</div>',
-            unsafe_allow_html=True,
-        )
-
+    with state_cols[0]:
         if ACTIVE_FILE.exists():
             st.success("Archivo guardado")
-            st.markdown(
-                f"**Nombre:** {meta.get('nombre_original', ACTIVE_FILE.name)}"
-            )
-            st.caption(
-                f"Tamaño: {ACTIVE_FILE.stat().st_size / (1024 * 1024):,.1f} MB"
-            )
-
-            if cache_valid():
-                st.success("Procesado y disponible")
-            else:
-                st.warning("Procesamiento pendiente o incompleto")
+            st.markdown(f"**Nombre:** {meta.get('nombre_original', ACTIVE_FILE.name)}")
+            st.caption(f"Tamaño: {ACTIVE_FILE.stat().st_size / (1024 * 1024):,.1f} MB")
         else:
             st.info("Todavía no hay un archivo cargado.")
 
+    with state_cols[1]:
+        if ACTIVE_FILE.exists() and cache_valid():
+            st.success("Procesado y disponible")
+            st.caption("Los reportes pueden consultarse.")
+        elif ACTIVE_FILE.exists():
+            st.warning("Procesamiento pendiente o incompleto")
+            st.markdown(f"**Etapa:** {stage_state.get('step', 'initialize')}")
+        else:
+            st.info("Esperando archivo")
+
+    with state_cols[2]:
+        progress_value = staged_progress_percent(stage_state) if ACTIVE_FILE.exists() else 0
+        st.metric("Avance acumulado", f"{progress_value}%")
         if ACTIVE_FILE.exists() and not cache_valid():
-            progress_value = staged_progress_percent(stage_state)
-            st.progress(
-                progress_value / 100,
-                text=f"Avance acumulado: {progress_value}%",
-            )
-            st.markdown(f"**Etapa actual:** {stage_state.get('step', 'initialize')}")
-            st.caption(stage_state.get("message", ""))
+            st.progress(progress_value / 100)
+            st.caption(stage_state.get("message", "Listo para iniciar."))
 
-            sheets = stage_state.get("commercial_sheets", [])
-            index = int(stage_state.get("commercial_index", 0))
-            if sheets:
-                st.caption(
-                    f"Hojas comerciales terminadas: {index} de {len(sheets)}"
-                )
+    st.markdown('<div class="admin-section-title">Archivo y procesamiento por etapas</div>', unsafe_allow_html=True)
 
-        st.markdown(
-            """
-            **Nuevo flujo por etapas**
+    uploaded = st.file_uploader(
+        "Selecciona un archivo Excel",
+        type=["xlsx"],
+        key="v20x4_excel_uploader",
+        help="Al guardar un archivo diferente se reinician las etapas.",
+    )
 
-            1. Guarda el archivo una sola vez.  
-            2. Presiona **Procesar siguiente etapa**.  
-            3. Cada ejecución procesa una hoja o bloque y libera memoria.  
-            4. Si Streamlit se reinicia, continúa desde la última etapa guardada.  
-            5. La última etapa consolida los reportes.
-            """
-        )
+    if uploaded is not None:
+        st.info(f"Seleccionado: **{uploaded.name}** · {uploaded.size / (1024 * 1024):,.1f} MB")
 
-    with upload_col:
-        st.markdown(
-            '<div class="admin-section-title">Archivo y procesamiento por etapas</div>',
-            unsafe_allow_html=True,
-        )
+    action_cols = st.columns(2, gap="medium")
+    with action_cols[0]:
+        if st.button(
+            "1. Guardar archivo",
+            key="v20x4_save_excel",
+            type="primary",
+            width="stretch",
+            disabled=uploaded is None or not can_write(),
+        ):
+            try:
+                result = save_uploaded_file(uploaded)
+                if not result.get("same_content", False):
+                    clear_staged_processing()
+                append_file_history("Carga", uploaded.name, "Guardado", "Archivo guardado para procesamiento por etapas")
+                st.success("Archivo guardado correctamente.")
+                st.rerun()
+            except Exception as exc:
+                st.error("No fue posible guardar el archivo.")
+                st.exception(exc)
 
-        uploaded = st.file_uploader(
-            "Selecciona un archivo Excel",
-            type=["xlsx"],
-            key="v20x2_excel_uploader",
-            help="Al guardar un archivo diferente se reinician las etapas.",
-        )
+    with action_cols[1]:
+        if cache_valid():
+            process_label = "Información procesada"
+        elif stage_state.get("status") == "idle":
+            process_label = "2. Preparar procesamiento"
+        elif stage_state.get("step") == "finalize":
+            process_label = "2. Consolidar información"
+        else:
+            process_label = "2. Procesar siguiente etapa"
 
-        if uploaded is not None:
-            st.info(
-                f"Seleccionado: **{uploaded.name}** · "
-                f"{uploaded.size / (1024 * 1024):,.1f} MB"
-            )
-
-        save_col, process_col = st.columns(2)
-
-        with save_col:
-            if st.button(
-                "1. Guardar archivo",
-                key="v20x2_save_excel",
-                type="primary",
-                width="stretch",
-                disabled=uploaded is None or not can_write(),
-            ):
-                try:
-                    result = save_uploaded_file(uploaded)
-                    if not result.get("same_content", False):
-                        clear_staged_processing()
-                    append_file_history(
-                        "Carga",
-                        uploaded.name,
-                        "Guardado",
-                        "Archivo guardado para procesamiento por etapas",
+        if st.button(
+            process_label,
+            key="v20x4_process_next",
+            type="primary",
+            width="stretch",
+            disabled=(not ACTIVE_FILE.exists() or not can_write() or cache_valid()),
+        ):
+            try:
+                with st.status("Ejecutando solamente una etapa...", expanded=True) as status_box:
+                    previous = read_staged_state()
+                    status_box.write(previous.get("message", "Preparando etapa."))
+                    result = process_next_stage(str(ACTIVE_FILE))
+                    status_box.write(result.get("message", "Etapa terminada."))
+                    status_box.update(
+                        label=("Procesamiento completo." if result.get("status") == "complete" else "Etapa terminada. Continúa con la siguiente."),
+                        state="complete",
+                        expanded=False,
                     )
-                    st.success("Archivo guardado correctamente.")
-                    st.rerun()
-                except Exception as exc:
-                    st.error("No fue posible guardar el archivo.")
+
+                if result.get("status") == "complete" and cache_valid():
+                    append_file_history("Proceso", meta.get("nombre_original", ACTIVE_FILE.name), "Procesado", "Archivo procesado por etapas correctamente")
+                    st.success("La información ya está disponible en todos los reportes.")
+                    st.session_state["nav_page"] = "Centro Ejecutivo"
+                else:
+                    st.success("La etapa terminó y quedó guardada. Presiona nuevamente para continuar.")
+                st.rerun()
+            except Exception as exc:
+                st.error("La etapa no terminó, pero las etapas anteriores se conservaron.")
+                if PROCESS_LOG_FILE.exists():
+                    st.code(PROCESS_LOG_FILE.read_text(encoding="utf-8", errors="replace")[-6000:], language="text")
+                else:
                     st.exception(exc)
 
-        with process_col:
-            if cache_valid():
-                process_label = "Información procesada"
-            elif stage_state.get("status") == "idle":
-                process_label = "2. Preparar procesamiento"
-            elif stage_state.get("step") == "finalize":
-                process_label = "2. Consolidar información"
-            else:
-                process_label = "2. Procesar siguiente etapa"
+    with st.expander("Flujo recomendado", expanded=False):
+        st.markdown("""
+        1. Selecciona y guarda el archivo una sola vez.  
+        2. Presiona **Procesar siguiente etapa**.  
+        3. Cada ejecución procesa una hoja o bloque y libera memoria.  
+        4. Si Streamlit se reinicia, continúa desde la última etapa guardada.  
+        5. La última etapa consolida los reportes.
+        """)
 
-            if st.button(
-                process_label,
-                key="v20x2_process_next",
-                type="primary",
-                width="stretch",
-                disabled=(
-                    not ACTIVE_FILE.exists()
-                    or not can_write()
-                    or cache_valid()
-                ),
-            ):
-                try:
-                    with st.status(
-                        "Ejecutando solamente una etapa...",
-                        expanded=True,
-                    ) as status_box:
-                        previous = read_staged_state()
-                        status_box.write(previous.get("message", "Preparando etapa."))
-                        result = process_next_stage(str(ACTIVE_FILE))
-                        status_box.write(result.get("message", "Etapa terminada."))
-                        status_box.update(
-                            label=(
-                                "Procesamiento completo."
-                                if result.get("status") == "complete"
-                                else "Etapa terminada. Puedes continuar con la siguiente."
-                            ),
-                            state="complete",
-                            expanded=False,
-                        )
+    if ACTIVE_FILE.exists() and not cache_valid():
+        if st.button("Reiniciar etapas", key="v20x4_restart_stages", width="stretch", disabled=not can_write()):
+            clear_staged_processing()
+            clear_process_status()
+            st.success("Se reinició el avance por etapas.")
+            st.rerun()
 
-                    if result.get("status") == "complete" and cache_valid():
-                        append_file_history(
-                            "Proceso",
-                            meta.get("nombre_original", ACTIVE_FILE.name),
-                            "Procesado",
-                            "Archivo procesado por etapas correctamente",
-                        )
-                        st.success(
-                            "La información ya está disponible en todos los reportes."
-                        )
-                        st.session_state["nav_page"] = "Centro Ejecutivo"
-                    else:
-                        st.success(
-                            "Esta etapa terminó y quedó guardada. "
-                            "Presiona nuevamente para continuar."
-                        )
-                    st.rerun()
-
-                except Exception as exc:
-                    st.error(
-                        "La etapa no terminó, pero las etapas anteriores "
-                        "se conservaron. Puedes volver a intentarlo."
-                    )
-                    if PROCESS_LOG_FILE.exists():
-                        st.code(
-                            PROCESS_LOG_FILE.read_text(
-                                encoding="utf-8",
-                                errors="replace",
-                            )[-6000:],
-                            language="text",
-                        )
-                    else:
-                        st.exception(exc)
-
-        if ACTIVE_FILE.exists() and not cache_valid():
-            action_col, restart_col = st.columns(2)
-            with action_col:
-                st.caption(
-                    "No cierres la aplicación durante la etapa actual. "
-                    "Al terminar puedes salir y continuar después."
-                )
-            with restart_col:
-                if st.button(
-                    "Reiniciar etapas",
-                    key="v20x2_restart_stages",
-                    width="stretch",
-                    disabled=not can_write(),
-                ):
-                    clear_staged_processing()
-                    clear_process_status()
-                    st.success("Se reinició el avance por etapas.")
-                    st.rerun()
-
-        if ACTIVE_FILE.exists():
-            st.divider()
-            if st.button(
-                "Eliminar archivo activo",
-                key="v20x2_delete_active",
-                width="stretch",
-                disabled=not can_write(),
-            ):
-                file_name = meta.get("nombre_original", ACTIVE_FILE.name)
-                delete_active_file()
-                clear_staged_processing()
-                append_file_history(
-                    "Eliminación",
-                    file_name,
-                    "Eliminado",
-                    "Archivo activo eliminado",
-                )
-                st.success("Archivo activo eliminado.")
-                st.rerun()
+    if ACTIVE_FILE.exists():
+        st.divider()
+        if st.button("Eliminar archivo activo", key="v20x4_delete_active", width="stretch", disabled=not can_write()):
+            file_name = meta.get("nombre_original", ACTIVE_FILE.name)
+            delete_active_file()
+            clear_staged_processing()
+            append_file_history("Eliminación", file_name, "Eliminado", "Archivo activo eliminado")
+            st.success("Archivo activo eliminado.")
+            st.rerun()
 
 
 def page_diagnostico_archivo_v17(op, co, diag):
