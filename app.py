@@ -4502,6 +4502,155 @@ def read_diag_cache(mtime):
     return pd.DataFrame()
 
 
+
+@st.cache_data(show_spinner=False)
+def _cache_date_bounds(cache_key, mtime):
+    """Obtiene el horizonte temporal leyendo solamente la columna Fecha."""
+    paths = cache_paths()
+    parquet_path = paths[cache_key]
+    pickle_path = parquet_path.with_suffix(".pkl")
+    try:
+        if parquet_path.exists():
+            dates = pd.read_parquet(parquet_path, columns=["Fecha"])
+        elif pickle_path.exists():
+            dates = pd.read_pickle(pickle_path)[["Fecha"]]
+        else:
+            return None, None
+        values = pd.to_datetime(dates["Fecha"], errors="coerce").dropna()
+        if values.empty:
+            return None, None
+        return values.min(), values.max()
+    except Exception:
+        return None, None
+
+
+@st.cache_data(show_spinner=False)
+def _read_cache_slice(cache_key, mtime, start_iso="", end_iso=""):
+    """Lee únicamente el rango de fechas requerido desde Parquet."""
+    paths = cache_paths()
+    parquet_path = paths[cache_key]
+    pickle_path = parquet_path.with_suffix(".pkl")
+    start = pd.Timestamp(start_iso) if start_iso else None
+    end = pd.Timestamp(end_iso) if end_iso else None
+
+    if parquet_path.exists():
+        filters = []
+        if start is not None:
+            filters.append(("Fecha", ">=", start.to_pydatetime()))
+        if end is not None:
+            filters.append(("Fecha", "<=", end.to_pydatetime()))
+        try:
+            return pd.read_parquet(
+                parquet_path,
+                filters=filters or None,
+            )
+        except Exception:
+            # Respaldo para archivos Parquet antiguos sin estadísticas útiles.
+            frame = pd.read_parquet(parquet_path)
+    elif pickle_path.exists():
+        frame = pd.read_pickle(pickle_path)
+    else:
+        return pd.DataFrame()
+
+    if frame is None or frame.empty or "Fecha" not in frame.columns:
+        return frame if frame is not None else pd.DataFrame()
+    dates = pd.to_datetime(frame["Fecha"], errors="coerce")
+    mask = dates.notna()
+    if start is not None:
+        mask &= dates.ge(start)
+    if end is not None:
+        mask &= dates.le(end)
+    return frame.loc[mask].copy()
+
+
+def _monday(value):
+    value = pd.Timestamp(value).normalize()
+    return value - pd.Timedelta(days=int(value.weekday()))
+
+
+def _month_start(value):
+    return pd.Timestamp(value).to_period("M").start_time
+
+
+def load_data_for_page(page, mtime):
+    """
+    Carga solo la ventana necesaria para la pantalla solicitada.
+
+    Evita abrir simultáneamente todo el histórico operativo y comercial.
+    """
+    op = pd.DataFrame()
+    co = pd.DataFrame()
+    diag = pd.DataFrame()
+
+    op_min, op_max = _cache_date_bounds("op", mtime)
+    co_min, co_max = _cache_date_bounds("co", mtime)
+    horizon_candidates = [v for v in (op_max, co_max) if v is not None]
+    latest = max(horizon_candidates) if horizon_candidates else None
+
+    op_start = op_end = co_start = co_end = None
+
+    if latest is not None:
+        latest = pd.Timestamp(latest).normalize()
+
+        if page == "Operación Diaria":
+            op_start = op_end = latest
+            co_start = co_end = latest
+        elif page in {"Centro Ejecutivo", "Reporte Semanal"}:
+            op_start = _monday(latest) - pd.Timedelta(weeks=3)
+            op_end = _monday(latest) + pd.Timedelta(days=6)
+            co_start, co_end = op_start, op_end
+        elif page == "Reporte Mensual":
+            op_start = _month_start(latest) - pd.DateOffset(months=2)
+            op_end = latest
+            co_start, co_end = op_start, op_end
+        elif page == "Productividad":
+            op_start = latest - pd.Timedelta(days=30)
+            op_end = latest
+        elif page == "Recorridos":
+            op_start = _monday(latest)
+            op_end = op_start + pd.Timedelta(days=6)
+        elif page == "Recuperación":
+            co_start = _monday(latest) - pd.Timedelta(weeks=11)
+            co_end = _monday(latest) + pd.Timedelta(days=6)
+        elif page in {
+            "Detalle por Tienda", "Detalle por Colaborador",
+            "Alertas Inteligentes", "Inteligencia Operativa",
+        }:
+            op_start = latest - pd.Timedelta(days=90)
+            op_end = latest
+            co_start, co_end = op_start, op_end
+
+    pages_with_op = {
+        "Centro Ejecutivo", "Operación Diaria", "Reporte Semanal",
+        "Reporte Mensual", "Productividad", "Recorridos",
+        "Detalle por Tienda", "Detalle por Colaborador",
+        "Alertas Inteligentes", "Inteligencia Operativa",
+    }
+    pages_with_co = {
+        "Centro Ejecutivo", "Operación Diaria", "Reporte Semanal",
+        "Reporte Mensual", "Recuperación", "Alertas Inteligentes",
+        "Inteligencia Operativa",
+    }
+
+    if page in pages_with_op:
+        op = _read_cache_slice(
+            "op", mtime,
+            op_start.isoformat() if op_start is not None else "",
+            op_end.isoformat() if op_end is not None else "",
+        )
+        op = normalize_operation_df(op)
+
+    if page in pages_with_co:
+        co = _read_cache_slice(
+            "co", mtime,
+            co_start.isoformat() if co_start is not None else "",
+            co_end.isoformat() if co_end is not None else "",
+        )
+        co = normalize_commercial_df(co)
+
+    return op, co, diag
+
+
 @st.cache_data(show_spinner=False)
 def read_cache(mtime):
     paths = cache_paths()
@@ -9076,19 +9225,6 @@ render_header()
 page = nav_bar()
 
 ADMIN_WITHOUT_DATA_PAGES = {
-    "Carga de Excel",
-    "Administración",
-    "Configuración de Metas",
-    "Centro de Control",
-    "Diagnóstico del Archivo",
-    "Perfil de Usuario",
-}
-
-# Carga diferida:
-# Las páginas administrativas no necesitan abrir los Parquet operativos ni
-# comerciales. Esto evita cargar toda la base al entrar a Carga de Excel,
-# Administración, Configuración, Perfil o Centro de Control.
-DATA_PAGES = {
     "Centro Ejecutivo",
     "Operación Diaria",
     "Reporte Semanal",
@@ -9096,7 +9232,6 @@ DATA_PAGES = {
     "Productividad",
     "Recuperación",
     "Recorridos",
-    "Reportes",
     "Detalle por Tienda",
     "Detalle por Colaborador",
     "Alertas Inteligentes",
@@ -9111,12 +9246,11 @@ needs_data = page in DATA_PAGES
 
 if needs_data:
     if ACTIVE_FILE.exists() and cache_valid():
-        with st.spinner("Cargando únicamente la información necesaria..."):
-            op_all, co_all, diag_df = read_cache(
-                ACTIVE_FILE.stat().st_mtime
+        with st.spinner("Consultando el periodo requerido..."):
+            op_all, co_all, diag_df = load_data_for_page(
+                page,
+                ACTIVE_FILE.stat().st_mtime,
             )
-
-            # Seguridad por alcance.
             op_all = apply_user_scope(op_all)
             co_all = apply_user_scope(co_all)
     else:
@@ -9627,6 +9761,19 @@ ROUTES = {
     "Carga de Excel": page_carga_excel_v17,
     "Diagnóstico del Archivo": lambda: page_diagnostico_archivo_v17(op_all, co_all, diag_df),
 }
+
+if page in DATA_PAGES and ACTIVE_FILE.exists() and cache_valid():
+    window_notes = {
+        "Operación Diaria": "Consulta optimizada: último día disponible.",
+        "Centro Ejecutivo": "Consulta optimizada: últimas 4 semanas.",
+        "Reporte Semanal": "Consulta optimizada: últimas 4 semanas.",
+        "Reporte Mensual": "Consulta optimizada: últimos 3 meses.",
+        "Productividad": "Consulta optimizada: últimos 30 días.",
+        "Recorridos": "Consulta optimizada: semana más reciente.",
+        "Recuperación": "Consulta optimizada: últimas 12 semanas.",
+    }
+    if page in window_notes:
+        st.caption(window_notes[page])
 
 ROUTES.get(page, lambda: page_resumen(op_all, co_all))()
 
