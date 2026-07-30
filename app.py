@@ -3962,7 +3962,7 @@ def _user_initials(full_name):
 
 
 def render_header():
-    """Encabezado fijo con menú de usuario funcional."""
+    """Encabezado nativo y estable; no usa position:fixed ni overlays."""
     now = datetime.now(MX_TZ)
     user = st.session_state.get("user", {})
     full_name = str(user.get("nombre", "Consulta")).strip() or "Consulta"
@@ -3975,66 +3975,37 @@ def render_header():
     if LOGO_FILE.exists():
         logo_data = base64.b64encode(LOGO_FILE.read_bytes()).decode("utf-8")
 
-    st.markdown(
-        f"""
-        <header class="v20-header">
-          <div class="v20-header-brand">
-            <img src="data:image/png;base64,{logo_data}" alt="Price Shoes">
-            <span>PS Operaciones Ropa</span>
-          </div>
-        </header>
-        """,
-        unsafe_allow_html=True,
-    )
-
-    # Este popover es el elemento visible y clicable del usuario.
-    with st.container(key="v202_user_menu"):
-        with st.popover(
-            f"{greeting}, {first_name}   {initials}",
-            width="content",
-            help="Abrir menú de usuario",
-        ):
+    left, right = st.columns([5, 1.7], vertical_alignment="center")
+    with left:
+        st.markdown(
+            f"""
+            <div class="v21-header-brand">
+              <img src="data:image/png;base64,{logo_data}" alt="Price Shoes">
+              <span>PS Operaciones Ropa</span>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+    with right:
+        with st.popover(f"{greeting}, {first_name}  ·  {initials}", width="stretch"):
             st.markdown(f"### {full_name}")
             st.caption(f"{permiso} · {now.strftime('%d/%m/%Y')}")
             st.divider()
-
-            if st.button(
-                "⌂  Volver al menú principal",
-                key="v202_return_portal",
-                width="stretch",
-            ):
+            if st.button("⌂ Volver al menú principal", key="v21_return_portal", width="stretch"):
                 st.session_state["active_app"] = None
                 st.session_state["portal_view"] = "apps"
                 st.session_state["nav_page"] = "Centro Ejecutivo"
                 st.rerun()
-
-            if st.button(
-                "👤  Mi perfil",
-                key="v202_open_profile",
-                width="stretch",
-            ):
-                st.session_state["active_app"] = "Cambios y Muertos"
+            if st.button("👤 Mi perfil", key="v21_profile", width="stretch"):
                 st.session_state["nav_page"] = "Perfil de Usuario"
                 st.rerun()
-
-            if is_admin():
-                if st.button(
-                    "⬆  Cargar Excel",
-                    key="v202_open_upload",
-                    width="stretch",
-                ):
-                    st.session_state["active_app"] = "Cambios y Muertos"
-                    st.session_state["nav_page"] = "Carga de Excel"
-                    st.rerun()
-
-            st.divider()
-            if st.button(
-                "Cerrar sesión",
-                key="v202_logout",
-                width="stretch",
-            ):
-                clear_auth_session()
+            if is_admin() and st.button("⬆ Cargar Excel", key="v21_upload", width="stretch"):
+                st.session_state["nav_page"] = "Carga de Excel"
                 st.rerun()
+            if st.button("Cerrar sesión", key="v21_logout", width="stretch"):
+                logout_current_session()
+                st.rerun()
+    st.divider()
 
 
 def render_portal_header():
@@ -7796,74 +7767,31 @@ def render_app_portal():
 
 
 def nav_bar():
-    """
-    Navegación estable con una sola fuente de verdad.
-
-    La versión anterior mantenía simultáneamente un radio de escritorio y un
-    selectbox móvil. Al seleccionar "Carga de Excel", el radio quedaba en esa
-    página, pero el selectbox conservaba "Centro Ejecutivo" y sobrescribía la
-    selección. Por eso el menú marcaba Carga de Excel mientras se mostraba el
-    Centro Ejecutivo.
-
-    Esta versión usa únicamente el radio lateral para resolver la página.
-    """
+    """Menú lateral nativo con una sola clave y sin callbacks."""
     role = normalize_role(
         st.session_state.get("user", {}).get("role")
         or st.session_state.get("user", {}).get("permiso", "Consulta")
     )
-
     pages = [
-        "Centro Ejecutivo",
-        "Operación Diaria",
-        "Reporte Semanal",
-        "Reporte Mensual",
-        "Productividad",
-        "Recuperación",
-        "Recorridos",
-        "Reportes",
-        "Detalle por Tienda",
-        "Detalle por Colaborador",
-        "Histórico de Descargas",
-        "Alertas Inteligentes",
-        "Perfil de Usuario",
+        "Centro Ejecutivo", "Operación Diaria", "Reporte Semanal",
+        "Reporte Mensual", "Productividad", "Recuperación", "Recorridos",
+        "Reportes", "Detalle por Tienda", "Detalle por Colaborador",
+        "Histórico de Descargas", "Alertas Inteligentes", "Perfil de Usuario",
         "Inteligencia Operativa",
     ]
-
     if role_level() >= ROLE_LEVEL["ADMIN"]:
-        pages.extend([
-            "Centro de Control",
-            "Administración",
-            "Configuración de Metas",
-            "Carga de Excel",
-            "Diagnóstico del Archivo",
-        ])
-
+        pages += ["Centro de Control", "Administración", "Configuración de Metas",
+                  "Carga de Excel", "Diagnóstico del Archivo"]
     current = st.session_state.get("nav_page", "Centro Ejecutivo")
     if current not in pages:
         current = "Centro Ejecutivo"
-
-    # Clave nueva para no recuperar el valor incompatible de versiones previas.
-    navigation_key = "v20x34_sidebar_navigation"
-
     with st.sidebar:
-        st.markdown(
-            """
-            <div class="v20-sidebar-brand">
-              <span class="v20-sidebar-menu">☰</span>
-              <span>PS Operaciones Ropa</span>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-
+        st.markdown("### ☰  PS Operaciones Ropa")
+        st.divider()
         selected = st.radio(
-            "Navegación",
-            pages,
-            index=pages.index(current),
-            label_visibility="collapsed",
-            key=navigation_key,
+            "Navegación", pages, index=pages.index(current),
+            label_visibility="collapsed", key="v21_navigation"
         )
-
     st.session_state["nav_page"] = selected
     return selected
 
@@ -9427,6 +9355,53 @@ st.markdown(
 
 
 
+st.markdown(
+    """
+    <style>
+    /* V21: restauración del layout nativo */
+    [data-testid="stAppViewContainer"]{display:block!important;overflow:visible!important;}
+    [data-testid="stSidebar"]{
+      position:fixed!important;left:0!important;top:0!important;bottom:0!important;
+      width:300px!important;min-width:300px!important;max-width:300px!important;
+      transform:none!important;visibility:visible!important;opacity:1!important;
+      background:#173B73!important;z-index:999!important;
+    }
+    [data-testid="stSidebar"] > div:first-child{padding:28px 16px 24px!important;overflow-y:auto!important;}
+    [data-testid="stSidebar"] *{visibility:visible!important;opacity:1!important;}
+    [data-testid="stSidebar"] [role="radiogroup"] label p{color:#fff!important;font-weight:650!important;}
+    [data-testid="stSidebar"] [role="radiogroup"] label:has(input:checked){background:#3366CC!important;border-radius:10px!important;}
+    [data-testid="stMain"]{margin-left:300px!important;width:calc(100% - 300px)!important;max-width:calc(100% - 300px)!important;}
+    [data-testid="stMainBlockContainer"],.block-container{
+      width:100%!important;max-width:100%!important;padding:24px 30px 48px!important;
+      opacity:1!important;visibility:visible!important;filter:none!important;overflow-x:hidden!important;
+    }
+    [data-testid="stMainBlockContainer"] > div{opacity:1!important;visibility:visible!important;}
+    .v20-header{display:none!important;}
+    .v21-header-brand{display:flex;align-items:center;gap:16px;min-height:72px;}
+    .v21-header-brand img{width:105px;height:58px;object-fit:contain;}
+    .v21-header-brand span{font-size:22px;font-weight:800;color:#173B73;}
+    [data-testid="stHorizontalBlock"]{width:100%!important;max-width:100%!important;gap:16px!important;}
+    [data-testid="stColumn"]{min-width:0!important;max-width:100%!important;}
+    [data-testid="stDataFrame"],[data-testid="stPlotlyChart"]{width:100%!important;max-width:100%!important;}
+    button{max-width:100%!important;}
+    @media(max-width:900px){
+      [data-testid="stSidebar"]{width:278px!important;min-width:278px!important;max-width:278px!important;transform:translateX(-100%)!important;}
+      [data-testid="stSidebar"][aria-expanded="true"],[data-testid="stSidebar"][data-state="expanded"]{transform:translateX(0)!important;}
+      [data-testid="stMain"]{margin-left:0!important;width:100%!important;max-width:100%!important;}
+      [data-testid="collapsedControl"],[data-testid="stSidebarCollapsedControl"]{display:flex!important;visibility:visible!important;opacity:1!important;position:fixed!important;top:12px!important;left:12px!important;z-index:1200!important;background:#173B73!important;border-radius:10px!important;}
+      [data-testid="stMainBlockContainer"],.block-container{padding:14px 12px 40px!important;}
+      .v21-header-brand{padding-left:48px;}
+      .v21-header-brand img{width:82px;height:48px;}
+      .v21-header-brand span{font-size:18px;}
+      [data-testid="stHorizontalBlock"]{flex-wrap:wrap!important;}
+      [data-testid="stColumn"]{flex:1 1 100%!important;width:100%!important;}
+    }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
+
 if not login_sidebar():
     st.stop()
 
@@ -9913,7 +9888,18 @@ if page in DATA_PAGES and ACTIVE_FILE.exists() and cache_valid():
     if page in window_notes:
         st.caption(window_notes[page])
 
-ROUTES.get(page, lambda: page_resumen(op_all, co_all))()
+
+try:
+    route_handler = ROUTES.get(page)
+    if route_handler is None:
+        st.error(f"La página '{page}' no está registrada.")
+        page_resumen(op_all, co_all)
+    else:
+        route_handler()
+except Exception as page_error:
+    st.error(f"No fue posible abrir la página: {page}")
+    st.exception(page_error)
+
 
 st.markdown(
     '<div class="footer">CONFIDENCIAL | Price Shoes | Operaciones Ropa</div>',
