@@ -25,3 +25,11 @@
 - Agregadas constantes heredadas requeridas por la aplicación: colores, rutas de metadatos, historial, sesiones, estados, etiquetas de roles y archivos de procesamiento.
 - Corregido el `ImportError` al importar nombres desde `core.settings`.
 - Validada la existencia de las 30 constantes importadas por `legacy_app.py`.
+
+## V25.0.0 — Reportes visuales y ecuaciones ejecutivas
+- Rediseño corporativo responsive.
+- Centro Ejecutivo integral con PS Score.
+- Reportes diario, semanal y mensual ampliados.
+- Productividad y recorridos corregidos.
+- PDF y Excel en reportes principales.
+- 15 pruebas aprobadas.
