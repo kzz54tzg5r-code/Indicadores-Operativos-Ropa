@@ -19,3 +19,9 @@
 - Se agrega explícitamente la raíz del repositorio a `sys.path` antes de importar módulos locales.
 - Se valida que existan `core/bootstrap.py`, `core/settings.py` y `legacy_app.py`.
 - Se reemplaza el error ambiguo `ModuleNotFoundError` por un mensaje claro cuando la carga a GitHub está incompleta.
+
+## 24.0.2 — 2026-07-31
+- Corregida la compatibilidad entre `legacy_app.py` y `core/settings.py`.
+- Agregadas constantes heredadas requeridas por la aplicación: colores, rutas de metadatos, historial, sesiones, estados, etiquetas de roles y archivos de procesamiento.
+- Corregido el `ImportError` al importar nombres desde `core.settings`.
+- Validada la existencia de las 30 constantes importadas por `legacy_app.py`.
