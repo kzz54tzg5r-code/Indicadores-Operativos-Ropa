@@ -4490,7 +4490,17 @@ def _cache_date_bounds(cache_key, mtime):
         values = pd.to_datetime(dates["Fecha"], errors="coerce").dropna()
         if values.empty:
             return None, None
-        return values.min(), values.max()
+
+        # Ignorar fechas futuras o históricas anómalas. Una sola captura con
+        # año incorrecto no debe mover la ventana de todos los reportes y
+        # dejar los KPI en cero al cambiar de página.
+        today = pd.Timestamp.today().normalize()
+        min_allowed = pd.Timestamp("2020-01-01")
+        max_allowed = today + pd.Timedelta(days=2)
+        reliable = values[values.between(min_allowed, max_allowed)]
+        if reliable.empty:
+            reliable = values
+        return reliable.min().normalize(), reliable.max().normalize()
     except Exception:
         return None, None
 
@@ -4543,6 +4553,7 @@ def _month_start(value):
     return pd.Timestamp(value).to_period("M").start_time
 
 
+@st.cache_data(show_spinner=False, ttl=300)
 def load_data_for_page(page, mtime):
     """Carga la ventana requerida usando horizontes independientes.
 
@@ -9811,22 +9822,45 @@ def page_alertas_inteligentes_v17(op, co):
 def page_perfil_usuario_v17():
     _v17_title("Perfil de Usuario", "Información personal, seguridad, preferencias y sesiones.")
     user = st.session_state.get("user", {})
+
+    # Contenedor compacto: evita que el perfil vuelva a ocupar todo el ancho
+    # en monitores grandes y conserva el ajuste responsive en móvil.
+    st.markdown('<div class="ps-profile-page-marker"></div>', unsafe_allow_html=True)
     t1, t2, t3, t4 = st.tabs(["Información personal", "Seguridad", "Preferencias", "Sesiones activas"])
+
     with t1:
-        st.text_input("Nombre completo", value=str(user.get("nombre", "")))
-        st.text_input("Nómina", value=str(user.get("nomina", "")), disabled=True)
-        st.text_input("Perfil", value=str(user.get("permiso", "")), disabled=True)
+        left, right = st.columns(2, gap="large")
+        with left:
+            st.text_input("Nombre completo", value=str(user.get("nombre", "")), key="profile_name")
+            st.text_input("Nómina", value=str(user.get("nomina", "")), disabled=True, key="profile_nomina")
+        with right:
+            st.text_input("Perfil", value=str(user.get("permiso", "")), disabled=True, key="profile_role")
+            st.text_input("Alcance", value=str(user.get("scope_label", user.get("scope_type", "Compañía"))), disabled=True, key="profile_scope")
+        st.button("Guardar información", type="primary", key="profile_save_info")
+
     with t2:
-        st.text_input("Contraseña actual", type="password")
-        st.text_input("Nueva contraseña", type="password")
-        st.text_input("Confirmar nueva contraseña", type="password")
-        st.button("Guardar contraseña", type="primary")
+        left, right = st.columns(2, gap="large")
+        with left:
+            st.text_input("Contraseña actual", type="password", key="profile_current_password")
+        with right:
+            st.text_input("Nueva contraseña", type="password", key="profile_new_password")
+            st.text_input("Confirmar nueva contraseña", type="password", key="profile_confirm_password")
+        st.button("Guardar contraseña", type="primary", key="profile_save_password")
+
     with t3:
-        st.checkbox("Recibir alertas críticas", value=True)
-        st.checkbox("Recibir resumen semanal", value=True)
-        st.selectbox("Página inicial", ["Centro Ejecutivo", "Operación Diaria", "Reporte Semanal"])
+        left, right = st.columns(2, gap="large")
+        with left:
+            st.checkbox("Recibir alertas críticas", value=True, key="profile_alerts")
+            st.checkbox("Recibir resumen semanal", value=True, key="profile_weekly")
+        with right:
+            st.selectbox("Página inicial", ["Centro Ejecutivo", "Operación Diaria", "Reporte Semanal"], key="profile_home")
+        st.button("Guardar preferencias", type="primary", key="profile_save_preferences")
+
     with t4:
-        sessions = pd.DataFrame([["Sesión actual", str(user.get("nomina", "")), pd.Timestamp.now().strftime("%d/%m/%Y %H:%M")]], columns=["Sesión", "Usuario", "Última actividad"])
+        sessions = pd.DataFrame(
+            [["Sesión actual", str(user.get("nomina", "")), pd.Timestamp.now().strftime("%d/%m/%Y %H:%M")]],
+            columns=["Sesión", "Usuario", "Última actividad"],
+        )
         panel("Sesiones", sessions, height=180)
 
 
@@ -10298,7 +10332,7 @@ if page in DATA_PAGES and ACTIVE_FILE.exists() and cache_valid():
         st.caption(window_notes[page])
 
 # Marcador de despliegue para confirmar que GitHub/Streamlit usa esta versión.
-st.caption("PS Operaciones Ropa · V25.1 · Motor de datos corregido")
+st.caption("PS Operaciones Ropa · V25.2 · Navegación, perfil y datos corregidos")
 
 try:
     route_handler = ROUTES.get(page)
@@ -10313,6 +10347,59 @@ except Exception as page_error:
 
 
 st.markdown('\n<style>\n:root{--ps-primary:#173B73;--ps-secondary:#3366CC;--ps-pink:#E6007E;--ps-bg:#F4F6F9;--ps-text:#1F2937;--ps-muted:#667085;}\n[data-testid="stSidebar"]{min-width:300px!important;max-width:300px!important;}\n[data-testid="stSidebar"]>div{width:300px!important;}\n[data-testid="stMain"]{min-width:0!important;}\n.block-container{max-width:100%!important;padding-left:2rem!important;padding-right:2rem!important;}\n.v20-header{width:100%!important;left:auto!important;right:auto!important;}\n.v20-user-menu,.v20-user-trigger{min-width:220px!important;max-width:280px!important;white-space:normal!important;}\n[data-testid="stHorizontalBlock"]{width:100%!important;gap:1rem!important;}\n[data-testid="stColumn"]{min-width:0!important;}\n@media(max-width:900px){[data-testid="stSidebar"]{min-width:280px!important;max-width:82vw!important}.block-container{padding-left:1rem!important;padding-right:1rem!important}.ps-kpi-grid{grid-template-columns:repeat(2,minmax(0,1fr))!important}}\n@media(max-width:520px){.ps-kpi-grid{grid-template-columns:1fr!important}}\n</style>\n', unsafe_allow_html=True)
+
+st.markdown(
+    """
+    <style>
+    /* V25.2: menú lateral realmente plegable y perfil compacto. */
+    [data-testid="stSidebar"]{
+      transition:transform .22s ease,width .22s ease,min-width .22s ease,max-width .22s ease!important;
+    }
+    [data-testid="stSidebar"][aria-expanded="false"],
+    [data-testid="stSidebar"][data-state="collapsed"]{
+      transform:translateX(-100%)!important;
+      width:0!important;
+      min-width:0!important;
+      max-width:0!important;
+      overflow:hidden!important;
+    }
+    [data-testid="stAppViewContainer"]:has([data-testid="stSidebar"][aria-expanded="false"]) [data-testid="stMain"],
+    [data-testid="stAppViewContainer"]:has([data-testid="stSidebar"][data-state="collapsed"]) [data-testid="stMain"]{
+      margin-left:0!important;
+      width:100%!important;
+      max-width:100%!important;
+    }
+    [data-testid="collapsedControl"],
+    [data-testid="stSidebarCollapsedControl"]{
+      display:flex!important;
+      visibility:visible!important;
+      opacity:1!important;
+      z-index:2000!important;
+    }
+    /* El botón de cierre nativo del sidebar debe permanecer visible. */
+    [data-testid="stSidebar"] button[kind="header"],
+    [data-testid="stSidebar"] [data-testid="stBaseButton-header"]{
+      display:flex!important;
+      visibility:visible!important;
+      opacity:1!important;
+    }
+    /* Página de perfil: ancho ejecutivo controlado, sin campos estirados. */
+    [data-testid="stMainBlockContainer"]:has(.ps-profile-page-marker) > div{
+      max-width:980px!important;
+      margin-left:auto!important;
+      margin-right:auto!important;
+    }
+    [data-testid="stMainBlockContainer"]:has(.ps-profile-page-marker) [data-testid="stTextInputRootElement"],
+    [data-testid="stMainBlockContainer"]:has(.ps-profile-page-marker) [data-baseweb="select"]{
+      max-width:100%!important;
+    }
+    @media(max-width:900px){
+      [data-testid="stMainBlockContainer"]:has(.ps-profile-page-marker) > div{max-width:100%!important;}
+    }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
 
 st.markdown(
     '<div class="footer">CONFIDENCIAL | Price Shoes | Operaciones Ropa</div>',
