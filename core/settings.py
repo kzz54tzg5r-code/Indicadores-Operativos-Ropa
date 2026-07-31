@@ -4,8 +4,8 @@ APP_NAME = "PS Operaciones Ropa"
 COMPANY = "Price Shoes"
 AREA = "Operaciones Ropa"
 DIRECTION = "Ropa"
-APP_VERSION = "24.0.0"
-APP_BUILD = "2026.07.30.1"
+APP_VERSION = "24.0.2"
+APP_BUILD = "2026.07.31.2"
 APP_SUBTITLE = "Plataforma Integral de Gestión Operativa"
 APP_OBJECTIVE = "Información y decisiones al alcance de la mano, con control, trazabilidad y fluidez operativa."
 COLORS = {
@@ -41,3 +41,44 @@ DEFAULT_GOALS = {
     "score_productividad": 0.20, "score_recorridos": 0.15,
     "score_pendientes": 0.10,
 }
+
+# -----------------------------------------------------------------------------
+# Compatibilidad con la aplicación heredada V21
+# -----------------------------------------------------------------------------
+APP_SLOGAN = APP_OBJECTIVE
+APP_AREA = AREA
+APP_DIRECTION = DIRECTION
+APP_CACHE_VERSION = "v24.0.2-legacy-compat"
+COLOR_PRIMARY = COLORS["primary"]
+COLOR_ACCENT = COLORS["pink"]
+COLOR_BACKGROUND = COLORS["background"]
+META_FILE = CONFIG_DIR / "active_file_meta.json"
+FILE_HISTORY = CONFIG_DIR / "file_history.json"
+SESSION_FILE = CONFIG_DIR / "sessions.json"
+SESSION_TIMEOUT_HOURS = max(1, SESSION_TIMEOUT_MINUTES // 60)
+PROJECT_STORES = (
+    "Iztapalapa", "Vallejo", "Ecatepec", "Toluca", "Arco Norte",
+    "Ixtapaluca", "Querétaro", "Centro", "Olivar", "León", "Puebla",
+    "Puebla Sur", "Aguascalientes", "Veracruz", "Naucalpan", "Miravalle",
+    "Atemajac",
+)
+ROLE_LABELS = {
+    "OWNER": "Propietario del Sistema",
+    "ADMIN": "Administrador",
+    "DIRECTOR": "Director",
+    "REGIONAL": "Regional",
+    "TIENDA": "Tienda",
+    "SUPERVISOR": "Supervisor",
+    "CONSULTA": "Consulta",
+}
+SYSTEM_STATUSES = SYSTEM_STATES
+SYSTEM_STATUS_LABELS = {
+    "ACTIVE": "Activo",
+    "READ_ONLY": "Solo lectura",
+    "MAINTENANCE": "Mantenimiento",
+    "SUSPENDED": "Suspendido",
+    "DEMO": "Demostración",
+}
+PROCESS_STATUS_FILE = CONFIG_DIR / "process_status.json"
+PROCESS_LOCK_FILE = CONFIG_DIR / "process.lock"
+PROCESS_LOG_FILE = LOG_DIR / "process_error.log"
