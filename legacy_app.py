@@ -4544,10 +4544,11 @@ def _month_start(value):
 
 
 def load_data_for_page(page, mtime):
-    """
-    Carga solo la ventana necesaria para la pantalla solicitada.
+    """Carga la ventana requerida usando horizontes independientes.
 
-    Evita abrir simultáneamente todo el histórico operativo y comercial.
+    La versión anterior tomaba una sola fecha máxima entre operación y
+    comercial. Si una fuente terminaba después que la otra, el filtro podía
+    dejar vacío uno de los DataFrames aun cuando el caché sí contenía datos.
     """
     op = pd.DataFrame()
     co = pd.DataFrame()
@@ -4555,41 +4556,35 @@ def load_data_for_page(page, mtime):
 
     op_min, op_max = _cache_date_bounds("op", mtime)
     co_min, co_max = _cache_date_bounds("co", mtime)
-    horizon_candidates = [v for v in (op_max, co_max) if v is not None]
-    latest = max(horizon_candidates) if horizon_candidates else None
 
-    op_start = op_end = co_start = co_end = None
-
-    if latest is not None:
-        latest = pd.Timestamp(latest).normalize()
-
-        if page == "Operación Diaria":
-            op_start = op_end = latest
-            co_start = co_end = latest
-        elif page in {"Centro Ejecutivo", "Reporte Semanal"}:
-            op_start = _monday(latest) - pd.Timedelta(weeks=3)
-            op_end = _monday(latest) + pd.Timedelta(days=6)
-            co_start, co_end = op_start, op_end
-        elif page == "Reporte Mensual":
-            op_start = _month_start(latest) - pd.DateOffset(months=2)
-            op_end = latest
-            co_start, co_end = op_start, op_end
-        elif page == "Productividad":
-            op_start = latest - pd.Timedelta(days=30)
-            op_end = latest
-        elif page == "Recorridos":
-            op_start = _monday(latest)
-            op_end = op_start + pd.Timedelta(days=6)
-        elif page == "Recuperación":
-            co_start = _monday(latest) - pd.Timedelta(weeks=11)
-            co_end = _monday(latest) + pd.Timedelta(days=6)
-        elif page in {
+    def _window(latest_value, source, page_name):
+        if latest_value is None:
+            return None, None
+        latest_value = pd.Timestamp(latest_value).normalize()
+        if page_name == "Operación Diaria":
+            return latest_value, latest_value
+        if page_name in {"Centro Ejecutivo", "Reporte Semanal"}:
+            start_value = _monday(latest_value) - pd.Timedelta(weeks=3)
+            return start_value, _monday(latest_value) + pd.Timedelta(days=6)
+        if page_name == "Reporte Mensual":
+            return _month_start(latest_value) - pd.DateOffset(months=2), latest_value
+        if page_name == "Productividad" and source == "op":
+            return latest_value - pd.Timedelta(days=30), latest_value
+        if page_name == "Recorridos" and source == "op":
+            start_value = _monday(latest_value)
+            return start_value, start_value + pd.Timedelta(days=6)
+        if page_name == "Recuperación" and source == "co":
+            start_value = _monday(latest_value) - pd.Timedelta(weeks=11)
+            return start_value, _monday(latest_value) + pd.Timedelta(days=6)
+        if page_name in {
             "Detalle por Tienda", "Detalle por Colaborador",
             "Alertas Inteligentes", "Inteligencia Operativa",
         }:
-            op_start = latest - pd.Timedelta(days=90)
-            op_end = latest
-            co_start, co_end = op_start, op_end
+            return latest_value - pd.Timedelta(days=90), latest_value
+        return None, None
+
+    op_start, op_end = _window(op_max, "op", page)
+    co_start, co_end = _window(co_max, "co", page)
 
     pages_with_op = {
         "Centro Ejecutivo", "Operación Diaria", "Reporte Semanal",
@@ -4609,6 +4604,10 @@ def load_data_for_page(page, mtime):
             op_start.isoformat() if op_start is not None else "",
             op_end.isoformat() if op_end is not None else "",
         )
+        # Respaldo: si el rango optimizado no devuelve filas, leer el caché
+        # completo para no ocultar información válida por una fecha anómala.
+        if (op is None or op.empty) and op_max is not None:
+            op = _read_cache_slice("op", mtime)
         op = normalize_operation_df(op)
 
     if page in pages_with_co:
@@ -4617,6 +4616,8 @@ def load_data_for_page(page, mtime):
             co_start.isoformat() if co_start is not None else "",
             co_end.isoformat() if co_end is not None else "",
         )
+        if (co is None or co.empty) and co_max is not None:
+            co = _read_cache_slice("co", mtime)
         co = normalize_commercial_df(co)
 
     return op, co, diag
@@ -9555,7 +9556,7 @@ def page_configuracion_metas_v17():
     with t3:
         conversion = st.number_input("Meta conversión misma semana ISO (%)", min_value=0.0, max_value=100.0, value=float(metas.get("conversion", 30.0)))
     with t4:
-        recovery = st.number_input("Meta recuperación económica (%)", min_value=0.0, value=float(metas.get("recuperacion", 120.0)))
+        recovery = st.number_input("Meta recuperación económica (%)", min_value=0.0, value=float(metas.get("recuperacion", 100.0)))
     if st.button("Guardar cambios", type="primary"):
         metas_file.write_text(json.dumps({
             "productividad": productividad,
@@ -10296,6 +10297,8 @@ if page in DATA_PAGES and ACTIVE_FILE.exists() and cache_valid():
     if page in window_notes:
         st.caption(window_notes[page])
 
+# Marcador de despliegue para confirmar que GitHub/Streamlit usa esta versión.
+st.caption("PS Operaciones Ropa · V25.1 · Motor de datos corregido")
 
 try:
     route_handler = ROUTES.get(page)
