@@ -3962,20 +3962,19 @@ def _user_initials(full_name):
 
 
 def render_header():
-    """Encabezado nativo y estable; no usa position:fixed ni overlays."""
+    """Encabezado corporativo compacto y estable en cualquier ancho."""
     now = datetime.now(MX_TZ)
     user = st.session_state.get("user", {})
     full_name = str(user.get("nombre", "Consulta")).strip() or "Consulta"
     first_name = full_name.split()[0]
     permiso = str(user.get("permiso", "Consulta"))
-    greeting = _session_greeting(now)
     initials = _user_initials(full_name)
 
     logo_data = ""
     if LOGO_FILE.exists():
         logo_data = base64.b64encode(LOGO_FILE.read_bytes()).decode("utf-8")
 
-    left, right = st.columns([5, 1.7], vertical_alignment="center")
+    left, right = st.columns([8.4, 1.6], vertical_alignment="center", gap="small")
     with left:
         st.markdown(
             f"""
@@ -3987,7 +3986,8 @@ def render_header():
             unsafe_allow_html=True,
         )
     with right:
-        with st.popover(f"{greeting}, {first_name}  ·  {initials}", width="stretch"):
+        # El texto corto evita que el nombre se parta letra por letra.
+        with st.popover(f"👤 {first_name} ▾", width="stretch"):
             st.markdown(f"### {full_name}")
             st.caption(f"{permiso} · {now.strftime('%d/%m/%Y')}")
             st.divider()
@@ -6355,16 +6355,21 @@ def aggrid_table(df, height=360, editable=False, key=None):
         return df
 
     gb = GridOptionsBuilder.from_dataframe(show)
-    gb.configure_default_column(filter=True, sortable=True, resizable=True, editable=editable, minWidth=105)
+    column_count = max(len(show.columns), 1)
+    adaptive_min = 62 if column_count >= 8 else 82
+    gb.configure_default_column(
+        filter=True, sortable=True, resizable=True, editable=editable,
+        minWidth=adaptive_min, wrapHeaderText=True, autoHeaderHeight=True
+    )
     if "Tienda" in show.columns:
-        gb.configure_column("Tienda", pinned="left", minWidth=145)
+        gb.configure_column("Tienda", pinned="left", minWidth=105, maxWidth=150)
     for col in show.columns:
         if col != "Tienda":
             if col == "% Ubic.":
                 gb.configure_column(
                     col,
                     type=["rightAligned"],
-                    minWidth=105,
+                    minWidth=68,
                     cellStyle=JsCode("""
                         function(params) {
                             const v = parseFloat(String(params.value).replace('%','').replace(',',''));
@@ -6380,10 +6385,13 @@ def aggrid_table(df, height=360, editable=False, key=None):
                     """)
                 )
             else:
-                gb.configure_column(col, type=["rightAligned"], minWidth=105)
+                gb.configure_column(col, type=["rightAligned"], minWidth=62)
     opts = gb.build()
     opts["rowHeight"] = 34
-    opts["headerHeight"] = 38
+    opts["headerHeight"] = 46
+    opts["suppressHorizontalScroll"] = True
+    opts["onGridReady"] = JsCode("function(params){setTimeout(function(){params.api.sizeColumnsToFit();},80);}")
+    opts["onGridSizeChanged"] = JsCode("function(params){setTimeout(function(){params.api.sizeColumnsToFit();},50);}")
     opts["enableCellTextSelection"] = True
     opts["suppressRowClickSelection"] = True
     opts["getRowStyle"] = JsCode("""
@@ -6398,7 +6406,9 @@ def aggrid_table(df, height=360, editable=False, key=None):
         ".ag-header-cell-text": {"color": "#FFFFFF !important", "font-weight": "900 !important"},
         ".ag-icon": {"color": "#FFFFFF !important", "fill": "#FFFFFF !important"},
         ".ag-root-wrapper": {"border": "1px solid #E1E7F0 !important", "border-radius": "10px !important", "overflow": "hidden !important"},
-        ".ag-cell": {"font-size": "12px !important"},
+        ".ag-cell": {"font-size": "11px !important", "padding-left": "6px !important", "padding-right": "6px !important"},
+        ".ag-header-cell": {"padding-left": "5px !important", "padding-right": "5px !important"},
+        ".ag-header-cell-text": {"font-size": "10px !important", "white-space": "normal !important", "line-height": "1.1 !important"},
     }
     result = AgGrid(
         show,
@@ -7779,7 +7789,7 @@ def render_app_portal():
 
 
 def nav_bar():
-    """Menú lateral nativo con una sola clave y sin callbacks."""
+    """Menú lateral con control explícito para ocultar y volver a mostrar."""
     role = normalize_role(
         st.session_state.get("user", {}).get("role")
         or st.session_state.get("user", {}).get("permiso", "Consulta")
@@ -7794,16 +7804,42 @@ def nav_bar():
     if role_level() >= ROLE_LEVEL["ADMIN"]:
         pages += ["Centro de Control", "Administración", "Configuración de Metas",
                   "Carga de Excel", "Diagnóstico del Archivo"]
+
     current = st.session_state.get("nav_page", "Centro Ejecutivo")
     if current not in pages:
         current = "Centro Ejecutivo"
-    with st.sidebar:
-        st.markdown("### ☰  PS Operaciones Ropa")
-        st.divider()
-        selected = st.radio(
-            "Navegación", pages, index=pages.index(current),
-            label_visibility="collapsed", key="v21_navigation"
-        )
+    if "sidebar_open" not in st.session_state:
+        st.session_state["sidebar_open"] = True
+
+    if st.session_state["sidebar_open"]:
+        st.markdown("""
+        <style>
+        [data-testid="stSidebar"]{display:block!important;visibility:visible!important;transform:none!important;width:300px!important;min-width:300px!important;max-width:300px!important;}
+        [data-testid="stMain"]{margin-left:300px!important;width:calc(100% - 300px)!important;max-width:calc(100% - 300px)!important;}
+        </style>
+        """, unsafe_allow_html=True)
+        with st.sidebar:
+            st.markdown("### PS Operaciones Ropa")
+            if st.button("← Ocultar menú", key="v253_hide_menu", width="stretch"):
+                st.session_state["sidebar_open"] = False
+                st.rerun()
+            st.divider()
+            selected = st.radio(
+                "Navegación", pages, index=pages.index(current),
+                label_visibility="collapsed", key="v253_navigation"
+            )
+    else:
+        st.markdown("""
+        <style>
+        [data-testid="stSidebar"]{display:none!important;width:0!important;min-width:0!important;max-width:0!important;}
+        [data-testid="stMain"]{margin-left:0!important;width:100%!important;max-width:100%!important;}
+        </style>
+        """, unsafe_allow_html=True)
+        if st.button("☰ Mostrar menú", key="v253_show_menu", type="primary"):
+            st.session_state["sidebar_open"] = True
+            st.rerun()
+        selected = current
+
     st.session_state["nav_page"] = selected
     return selected
 
@@ -10073,22 +10109,42 @@ def page_resumen(op, co):
         ("PS Score", f"{score:.1f}", "Excelente" if score>=90 else "Estable" if score>=80 else "Atención" if score>=70 else "Crítico", "#173B73"),
     ])
     macro = _v25_macro(rec_detail)
-    left, right = st.columns([6,4], gap="large")
-    with left:
-        st.markdown("### Macro por tiendas")
-        if not macro.empty:
-            ranked = macro.sort_values(["% Recuperación económica","% Conversión"], ascending=False)
-            panel("Ranking ejecutivo", ranked, height=390)
-        else: st.info("Sin información comercial para el periodo.")
-    with right:
-        st.markdown("### Alertas y prioridades")
-        if not macro.empty:
-            worst = macro.sort_values("Pendiente $", ascending=False).head(3)
-            best = macro.sort_values("% Recuperación económica", ascending=False).head(1)
-            if not best.empty: st.success(f"Mejor tienda: {best.iloc[0]['Tienda']} · {best.iloc[0]['% Recuperación económica']:.1f}% recuperación económica.")
-            for _, row in worst.iterrows():
-                st.warning(f"{row['Tienda']}: {row['Pendiente Pzs']:,.0f} piezas pendientes y {fmt_money(row['Pendiente $'])} de impacto económico.")
-        if opm["Pendiente ubicar"] > 0: st.info(f"Pendiente operativo por ubicar: {opm['Pendiente ubicar']:,.0f} piezas.")
+    st.markdown("### Alertas y prioridades")
+    alert_items = []
+    if not macro.empty:
+        worst = macro.sort_values("Pendiente $", ascending=False).head(2)
+        best = macro.sort_values("% Recuperación económica", ascending=False).head(1)
+        if not best.empty:
+            row = best.iloc[0]
+            alert_items.append(("Mejor resultado", f"{row['Tienda']} · {row['% Recuperación económica']:.1f}% recuperación económica", "#DCFCE7", "#166534"))
+        for _, row in worst.iterrows():
+            alert_items.append(("Prioridad económica", f"{row['Tienda']} · {row['Pendiente Pzs']:,.0f} pzas · {fmt_money(row['Pendiente $'])}", "#FEF3C7", "#92400E"))
+    if opm["Pendiente ubicar"] > 0:
+        alert_items.append(("Pendiente operativo", f"{opm['Pendiente ubicar']:,.0f} piezas por ubicar", "#DBEAFE", "#1D4ED8"))
+    if alert_items:
+        html = '<div class="v253-alert-grid">'
+        for title, text, bg, color in alert_items:
+            html += f'<div class="v253-alert-card" style="background:{bg};color:{color}"><b>{title}</b><span>{text}</span></div>'
+        html += '</div>'
+        st.markdown(html, unsafe_allow_html=True)
+
+    st.markdown("### Macro por tiendas")
+    if not macro.empty:
+        ranked = macro.sort_values(["% Recuperación económica","% Conversión"], ascending=False).copy()
+        ranked = ranked.rename(columns={
+            "Piezas Recuperadas":"Recup. Pzs",
+            "Valor de la Devolución a Precio Neto":"Valor Dev. $",
+            "Recuperación $":"Recup. $",
+            "% Conversión":"Conv. %",
+            "% Recuperación económica":"Recup. %",
+            "Pendiente Pzs":"Pend. Pzs",
+            "Pendiente $":"Pend. $",
+        })
+        preferred = ["Tienda","Dev Pzs","Recup. Pzs","Conv. %","Valor Dev. $","Recup. $","Recup. %","Pend. Pzs","Pend. $"]
+        ranked = ranked[[c for c in preferred if c in ranked.columns]]
+        panel("Ranking ejecutivo", ranked, height=430)
+    else:
+        st.info("Sin información comercial para el periodo.")
     if not op_table.empty:
         combined_chart(op_table, "Ingreso vs Acondicionado vs Ubicado — últimas 4 semanas")
     summary = {**opm, **recm, **prodm, **routem, "PS Score": score, "Periodo": f"{start.date()} a {end.date()}"}
@@ -10332,7 +10388,7 @@ if page in DATA_PAGES and ACTIVE_FILE.exists() and cache_valid():
         st.caption(window_notes[page])
 
 # Marcador de despliegue para confirmar que GitHub/Streamlit usa esta versión.
-st.caption("PS Operaciones Ropa · V25.2 · Navegación, perfil y datos corregidos")
+st.caption("PS Operaciones Ropa · V25.3 · Layout, menú y tablas ajustados")
 
 try:
     route_handler = ROUTES.get(page)
@@ -10401,6 +10457,30 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
+
+
+st.markdown(
+    """
+    <style>
+    /* V25.3: proporciones estables, encabezado compacto y tablas sin desplazamiento horizontal. */
+    .v21-header-brand{min-height:64px!important;gap:12px!important;}
+    .v21-header-brand img{width:118px!important;height:64px!important;max-width:118px!important;}
+    .v21-header-brand span{font-size:25px!important;white-space:nowrap!important;}
+    [data-testid="stPopover"] > button p{white-space:nowrap!important;overflow:hidden!important;text-overflow:ellipsis!important;font-size:14px!important;}
+    .ps-profile-row{grid-template-columns:105px minmax(0,1fr)!important;gap:10px!important;padding:10px 12px!important;font-size:14px!important;}
+    .ps-profile-row b{white-space:normal!important;word-break:normal!important;overflow-wrap:break-word!important;line-height:1.35!important;}
+    .v20-portal-content > [data-testid="stHorizontalBlock"]{align-items:flex-start!important;}
+    .v253-alert-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin:8px 0 22px;}
+    .v253-alert-card{border-radius:13px;padding:14px 16px;min-height:78px;box-shadow:0 5px 16px rgba(23,59,115,.05);display:flex;flex-direction:column;gap:6px;border:1px solid rgba(23,59,115,.06);}
+    .v253-alert-card b{font-size:12px;text-transform:uppercase;letter-spacing:.35px;}
+    .v253-alert-card span{font-size:14px;font-weight:700;line-height:1.35;}
+    [data-testid="stDataFrame"]{overflow-x:hidden!important;}
+    @media(max-width:1100px){.v253-alert-grid{grid-template-columns:repeat(2,minmax(0,1fr));}}
+    @media(max-width:650px){.v253-alert-grid{grid-template-columns:1fr;}.v21-header-brand span{font-size:19px!important;}}
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
 st.markdown(
     '<div class="footer">CONFIDENCIAL | Price Shoes | Operaciones Ropa</div>',
     unsafe_allow_html=True,

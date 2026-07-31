@@ -33,3 +33,6 @@
 - Productividad y recorridos corregidos.
 - PDF y Excel en reportes principales.
 - 15 pruebas aprobadas.
+
+## V25.3
+- Layout principal, menú lateral, alertas y tablas ajustadas.
