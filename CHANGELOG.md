@@ -14,3 +14,8 @@
 - Eliminación de alertas, históricos e inteligencia con datos ficticios.
 - Ajuste responsive del layout y del encabezado de usuario.
 - Pruebas automatizadas de fórmulas, permisos y productividad.
+
+## V24.0.1 — Corrección de arranque en Streamlit Cloud
+- Se agrega explícitamente la raíz del repositorio a `sys.path` antes de importar módulos locales.
+- Se valida que existan `core/bootstrap.py`, `core/settings.py` y `legacy_app.py`.
+- Se reemplaza el error ambiguo `ModuleNotFoundError` por un mensaje claro cuando la carga a GitHub está incompleta.
