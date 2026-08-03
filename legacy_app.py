@@ -7791,125 +7791,120 @@ def _navigate_to(page_name: str) -> None:
 
 
 def page_inicio():
-    """Menú principal de aplicativos y reportes, visible aun sin fuente de datos."""
-    user = st.session_state.get("user", {})
-    role = normalize_role(user.get("role") or user.get("permiso", "Consulta"))
+    """Portafolio principal de proyectos de PS Operaciones Ropa."""
     st.markdown(
         """
-        <section class="v29-home-hero">
+        <section class="v30-home-hero">
           <div>
-            <div class="v29-eyebrow">PS OPERACIONES ROPA</div>
+            <div class="v30-eyebrow">PS OPERACIONES ROPA</div>
             <h1>Menú principal</h1>
-            <p>Selecciona el reporte o proceso que deseas consultar.</p>
+            <p>Selecciona el proyecto o reporte general que deseas consultar.</p>
           </div>
         </section>
         """,
         unsafe_allow_html=True,
     )
 
-    modules = [
-        ("Centro Ejecutivo", "Resumen integral de los principales indicadores.", "▦"),
-        ("Operación Diaria", "Ingresos, acondicionado, ubicado y pendientes del día.", "◷"),
-        ("Reporte Semanal", "Comparativo y cumplimiento por semana ISO.", "▥"),
-        ("Reporte Mensual", "Consolidado mensual y tendencias.", "▤"),
-        ("Productividad", "Productividad por colaborador y tienda.", "↗"),
-        ("Recuperación", "Conversión y recuperación económica de todas las tiendas.", "♻"),
-        ("Recorridos", "Cumplimiento de recorridos y metas.", "◎"),
-        ("Reportes", "Generación y descarga de reportes.", "⇩"),
-        ("Detalle por Tienda", "Vista integral de una tienda.", "⌂"),
-        ("Detalle por Colaborador", "Desempeño individual y actividades.", "♙"),
-        ("Alertas Inteligentes", "Prioridades, riesgos y seguimiento.", "△"),
-        ("Inteligencia Operativa", "Tendencias y recomendaciones ejecutivas.", "✦"),
-    ]
-    if role_level() >= ROLE_LEVEL["ADMIN"]:
-        modules.extend([
-            ("Carga de Excel", "Carga, guarda y procesa la fuente de datos.", "⇧"),
-            ("Diagnóstico del Archivo", "Valida la estructura y calidad del Excel.", "✓"),
-            ("Administración", "Usuarios, roles y alcances.", "☷"),
-            ("Configuración de Metas", "Metas operativas y comerciales.", "⌁"),
-            ("Centro de Control", "Estado, auditoría y control del sistema.", "⚙"),
-        ])
+    col_project, col_future = st.columns(2, gap="large")
+    with col_project:
+        st.markdown(
+            """
+            <div class="v30-project-card v30-project-live">
+              <div class="v30-project-icon">♻</div>
+              <div class="v30-project-copy">
+                <div class="v30-project-name">Muertos y Cambios</div>
+                <div class="v30-project-desc">Recuperación, conversión, productividad, recorridos y seguimiento operativo.</div>
+                <div class="v30-project-status">Proyecto activo</div>
+              </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+        if st.button("Abrir Muertos y Cambios", key="v30_open_muertos_cambios", type="primary", width="stretch"):
+            st.session_state["active_app"] = "Muertos y Cambios"
+            st.session_state["nav_page"] = "Centro Ejecutivo"
+            st.session_state["project_nav_selector"] = "Centro Ejecutivo"
+            st.rerun()
 
-    cols = st.columns(3, gap="medium")
-    for i, (name, desc, icon) in enumerate(modules):
-        with cols[i % 3]:
-            st.markdown(
-                f'<div class="v29-module-card"><div class="v29-module-icon">{icon}</div>'
-                f'<div class="v29-module-name">{name}</div>'
-                f'<div class="v29-module-desc">{desc}</div></div>',
-                unsafe_allow_html=True,
-            )
-            if st.button(f"Abrir {name}", key=f"v29_open_{i}", width="stretch"):
-                st.session_state["nav_page"] = name
-                st.rerun()
+    with col_future:
+        st.markdown(
+            """
+            <div class="v30-project-card v30-project-future">
+              <div class="v30-project-icon">＋</div>
+              <div class="v30-project-copy">
+                <div class="v30-project-name">Próximo proyecto</div>
+                <div class="v30-project-desc">Este espacio permitirá integrar nuevos reportes sin mezclar sus indicadores con Muertos y Cambios.</div>
+                <div class="v30-project-status v30-status-muted">Disponible próximamente</div>
+              </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+        st.button("Próximamente", key="v30_future_project", disabled=True, width="stretch")
 
 
-def nav_bar():
-    """Menú lateral estable mediante botones y página inicial de módulos."""
-    role = normalize_role(
-        st.session_state.get("user", {}).get("role")
-        or st.session_state.get("user", {}).get("permiso", "Consulta")
-    )
+def _project_pages() -> list[str]:
     pages = [
-        "Inicio", "Centro Ejecutivo", "Operación Diaria", "Reporte Semanal",
+        "Centro Ejecutivo", "Operación Diaria", "Reporte Semanal",
         "Reporte Mensual", "Productividad", "Recuperación", "Recorridos",
         "Reportes", "Detalle por Tienda", "Detalle por Colaborador",
         "Histórico de Descargas", "Alertas Inteligentes", "Perfil de Usuario",
         "Inteligencia Operativa",
     ]
-    page_icons = {
-        "Inicio":"⌂", "Centro Ejecutivo":"▦", "Operación Diaria":"◷",
-        "Reporte Semanal":"▥", "Reporte Mensual":"▤", "Productividad":"↗",
-        "Recuperación":"♻", "Recorridos":"◎", "Reportes":"⇩",
-        "Detalle por Tienda":"⌂", "Detalle por Colaborador":"♙",
-        "Histórico de Descargas":"↧", "Alertas Inteligentes":"△",
-        "Perfil de Usuario":"●", "Inteligencia Operativa":"✦",
-        "Centro de Control":"⚙", "Administración":"☷",
-        "Configuración de Metas":"⌁", "Carga de Excel":"⇧",
-        "Diagnóstico del Archivo":"✓",
-    }
     if role_level() >= ROLE_LEVEL["ADMIN"]:
-        pages += ["Carga de Excel", "Diagnóstico del Archivo", "Administración",
-                  "Configuración de Metas", "Centro de Control"]
+        pages += [
+            "Carga de Excel", "Diagnóstico del Archivo", "Administración",
+            "Configuración de Metas", "Centro de Control",
+        ]
+    return pages
 
+
+def nav_bar():
+    """Navegación de dos niveles: portafolio y menú interno permanente."""
+    active_app = st.session_state.get("active_app")
+    if active_app != "Muertos y Cambios":
+        st.session_state["nav_page"] = "Inicio"
+        return "Inicio"
+
+    pages = _project_pages()
     requested = st.session_state.pop("nav_request", None)
     if requested in pages:
         st.session_state["nav_page"] = requested
 
-    current = st.session_state.get("nav_page", "Inicio")
+    current = st.session_state.get("nav_page", "Centro Ejecutivo")
     if current not in pages:
-        current = "Inicio"
+        current = "Centro Ejecutivo"
         st.session_state["nav_page"] = current
 
-    user = st.session_state.get("user", {})
-    full_name = str(user.get("nombre", "Consulta"))
-    role_label = ROLE_LABELS.get(role, str(user.get("permiso", "Consulta")))
-    with st.sidebar:
-        st.markdown(
-            f"""
-            <div class="v26-sidebar-head">
-              <div class="v26-sidebar-mark">PS</div>
-              <div><b>Operaciones Ropa</b><span>{role_label}</span></div>
-            </div>
-            <div class="v26-sidebar-user"><b>{full_name}</b><span>{user.get('scope_value') or 'Compañía'}</span></div>
-            """,
-            unsafe_allow_html=True,
-        )
-        for idx, item in enumerate(pages):
-            button_type = "primary" if item == current else "secondary"
-            if st.button(
-                f"{page_icons.get(item, '•')}  {item}",
-                key=f"v29_nav_{idx}_{item}",
-                type=button_type,
-                width="stretch",
-            ):
-                st.session_state["nav_page"] = item
-                st.rerun()
-        st.divider()
-        if st.button("Cerrar sesión", key="v29_logout", width="stretch"):
-            logout_current_session()
-            st.rerun()
+    # Sincroniza el selector antes de crearlo; evita que Streamlit vuelva al Centro Ejecutivo.
+    if st.session_state.get("project_nav_selector") not in pages:
+        st.session_state["project_nav_selector"] = current
+    elif st.session_state.get("project_nav_selector") != current:
+        st.session_state["project_nav_selector"] = current
 
+    spacer, back_col, menu_col = st.columns([4.5, 1.7, 3.1], gap="small")
+    with back_col:
+        if st.button("← Menú principal", key="v30_back_portfolio", width="stretch"):
+            st.session_state["active_app"] = None
+            st.session_state["nav_page"] = "Inicio"
+            st.session_state.pop("project_nav_selector", None)
+            st.rerun()
+    with menu_col:
+        selected = st.selectbox(
+            "Menú de Muertos y Cambios",
+            pages,
+            key="project_nav_selector",
+            label_visibility="collapsed",
+        )
+
+    if selected != current:
+        st.session_state["nav_page"] = selected
+        st.rerun()
+
+    st.markdown(
+        f'<div class="v30-project-context"><span>Proyecto</span><b>Muertos y Cambios</b><em>{current}</em></div>',
+        unsafe_allow_html=True,
+    )
     return current
 
 def reliable_data_horizon(op, co):
@@ -9568,7 +9563,7 @@ if not login_sidebar():
     st.stop()
 
 if "active_app" not in st.session_state:
-    st.session_state["active_app"] = "Cambios y Muertos"
+    st.session_state["active_app"] = None
 if "nav_page" not in st.session_state:
     st.session_state["nav_page"] = "Inicio"
 if "portal_view" not in st.session_state:
@@ -10539,8 +10534,29 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
+
+st.markdown(
+    """
+    <style>
+    /* V30: portafolio de proyectos y navegación interna siempre visible. */
+    [data-testid="stSidebar"]{display:none!important;}
+    [data-testid="stSidebarCollapsedControl"],[data-testid="collapsedControl"]{display:none!important;}
+    [data-testid="stMain"]{margin-left:0!important;width:100%!important;}
+    .v30-home-hero{background:linear-gradient(135deg,#173B73,#2F5EAA);border-radius:18px;padding:34px 38px;margin:12px 0 28px;color:#fff;box-shadow:0 16px 34px rgba(23,59,115,.16)}
+    .v30-eyebrow{font-size:12px;font-weight:900;letter-spacing:1.5px;opacity:.86}.v30-home-hero h1{font-size:38px;line-height:1.05;margin:22px 0 12px;color:#fff}.v30-home-hero p{font-size:17px;margin:0;opacity:.92}
+    .v30-project-card{display:flex;gap:18px;align-items:flex-start;background:#fff;border:1px solid #E2E8F0;border-radius:18px;padding:24px;min-height:178px;box-shadow:0 8px 22px rgba(23,59,115,.07)}
+    .v30-project-live{border-top:5px solid #3366CC}.v30-project-future{border-top:5px solid #CBD5E1;opacity:.78}.v30-project-icon{width:58px;height:58px;display:grid;place-items:center;border-radius:15px;background:#EAF2FF;color:#173B73;font-size:28px;font-weight:900;flex:0 0 auto}.v30-project-copy{min-width:0}.v30-project-name{font-size:23px;font-weight:900;color:#173B73;margin:2px 0 8px}.v30-project-desc{font-size:14px;line-height:1.5;color:#667085}.v30-project-status{display:inline-block;margin-top:18px;padding:6px 10px;border-radius:999px;background:#E9F8F0;color:#157A45;font-size:11px;font-weight:850}.v30-status-muted{background:#F1F5F9;color:#64748B}
+    .v30-project-context{display:flex;align-items:center;gap:9px;margin:8px 0 14px;padding:9px 13px;background:#fff;border:1px solid #E2E8F0;border-radius:11px;color:#667085;font-size:12px}.v30-project-context span{text-transform:uppercase;letter-spacing:.6px;font-weight:800}.v30-project-context b{color:#173B73;font-size:13px}.v30-project-context em{font-style:normal;margin-left:auto;color:#3366CC;font-weight:750}
+    div[data-testid="stSelectbox"]:has([aria-label="Menú de Muertos y Cambios"]){position:relative!important;z-index:50!important;margin:0!important;}
+    div[data-testid="stSelectbox"]:has([aria-label="Menú de Muertos y Cambios"]) [data-baseweb="select"]>div{background:#fff!important;border:1px solid #CBD5E1!important;border-radius:11px!important;min-height:43px!important;box-shadow:0 4px 14px rgba(23,59,115,.06)!important;}
+    @media(max-width:900px){.v30-home-hero{padding:25px 22px}.v30-home-hero h1{font-size:30px}.v30-project-card{min-height:auto}.v30-project-context{flex-wrap:wrap}.v30-project-context em{width:100%;margin-left:0}.stHorizontalBlock:has(#v30_back_portfolio){flex-wrap:wrap!important}}
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
 # Marcador de despliegue para confirmar que GitHub/Streamlit usa esta versión.
-st.caption("PS Operaciones Ropa · V29 · Menú principal y carga restaurados")
+st.caption("PS Operaciones Ropa · V30 · Portafolio y menú interno persistente")
 
 try:
     route_handler = ROUTES.get(page)
