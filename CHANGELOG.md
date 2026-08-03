@@ -1,3 +1,10 @@
+# V31
+
+- Navegación interna persistente corregida.
+- Layout a ancho completo.
+- Encabezados blancos en hero y tablas.
+- Eliminación de texto Portafolio.
+
 # V27.0.0 — 2026-08-03
 - Layout maestro estable y responsive.
 - Navegación lateral con iconos.

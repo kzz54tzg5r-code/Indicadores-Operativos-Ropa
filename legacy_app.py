@@ -7879,8 +7879,6 @@ def nav_bar():
     # Sincroniza el selector antes de crearlo; evita que Streamlit vuelva al Centro Ejecutivo.
     if st.session_state.get("project_nav_selector") not in pages:
         st.session_state["project_nav_selector"] = current
-    elif st.session_state.get("project_nav_selector") != current:
-        st.session_state["project_nav_selector"] = current
 
     spacer, back_col, menu_col = st.columns([4.5, 1.7, 3.1], gap="small")
     with back_col:
@@ -10556,7 +10554,7 @@ st.markdown(
 )
 
 # Marcador de despliegue para confirmar que GitHub/Streamlit usa esta versión.
-st.caption("PS Operaciones Ropa · V30 · Portafolio y menú interno persistente")
+st.caption("PS Operaciones Ropa · V31")
 
 try:
     route_handler = ROUTES.get(page)
@@ -10649,6 +10647,50 @@ st.markdown(
     """,
     unsafe_allow_html=True,
 )
+st.markdown(
+    """
+    <style>
+    /* V31: corrección autoritativa final de navegación, proporciones y tablas. */
+    [data-testid="stSidebar"],
+    [data-testid="stSidebarCollapsedControl"],
+    [data-testid="collapsedControl"]{display:none!important;visibility:hidden!important;width:0!important;min-width:0!important;max-width:0!important;}
+    [data-testid="stMain"]{margin-left:0!important;width:100%!important;max-width:100%!important;}
+    [data-testid="stMainBlockContainer"],.block-container{max-width:100%!important;width:100%!important;margin:0!important;padding:.65rem 2.25rem 2.25rem!important;overflow-x:hidden!important;}
+    .v27-app-header{width:100%!important;max-width:none!important;margin:0 0 10px!important;}
+    .v30-home-hero{width:100%!important;max-width:none!important;margin:4px 0 18px!important;padding:28px 34px!important;}
+    .v30-home-hero h1,.v30-home-hero h2,.v30-home-hero h3{color:#FFFFFF!important;}
+    .v30-home-hero p,.v30-home-hero .v30-eyebrow{color:#FFFFFF!important;}
+    .v30-project-card{width:100%!important;box-sizing:border-box!important;}
+    .v30-project-context{margin:4px 0 10px!important;}
+    div[data-testid="stSelectbox"]:has([aria-label="Menú de Muertos y Cambios"]){max-width:420px!important;margin:0 0 8px auto!important;}
+    div[data-testid="stSelectbox"]:has([aria-label="Menú de Muertos y Cambios"]) [data-baseweb="select"]>div{min-height:42px!important;}
+    /* Encabezados blancos y legibles para todas las tablas Streamlit/AgGrid. */
+    [data-testid="stDataFrame"] [role="columnheader"],
+    [data-testid="stDataFrame"] [role="columnheader"] *,
+    .ag-theme-streamlit .ag-header,
+    .ag-theme-streamlit .ag-header-row,
+    .ag-theme-streamlit .ag-header-cell,
+    .ag-theme-streamlit .ag-header-cell-text,
+    .ag-theme-streamlit .ag-header-icon,
+    .ag-theme-streamlit .ag-icon,
+    .ag-header-cell, .ag-header-cell *{color:#FFFFFF!important;fill:#FFFFFF!important;}
+    .ag-theme-streamlit .ag-header-cell,.ag-header-cell{background:#173B73!important;}
+    [data-testid="stDataFrame"],.ag-root-wrapper,.ag-root,.ag-center-cols-viewport,.ag-body-viewport{max-width:100%!important;width:100%!important;}
+    [data-testid="stDataFrame"]{overflow-x:hidden!important;}
+    .ag-center-cols-viewport,.ag-body-horizontal-scroll{overflow-x:hidden!important;}
+    /* Reduce huecos superiores en páginas KPI. */
+    .v26-section-heading,.v27-section-heading{margin-top:12px!important;}
+    h1,h2,h3{margin-top:.55rem!important;}
+    @media(max-width:900px){
+      [data-testid="stMainBlockContainer"],.block-container{padding:.55rem .8rem 1.75rem!important;}
+      .v30-home-hero{padding:22px 20px!important;}
+      div[data-testid="stSelectbox"]:has([aria-label="Menú de Muertos y Cambios"]){max-width:100%!important;margin:0 0 8px!important;}
+    }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
 st.markdown(
     '<div class="footer">CONFIDENCIAL | Price Shoes | Operaciones Ropa</div>',
     unsafe_allow_html=True,
