@@ -4886,6 +4886,27 @@ def _write_final_cache_meta():
     os.replace(temp, paths["meta"])
 
 
+def _finalize_staged_processing(state):
+    """Consolida los archivos parciales y marca el proceso al 100%."""
+    state["message"] = "Consolidando archivos sin cargarlos completos en memoria."
+    write_staged_state(state)
+    paths = cache_paths()
+    op_parts = [_stage_path("operation", i) for i in range(len(state.get("operation_sheets", [])))]
+    co_parts = [_stage_path("commercial", i) for i in range(len(state.get("commercial_sheets", [])))]
+    diag_parts = ([_stage_path("diag_operation", i) for i in range(len(state.get("operation_sheets", [])))] +
+                  [_stage_path("diag_commercial", i) for i in range(len(state.get("commercial_sheets", [])))])
+    _append_parquet_files(op_parts, paths["op"])
+    _append_parquet_files(co_parts, paths["co"])
+    _append_parquet_files(diag_parts, paths["diag"])
+    _write_final_cache_meta()
+    st.cache_data.clear()
+    state["completed_steps"] = state["total_steps"]
+    state["step"] = "complete"
+    state["status"] = "complete"
+    state["message"] = "Archivo procesado correctamente."
+    return state
+
+
 def process_next_stage(file_path):
     if cache_valid():
         state = read_staged_state()
@@ -4947,21 +4968,12 @@ def process_next_stage(file_path):
                 state["message"] = f"Hoja {sheet} terminada."
 
         elif step == "finalize":
-            state["message"] = "Consolidando archivos sin cargarlos completos en memoria."
-            write_staged_state(state)
-            paths = cache_paths()
-            op_parts = [_stage_path("operation", i) for i in range(len(state.get("operation_sheets", [])))]
-            co_parts = [_stage_path("commercial", i) for i in range(len(state.get("commercial_sheets", [])))]
-            diag_parts = ([_stage_path("diag_operation", i) for i in range(len(state.get("operation_sheets", [])))] +
-                          [_stage_path("diag_commercial", i) for i in range(len(state.get("commercial_sheets", [])))])
-            _append_parquet_files(op_parts, paths["op"])
-            _append_parquet_files(co_parts, paths["co"])
-            _append_parquet_files(diag_parts, paths["diag"])
-            _write_final_cache_meta()
-            st.cache_data.clear()
-            state["completed_steps"] = state["total_steps"]
-            state["step"] = "complete"; state["status"] = "complete"
-            state["message"] = "Archivo procesado correctamente."
+            state = _finalize_staged_processing(state)
+
+        # Cuando termina la última hoja, consolidar en el mismo clic.
+        # Evita que la interfaz quede detenida en 86% esperando un clic adicional.
+        if state.get("step") == "finalize":
+            state = _finalize_staged_processing(state)
 
         state["status"] = "complete" if state.get("step") == "complete" else "ready"
         write_process_status(state=state["status"], message=state["message"], progress=staged_progress_percent(state))
@@ -10476,7 +10488,7 @@ st.markdown(
 )
 
 # Marcador de despliegue para confirmar que GitHub/Streamlit usa esta versión.
-st.caption("PS Operaciones Ropa · V27.1 · Menú y carga de Excel corregidos")
+st.caption("PS Operaciones Ropa · V27.2 · Procesamiento final corregido")
 
 try:
     route_handler = ROUTES.get(page)
