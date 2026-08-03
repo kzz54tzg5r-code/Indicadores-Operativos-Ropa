@@ -1,3 +1,12 @@
+# V27.0.0 — 2026-08-03
+- Layout maestro estable y responsive.
+- Navegación lateral con iconos.
+- Encabezado proporcional.
+- KPIs ejecutivos responsive.
+- Alertas compactas arriba del contenido.
+- Tabla Macro ajustada al ancho.
+- Acceso directo a carga cuando falta la fuente.
+
 # CHANGELOG — PS Operaciones Ropa V24 Producción
 
 ## 24.0.0 — 30/07/2026

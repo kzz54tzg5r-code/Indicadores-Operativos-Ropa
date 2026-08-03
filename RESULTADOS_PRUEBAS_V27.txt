@@ -1,0 +1,16 @@
+PS Operaciones Ropa V27
+Fecha: 2026-08-03
+
+Validación de sintaxis:
+- app.py: OK
+- legacy_app.py: OK
+- core/*.py: OK
+- services/*.py: OK
+- pages_app/*.py: OK
+
+Pruebas automatizadas:
+- 15 aprobadas
+- 0 fallidas
+
+Advertencias no bloqueantes:
+- 6 FutureWarning de pandas en services/conversion.py.

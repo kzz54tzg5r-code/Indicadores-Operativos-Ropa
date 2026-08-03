@@ -3962,26 +3962,30 @@ def _user_initials(full_name):
 
 
 def render_header():
-    """Encabezado corporativo V26: compacto, estable y sin columnas deformables."""
+    """Encabezado maestro V27: compacto, proporcional y estable."""
     user = st.session_state.get("user", {})
     full_name = str(user.get("nombre", "Consulta")).strip() or "Consulta"
-    role = ROLE_LABELS.get(normalize_role(user.get("role") or user.get("permiso")), str(user.get("permiso", "Consulta")))
+    role = ROLE_LABELS.get(
+        normalize_role(user.get("role") or user.get("permiso")),
+        str(user.get("permiso", "Consulta")),
+    )
     logo_data = ""
     if LOGO_FILE.exists():
         logo_data = base64.b64encode(LOGO_FILE.read_bytes()).decode("utf-8")
+    initials = _user_initials(full_name)
     st.markdown(
         f"""
-        <header class="v26-app-header">
-          <div class="v26-brand">
+        <header class="v27-app-header">
+          <div class="v27-brand">
             <img src="data:image/png;base64,{logo_data}" alt="Price Shoes">
-            <div>
-              <div class="v26-brand-title">PS Operaciones Ropa</div>
-              <div class="v26-brand-sub">Plataforma Integral de Gestión Operativa</div>
+            <div class="v27-brand-copy">
+              <div class="v27-brand-title">PS Operaciones Ropa</div>
+              <div class="v27-brand-sub">Plataforma Integral de Gestión Operativa</div>
             </div>
           </div>
-          <div class="v26-user-chip">
-            <div class="v26-avatar">{_user_initials(full_name)}</div>
-            <div class="v26-user-text"><b>{full_name}</b><span>{role}</span></div>
+          <div class="v27-user-chip" title="{full_name} · {role}">
+            <div class="v27-avatar">{initials}</div>
+            <div class="v27-user-text"><b>{full_name}</b><span>{role}</span></div>
           </div>
         </header>
         """,
@@ -7781,6 +7785,16 @@ def nav_bar():
         "Histórico de Descargas", "Alertas Inteligentes", "Perfil de Usuario",
         "Inteligencia Operativa",
     ]
+    page_icons = {
+        "Centro Ejecutivo":"▦", "Operación Diaria":"◷", "Reporte Semanal":"▥",
+        "Reporte Mensual":"▤", "Productividad":"↗", "Recuperación":"♻",
+        "Recorridos":"◎", "Reportes":"⇩", "Detalle por Tienda":"⌂",
+        "Detalle por Colaborador":"♙", "Histórico de Descargas":"↧",
+        "Alertas Inteligentes":"△", "Perfil de Usuario":"●",
+        "Inteligencia Operativa":"✦", "Centro de Control":"⚙",
+        "Administración":"☷", "Configuración de Metas":"⌁",
+        "Carga de Excel":"⇧", "Diagnóstico del Archivo":"✓",
+    }
     if role_level() >= ROLE_LEVEL["ADMIN"]:
         pages += ["Centro de Control", "Administración", "Configuración de Metas",
                   "Carga de Excel", "Diagnóstico del Archivo"]
@@ -7803,10 +7817,14 @@ def nav_bar():
             """,
             unsafe_allow_html=True,
         )
-        selected = st.radio(
-            "Navegación", pages, index=pages.index(current),
-            label_visibility="collapsed", key="v26_navigation"
+        label_to_page = {f"{page_icons.get(item, '•')}  {item}": item for item in pages}
+        labels = list(label_to_page)
+        current_label = next(label for label, value in label_to_page.items() if value == current)
+        selected_label = st.radio(
+            "Navegación", labels, index=labels.index(current_label),
+            label_visibility="collapsed", key="v27_navigation"
         )
+        selected = label_to_page[selected_label]
         st.divider()
         if st.button("Cerrar sesión", key="v26_logout", width="stretch"):
             logout_current_session()
@@ -8158,15 +8176,30 @@ def page_resumen(op, co):
             op_summary = summary_from_table(table)
             st.caption(f"Periodo ejecutivo: {start.strftime('%d/%m/%Y')} al {end.strftime('%d/%m/%Y')} · Última actualización real: {end.strftime('%d/%m/%Y')}")
 
-    # KPI principales siguiendo el mockup aprobado.
-    st.markdown('<div class="v26-section-heading">Resumen general</div>', unsafe_allow_html=True)
-    k1,k2,k3,k4,k5,k6 = st.columns(6)
-    k1.metric("Piezas ingresadas", fmt_num(op_summary.get("Ingresos",0)))
-    k2.metric("Acondicionado", fmt_num(op_summary.get("Acondicionado",0)), f"{(op_summary.get('Acondicionado',0)/op_summary.get('Ingresos',1)*100 if op_summary.get('Ingresos',0) else 0):.1f}%")
-    k3.metric("Ubicado", fmt_num(op_summary.get("Ubicado",0)), f"{op_summary.get('% Procesado',0):.1f}%")
-    k4.metric("Conversión", fmt_pct(recovery_summary.get("% Recuperación Piezas",0)))
-    k5.metric("Recuperación $", fmt_pct(recovery_summary.get("% Recuperación $",0)))
-    k6.metric("Pendiente pzs", fmt_num(recovery_summary.get("Pendiente Pzs",0)))
+    # KPI principales en una cuadrícula responsive que no se deforma.
+    st.markdown('<div class="v27-section-heading">Resumen general</div>', unsafe_allow_html=True)
+    ingreso = float(op_summary.get("Ingresos", 0) or 0)
+    acondicionado = float(op_summary.get("Acondicionado", 0) or 0)
+    ubicado = float(op_summary.get("Ubicado", 0) or 0)
+    pct_acond = acondicionado / ingreso * 100 if ingreso else 0
+    pct_ubic = float(op_summary.get("% Procesado", 0) or 0)
+    executive_cards = [
+        ("Piezas ingresadas", fmt_num(ingreso), "Volumen del periodo", "#3366CC"),
+        ("Acondicionado", fmt_num(acondicionado), f"{pct_acond:.1f}% de ingresos", "#7C3AED"),
+        ("Ubicado", fmt_num(ubicado), f"{pct_ubic:.1f}% de ingresos", "#10B981"),
+        ("Conversión", fmt_pct(recovery_summary.get("% Recuperación Piezas",0)), "Misma semana ISO", "#E6007E"),
+        ("Recuperación económica", fmt_pct(recovery_summary.get("% Recuperación $",0)), "Recuperación sobre valor", "#F59E0B"),
+        ("Pendiente", fmt_num(recovery_summary.get("Pendiente Pzs",0)), "Piezas por recuperar", "#EF4444"),
+    ]
+    card_html = '<div class="v27-kpi-grid">'
+    for title, value, subtitle, accent in executive_cards:
+        card_html += (
+            f'<div class="v27-kpi-card" style="--accent:{accent}">'
+            f'<div class="v27-kpi-label">{title}</div>'
+            f'<div class="v27-kpi-value">{value}</div>'
+            f'<div class="v27-kpi-sub">{subtitle}</div></div>'
+        )
+    st.markdown(card_html + '</div>', unsafe_allow_html=True)
 
     # Alertas arriba de cualquier tabla, compactas y ejecutivas.
     insights = executive_insights(recovery_summary, recovery_detail, stores)
@@ -8204,20 +8237,11 @@ def page_resumen(op, co):
             "Recuperación $":"Rec. $",
         })[["Tienda","Dev Pzs","Rec. Pzs","% Conv.","Valor Dev.","Rec. $","% Rec. $"]]
         st.markdown('<div class="v26-section-heading">Macro por tiendas</div>',unsafe_allow_html=True)
-        st.dataframe(
+        aggrid_table(
             macro,
-            hide_index=True,
-            width="stretch",
-            height=min(520, 42+35*len(macro)),
-            column_config={
-                "Tienda":st.column_config.TextColumn("Tienda",width="medium"),
-                "Dev Pzs":st.column_config.NumberColumn("Dev Pzs",format="%,.0f"),
-                "Rec. Pzs":st.column_config.NumberColumn("Rec. Pzs",format="%,.0f"),
-                "% Conv.":st.column_config.NumberColumn("% Conv.",format="%.1f%%"),
-                "Valor Dev.":st.column_config.NumberColumn("Valor Dev.",format="$%,.0f"),
-                "Rec. $":st.column_config.NumberColumn("Rec. $",format="$%,.0f"),
-                "% Rec. $":st.column_config.NumberColumn("% Rec. $",format="%.1f%%"),
-            },
+            height=min(520, 118 + 34 * len(macro)),
+            editable=False,
+            key="v27_macro_tiendas",
         )
 
     pdf_summary={"Perfil":ROLE_LABELS.get(normalize_role(user.get("role",user.get("permiso"))),"Consulta"),"Alcance":user.get("scope_value") or "Compañía",**recovery_summary}
@@ -9501,10 +9525,13 @@ if needs_data:
             co_all = apply_user_scope(co_all)
     else:
         if not ACTIVE_FILE.exists():
-            st.warning(
-                "No hay un archivo activo. Abre **Carga de Excel** para seleccionar, "
-                "guardar y procesar la fuente de datos."
+            st.markdown(
+                '<div class="v27-data-banner"><b>Fuente de datos pendiente</b><span>No hay un archivo activo. Carga y procesa el Excel para habilitar todos los indicadores.</span></div>',
+                unsafe_allow_html=True,
             )
+            if role_level() >= ROLE_LEVEL["ADMIN"] and st.button("Ir a Carga de Excel", key="v27_go_upload", type="primary"):
+                st.session_state["nav_page"] = "Carga de Excel"
+                st.rerun()
         else:
             st.warning(
                 "El archivo está guardado, pero todavía no está procesado. "
@@ -10388,8 +10415,39 @@ if page in DATA_PAGES and ACTIVE_FILE.exists() and cache_valid():
     if page in window_notes:
         st.caption(window_notes[page])
 
+
+
+# V27: capa visual autoritativa. Se aplica al final para neutralizar estilos heredados.
+st.markdown(
+    """
+    <style>
+    :root{--v27-blue:#173B73;--v27-blue2:#3366CC;--v27-pink:#E6007E;--v27-bg:#F4F6F9;--v27-text:#1F2937;--v27-muted:#667085;}
+    html,body,.stApp,[data-testid="stAppViewContainer"]{background:var(--v27-bg)!important;color:var(--v27-text)!important;}
+    [data-testid="stMainBlockContainer"],.block-container{max-width:1560px!important;width:100%!important;margin:0 auto!important;padding:1rem 1.35rem 3rem!important;overflow-x:hidden!important;}
+    [data-testid="stSidebar"]{width:286px!important;min-width:286px!important;max-width:286px!important;background:linear-gradient(180deg,#102E67,#173B73)!important;}
+    [data-testid="stSidebar"]>div{width:286px!important;}
+    [data-testid="stSidebar"] [role="radiogroup"] label{padding:.58rem .72rem!important;border-radius:10px!important;margin:.12rem 0!important;font-size:13px!important;line-height:1.15!important;}
+    [data-testid="stSidebar"] [role="radiogroup"] label:has(input:checked){background:#3366CC!important;border-left:4px solid #fff!important;}
+    .v27-app-header{display:grid!important;grid-template-columns:minmax(0,1fr) auto!important;align-items:center!important;gap:18px!important;background:#fff!important;border:1px solid #E2E8F0!important;border-radius:16px!important;padding:10px 16px!important;margin:0 0 16px!important;box-shadow:0 6px 20px rgba(23,59,115,.06)!important;min-height:78px!important;}
+    .v27-brand{display:flex!important;align-items:center!important;gap:14px!important;min-width:0!important;}.v27-brand img{width:112px!important;height:58px!important;object-fit:contain!important;flex:0 0 auto!important;}.v27-brand-copy{min-width:0!important;}.v27-brand-title{font-size:23px!important;line-height:1.1!important;font-weight:900!important;color:var(--v27-blue)!important;white-space:nowrap!important;}.v27-brand-sub{font-size:12px!important;color:var(--v27-muted)!important;margin-top:4px!important;white-space:nowrap!important;}
+    .v27-user-chip{display:flex!important;align-items:center!important;gap:10px!important;max-width:280px!important;min-width:180px!important;justify-content:flex-end!important;}.v27-avatar{width:40px!important;height:40px!important;border-radius:50%!important;background:#3366CC!important;color:#fff!important;display:grid!important;place-items:center!important;font-weight:900!important;flex:0 0 auto!important;}.v27-user-text{min-width:0!important;}.v27-user-text b,.v27-user-text span{display:block!important;text-align:right!important;white-space:nowrap!important;overflow:hidden!important;text-overflow:ellipsis!important;}.v27-user-text b{font-size:13px!important;color:var(--v27-blue)!important;}.v27-user-text span{font-size:11px!important;color:var(--v27-muted)!important;margin-top:2px!important;}
+    .v27-section-heading,.v26-section-heading{font-size:22px!important;font-weight:900!important;color:var(--v27-text)!important;margin:20px 0 10px!important;}
+    .v27-kpi-grid{display:grid!important;grid-template-columns:repeat(6,minmax(0,1fr))!important;gap:12px!important;margin:10px 0 20px!important;}.v27-kpi-card{position:relative!important;background:#fff!important;border:1px solid #E2E8F0!important;border-radius:14px!important;padding:14px 14px 13px 17px!important;min-width:0!important;min-height:112px!important;box-shadow:0 5px 16px rgba(23,59,115,.05)!important;overflow:hidden!important;}.v27-kpi-card:before{content:"";position:absolute;left:0;top:0;bottom:0;width:5px;background:var(--accent);}.v27-kpi-label{font-size:10px!important;text-transform:uppercase!important;letter-spacing:.45px!important;color:var(--v27-muted)!important;font-weight:850!important;white-space:normal!important;}.v27-kpi-value{font-size:25px!important;line-height:1!important;color:var(--v27-blue)!important;font-weight:900!important;margin-top:10px!important;white-space:nowrap!important;overflow:hidden!important;text-overflow:ellipsis!important;}.v27-kpi-sub{font-size:11px!important;color:#7B8794!important;margin-top:9px!important;line-height:1.2!important;}
+    .v26-alert-row{grid-template-columns:repeat(4,minmax(0,1fr))!important;gap:10px!important;margin:8px 0 18px!important;}.v26-alert{min-height:68px!important;padding:11px 13px!important;border-radius:12px!important;font-size:12px!important;}
+    .v27-data-banner{display:flex!important;align-items:center!important;gap:12px!important;background:#FFF8E5!important;border:1px solid #F7E4A7!important;border-radius:12px!important;padding:12px 15px!important;color:#7A5400!important;margin:8px 0 12px!important;}.v27-data-banner b{white-space:nowrap!important;}.v27-data-banner span{font-size:13px!important;}
+    [data-testid="stDataFrame"],.ag-root-wrapper{width:100%!important;max-width:100%!important;overflow:hidden!important;}.ag-center-cols-viewport,.ag-body-viewport{overflow-x:hidden!important;}.ag-header-cell,.ag-cell{min-width:0!important;}.ag-cell-value{overflow:hidden!important;text-overflow:ellipsis!important;white-space:nowrap!important;}
+    [data-testid="stHorizontalBlock"]{width:100%!important;gap:12px!important;align-items:stretch!important;}[data-testid="stColumn"]{min-width:0!important;}
+    .stPlotlyChart{width:100%!important;max-width:100%!important;overflow:hidden!important;}
+    @media(max-width:1280px){.v27-kpi-grid{grid-template-columns:repeat(3,minmax(0,1fr))!important;}.v26-alert-row{grid-template-columns:repeat(2,minmax(0,1fr))!important;}}
+    @media(max-width:900px){[data-testid="stMainBlockContainer"],.block-container{padding:.8rem .75rem 2rem!important;}.v27-app-header{grid-template-columns:1fr auto!important;padding:8px 10px!important;}.v27-brand img{width:78px!important;height:46px!important;}.v27-brand-title{font-size:17px!important;white-space:normal!important;}.v27-brand-sub,.v27-user-text{display:none!important;}.v27-user-chip{min-width:auto!important;}.v27-kpi-grid{grid-template-columns:repeat(2,minmax(0,1fr))!important;}[data-testid="stHorizontalBlock"]{flex-wrap:wrap!important;}[data-testid="stColumn"]{flex:1 1 100%!important;width:100%!important;}}
+    @media(max-width:560px){.v27-kpi-grid,.v26-alert-row{grid-template-columns:1fr!important;}.v27-data-banner{align-items:flex-start!important;flex-direction:column!important;gap:4px!important;}}
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
 # Marcador de despliegue para confirmar que GitHub/Streamlit usa esta versión.
-st.caption("PS Operaciones Ropa · V26 · Interfaz restaurada según mockups")
+st.caption("PS Operaciones Ropa · V27 · Layout maestro y reportes ejecutivos")
 
 try:
     route_handler = ROUTES.get(page)
