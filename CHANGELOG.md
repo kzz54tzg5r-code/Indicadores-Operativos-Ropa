@@ -1,4 +1,4 @@
-# V31
+# V32
 
 - Navegación interna persistente corregida.
 - Layout a ancho completo.

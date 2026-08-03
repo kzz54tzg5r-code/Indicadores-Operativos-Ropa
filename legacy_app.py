@@ -6397,14 +6397,18 @@ def aggrid_table(df, height=360, editable=False, key=None):
         }
     """)
     css = {
-        ".ag-header": {"background-color": f"{AZUL} !important"},
-        ".ag-header-cell": {"background-color": f"{AZUL} !important", "color": "#FFFFFF !important", "font-weight": "900 !important"},
-        ".ag-header-cell-text": {"color": "#FFFFFF !important", "font-weight": "900 !important"},
+        ".ag-header": {"background-color": "#173B73 !important"},
+        ".ag-header-row": {"background-color": "#173B73 !important"},
+        ".ag-header-cell": {"background-color": "#173B73 !important", "color": "#FFFFFF !important", "font-weight": "900 !important", "padding-left": "5px !important", "padding-right": "5px !important", "border-right": "1px solid rgba(255,255,255,.20) !important"},
+        ".ag-header-cell:nth-child(even)": {"background-color": "#E6007E !important"},
+        ".ag-header-cell-label": {"color": "#FFFFFF !important", "font-weight": "900 !important"},
+        ".ag-header-cell-label *": {"color": "#FFFFFF !important", "fill": "#FFFFFF !important"},
+        ".ag-header-cell-text": {"color": "#FFFFFF !important", "font-weight": "900 !important", "font-size": "10px !important", "white-space": "normal !important", "line-height": "1.1 !important"},
         ".ag-icon": {"color": "#FFFFFF !important", "fill": "#FFFFFF !important"},
-        ".ag-root-wrapper": {"border": "1px solid #E1E7F0 !important", "border-radius": "10px !important", "overflow": "hidden !important"},
+        ".ag-icon svg": {"color": "#FFFFFF !important", "fill": "#FFFFFF !important"},
+        ".ag-root-wrapper": {"border": "1px solid #E1E7F0 !important", "border-radius": "10px !important", "overflow": "hidden !important", "width": "100% !important"},
+        ".ag-root": {"width": "100% !important"},
         ".ag-cell": {"font-size": "11px !important", "padding-left": "6px !important", "padding-right": "6px !important"},
-        ".ag-header-cell": {"padding-left": "5px !important", "padding-right": "5px !important"},
-        ".ag-header-cell-text": {"font-size": "10px !important", "white-space": "normal !important", "line-height": "1.1 !important"},
     }
     result = AgGrid(
         show,
@@ -6469,8 +6473,8 @@ def combined_chart(df, title, income_column="Total"):
         y=chart_df[income_column],
         mode="lines+markers",
         name="Total ingresos",
-        line=dict(color="#43A5FF", width=4),
-        marker=dict(color="#43A5FF", size=9),
+        line=dict(color="#3366CC", width=4),
+        marker=dict(color="#3366CC", size=9),
         hovertemplate="<b>%{x}</b><br>Total ingresos: %{y:,.0f}<extra></extra>",
     ))
 
@@ -6513,7 +6517,7 @@ def combined_chart(df, title, income_column="Total"):
             x1=tienda,
             y0=float(total) + max(ymax * 0.012, 5),
             y1=label_y - max(ymax * 0.018, 8),
-            line=dict(color="#43A5FF", width=2, dash="dot"),
+            line=dict(color="#3366CC", width=2, dash="dot"),
             layer="above",
         )
         fig.add_annotation(
@@ -6531,7 +6535,7 @@ def combined_chart(df, title, income_column="Total"):
     fig.update_layout(
         title=title,
         barmode="group",
-        height=580,
+        height=440,
         plot_bgcolor="white",
         paper_bgcolor="white",
         legend=dict(orientation="h", y=1.08, x=1, xanchor="right"),
@@ -9568,6 +9572,48 @@ if "portal_view" not in st.session_state:
     st.session_state["portal_view"] = "apps"
 
 apply_v26_shell_styles()
+# V32: restablece el ancho después de la pantalla de acceso y evita que el CSS del login reduzca los KPI/reportes.
+st.markdown("""
+<style>
+[data-testid="stMain"]{
+  margin-left:0!important;
+  width:100%!important;
+  max-width:100%!important;
+  min-width:0!important;
+}
+[data-testid="stMainBlockContainer"],
+[data-testid="stAppViewBlockContainer"],
+.block-container{
+  display:block!important;
+  flex-direction:initial!important;
+  justify-content:initial!important;
+  width:100%!important;
+  max-width:100%!important;
+  min-height:auto!important;
+  margin:0!important;
+  padding:14px clamp(14px,2vw,28px) 42px!important;
+  box-sizing:border-box!important;
+  overflow-x:hidden!important;
+}
+[data-testid="stPlotlyChart"],
+[data-testid="stPlotlyChart"] > div,
+.js-plotly-plot,.plot-container,.svg-container{
+  width:100%!important;
+  max-width:100%!important;
+  min-width:0!important;
+}
+[data-testid="stDataFrame"],.ag-root-wrapper,.ag-root-wrapper-body,.ag-root{
+  width:100%!important;
+  max-width:100%!important;
+  min-width:0!important;
+}
+.panel-title{color:#173B73!important;font-weight:900!important;}
+@media(max-width:900px){
+  [data-testid="stMainBlockContainer"],.block-container{padding:10px 8px 32px!important;}
+  [data-testid="stPlotlyChart"]{padding:2px!important;}
+}
+</style>
+""", unsafe_allow_html=True)
 render_header()
 page = nav_bar()
 
@@ -10283,10 +10329,10 @@ def page_por_dia(op, co):
         combined_chart(table,"Ingreso vs Acondicionado vs Ubicado", income_column="Total")
         pending = table[[c for c in ["Tienda","Total","Pend. Hab.","Pend. Ub."] if c in table.columns]].copy()
         if not pending.empty:
-            fig=go.Figure(); fig.add_scatter(x=pending["Tienda"],y=pending.get("Total",0),name="Ingresos",mode="lines+markers",line=dict(color="#3366CC",width=3));
-            if "Pend. Hab." in pending: fig.add_bar(x=pending["Tienda"],y=pending["Pend. Hab."],name="Pendiente acondicionar",marker_color="#F59E0B")
-            if "Pend. Ub." in pending: fig.add_bar(x=pending["Tienda"],y=pending["Pend. Ub."],name="Pendiente ubicar",marker_color="#EF4444")
-            fig.update_layout(title="Pendientes operativos por tienda",height=420,barmode="group"); st.plotly_chart(fig,width="stretch")
+            fig=go.Figure(); fig.add_scatter(x=pending["Tienda"],y=pending.get("Total",0),name="Ingresos",mode="lines+markers",line=dict(color="#3366CC",width=3),marker=dict(color="#3366CC",size=7));
+            if "Pend. Hab." in pending: fig.add_bar(x=pending["Tienda"],y=pending["Pend. Hab."],name="Pendiente acondicionar",marker_color="#173B73")
+            if "Pend. Ub." in pending: fig.add_bar(x=pending["Tienda"],y=pending["Pend. Ub."],name="Pendiente ubicar",marker_color="#E6007E")
+            fig.update_layout(title="Pendientes operativos por tienda",height=390,barmode="group",plot_bgcolor="white",paper_bgcolor="white",margin=dict(l=8,r=8,t=60,b=58),legend=dict(orientation="h",y=1.10,x=1,xanchor="right")); fig.update_xaxes(fixedrange=True); fig.update_yaxes(fixedrange=True,gridcolor="#E5E7EB"); st.plotly_chart(fig,width="stretch",config={"displayModeBar":False,"responsive":True})
         panel("Detalle diario por tienda",table,height=390)
     summary={**metrics,**recm,"Fecha":str(selected)}
     _v25_downloads("Operación Diaria",f"Fecha: {pd.Timestamp(selected).strftime('%d/%m/%Y')}",table,summary,"v25_daily",{"Recuperación":detail})
@@ -10554,7 +10600,7 @@ st.markdown(
 )
 
 # Marcador de despliegue para confirmar que GitHub/Streamlit usa esta versión.
-st.caption("PS Operaciones Ropa · V31")
+st.caption("PS Operaciones Ropa · V32")
 
 try:
     route_handler = ROUTES.get(page)
