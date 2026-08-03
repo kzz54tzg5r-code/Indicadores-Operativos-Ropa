@@ -3962,51 +3962,31 @@ def _user_initials(full_name):
 
 
 def render_header():
-    """Encabezado corporativo compacto y estable en cualquier ancho."""
-    now = datetime.now(MX_TZ)
+    """Encabezado corporativo V26: compacto, estable y sin columnas deformables."""
     user = st.session_state.get("user", {})
     full_name = str(user.get("nombre", "Consulta")).strip() or "Consulta"
-    first_name = full_name.split()[0]
-    permiso = str(user.get("permiso", "Consulta"))
-    initials = _user_initials(full_name)
-
+    role = ROLE_LABELS.get(normalize_role(user.get("role") or user.get("permiso")), str(user.get("permiso", "Consulta")))
     logo_data = ""
     if LOGO_FILE.exists():
         logo_data = base64.b64encode(LOGO_FILE.read_bytes()).decode("utf-8")
-
-    left, right = st.columns([8.4, 1.6], vertical_alignment="center", gap="small")
-    with left:
-        st.markdown(
-            f"""
-            <div class="v21-header-brand">
-              <img src="data:image/png;base64,{logo_data}" alt="Price Shoes">
-              <span>PS Operaciones Ropa</span>
+    st.markdown(
+        f"""
+        <header class="v26-app-header">
+          <div class="v26-brand">
+            <img src="data:image/png;base64,{logo_data}" alt="Price Shoes">
+            <div>
+              <div class="v26-brand-title">PS Operaciones Ropa</div>
+              <div class="v26-brand-sub">Plataforma Integral de Gestión Operativa</div>
             </div>
-            """,
-            unsafe_allow_html=True,
-        )
-    with right:
-        # El texto corto evita que el nombre se parta letra por letra.
-        with st.popover(f"👤 {first_name} ▾", width="stretch"):
-            st.markdown(f"### {full_name}")
-            st.caption(f"{permiso} · {now.strftime('%d/%m/%Y')}")
-            st.divider()
-            if st.button("⌂ Volver al menú principal", key="v21_return_portal", width="stretch"):
-                st.session_state["active_app"] = None
-                st.session_state["portal_view"] = "apps"
-                st.session_state["nav_page"] = "Centro Ejecutivo"
-                st.rerun()
-            if st.button("👤 Mi perfil", key="v21_profile", width="stretch"):
-                st.session_state["nav_page"] = "Perfil de Usuario"
-                st.rerun()
-            if is_admin() and st.button("⬆ Cargar Excel", key="v21_upload", width="stretch"):
-                st.session_state["nav_page"] = "Carga de Excel"
-                st.rerun()
-            if st.button("Cerrar sesión", key="v21_logout", width="stretch"):
-                logout_current_session()
-                st.rerun()
-    st.divider()
-
+          </div>
+          <div class="v26-user-chip">
+            <div class="v26-avatar">{_user_initials(full_name)}</div>
+            <div class="v26-user-text"><b>{full_name}</b><span>{role}</span></div>
+          </div>
+        </header>
+        """,
+        unsafe_allow_html=True,
+    )
 
 def render_portal_header():
     """El portal utiliza el mismo encabezado fijo del resto del sistema."""
@@ -7789,7 +7769,7 @@ def render_app_portal():
 
 
 def nav_bar():
-    """Menú lateral con control explícito para ocultar y volver a mostrar."""
+    """Navegación V26 en sidebar nativo, plegable y siempre recuperable."""
     role = normalize_role(
         st.session_state.get("user", {}).get("role")
         or st.session_state.get("user", {}).get("permiso", "Consulta")
@@ -7808,41 +7788,32 @@ def nav_bar():
     current = st.session_state.get("nav_page", "Centro Ejecutivo")
     if current not in pages:
         current = "Centro Ejecutivo"
-    if "sidebar_open" not in st.session_state:
-        st.session_state["sidebar_open"] = True
 
-    if st.session_state["sidebar_open"]:
-        st.markdown("""
-        <style>
-        [data-testid="stSidebar"]{display:block!important;visibility:visible!important;transform:none!important;width:300px!important;min-width:300px!important;max-width:300px!important;}
-        [data-testid="stMain"]{margin-left:300px!important;width:calc(100% - 300px)!important;max-width:calc(100% - 300px)!important;}
-        </style>
-        """, unsafe_allow_html=True)
-        with st.sidebar:
-            st.markdown("### PS Operaciones Ropa")
-            if st.button("← Ocultar menú", key="v253_hide_menu", width="stretch"):
-                st.session_state["sidebar_open"] = False
-                st.rerun()
-            st.divider()
-            selected = st.radio(
-                "Navegación", pages, index=pages.index(current),
-                label_visibility="collapsed", key="v253_navigation"
-            )
-    else:
-        st.markdown("""
-        <style>
-        [data-testid="stSidebar"]{display:none!important;width:0!important;min-width:0!important;max-width:0!important;}
-        [data-testid="stMain"]{margin-left:0!important;width:100%!important;max-width:100%!important;}
-        </style>
-        """, unsafe_allow_html=True)
-        if st.button("☰ Mostrar menú", key="v253_show_menu", type="primary"):
-            st.session_state["sidebar_open"] = True
+    user = st.session_state.get("user", {})
+    full_name = str(user.get("nombre", "Consulta"))
+    role_label = ROLE_LABELS.get(role, str(user.get("permiso", "Consulta")))
+    with st.sidebar:
+        st.markdown(
+            f"""
+            <div class="v26-sidebar-head">
+              <div class="v26-sidebar-mark">PS</div>
+              <div><b>Operaciones Ropa</b><span>{role_label}</span></div>
+            </div>
+            <div class="v26-sidebar-user"><b>{full_name}</b><span>{user.get('scope_value') or 'Compañía'}</span></div>
+            """,
+            unsafe_allow_html=True,
+        )
+        selected = st.radio(
+            "Navegación", pages, index=pages.index(current),
+            label_visibility="collapsed", key="v26_navigation"
+        )
+        st.divider()
+        if st.button("Cerrar sesión", key="v26_logout", width="stretch"):
+            logout_current_session()
             st.rerun()
-        selected = current
 
     st.session_state["nav_page"] = selected
     return selected
-
 
 def reliable_data_horizon(op, co):
     """Obtiene el horizonte real sin eliminar la nueva operación de julio.
@@ -8177,74 +8148,81 @@ def page_resumen(op, co):
 
     stores = authorized_stores(op, co, user)
     recovery_summary, recovery_detail = recovery_executive_summary(co)
-
-    op_summary = {}
     table = pd.DataFrame()
+    op_summary = {"Ingresos":0,"Acondicionado":0,"Ubicado":0,"Pendiente":0,"% Procesado":0}
     if op is not None and not op.empty:
         dates = pd.to_datetime(op["Fecha"], errors="coerce").dropna()
         if not dates.empty:
             start, end = dates.min().normalize(), dates.max().normalize()
             table = table_by_store(op, co, start, end, stores)
             op_summary = summary_from_table(table)
-            st.caption(f"Información autorizada del {start.strftime('%d/%m/%Y')} al {end.strftime('%d/%m/%Y')}.")
+            st.caption(f"Periodo ejecutivo: {start.strftime('%d/%m/%Y')} al {end.strftime('%d/%m/%Y')} · Última actualización real: {end.strftime('%d/%m/%Y')}")
 
-    st.markdown("### Pulso operativo")
-    c1, c2, c3, c4 = st.columns(4)
-    c1.metric("Recuperación piezas", fmt_pct(recovery_summary["% Recuperación Piezas"]))
-    c2.metric("Recuperación económica", fmt_pct(recovery_summary["% Recuperación $"]))
-    c3.metric("Pendiente piezas", fmt_num(recovery_summary["Pendiente Pzs"]))
-    c4.metric("Pendiente económico", fmt_money(recovery_summary["Pendiente $"]))
+    # KPI principales siguiendo el mockup aprobado.
+    st.markdown('<div class="v26-section-heading">Resumen general</div>', unsafe_allow_html=True)
+    k1,k2,k3,k4,k5,k6 = st.columns(6)
+    k1.metric("Piezas ingresadas", fmt_num(op_summary.get("Ingresos",0)))
+    k2.metric("Acondicionado", fmt_num(op_summary.get("Acondicionado",0)), f"{(op_summary.get('Acondicionado',0)/op_summary.get('Ingresos',1)*100 if op_summary.get('Ingresos',0) else 0):.1f}%")
+    k3.metric("Ubicado", fmt_num(op_summary.get("Ubicado",0)), f"{op_summary.get('% Procesado',0):.1f}%")
+    k4.metric("Conversión", fmt_pct(recovery_summary.get("% Recuperación Piezas",0)))
+    k5.metric("Recuperación $", fmt_pct(recovery_summary.get("% Recuperación $",0)))
+    k6.metric("Pendiente pzs", fmt_num(recovery_summary.get("Pendiente Pzs",0)))
 
-    c5, c6, c7, c8 = st.columns(4)
-    c5.metric("Dev Pzs", fmt_num(recovery_summary["Dev Pzs"]))
-    c6.metric("Piezas recuperadas", fmt_num(recovery_summary["Piezas Recuperadas"]))
-    c7.metric("Valor devolución", fmt_money(recovery_summary["Valor Devolución"]))
-    c8.metric("Recuperación $", fmt_money(recovery_summary["Recuperación $"]))
+    # Alertas arriba de cualquier tabla, compactas y ejecutivas.
+    insights = executive_insights(recovery_summary, recovery_detail, stores)
+    alert_html=[]
+    palette={"success":"green","warning":"amber","info":"blue","error":"red"}
+    for level,message in insights[:4]:
+        alert_html.append(f'<div class="v26-alert v26-{palette.get(level,"blue")}"><span>{message}</span></div>')
+    if op_summary.get("Pendiente",0)>0 and len(alert_html)<4:
+        alert_html.append(f'<div class="v26-alert v26-blue"><span>Pendiente operativo por ubicar: {op_summary.get("Pendiente",0):,.0f} piezas.</span></div>')
+    if alert_html:
+        st.markdown('<div class="v26-section-heading">Alertas y prioridades</div><div class="v26-alert-row">'+''.join(alert_html)+'</div>', unsafe_allow_html=True)
 
-    pdf_summary = {
-        "Perfil": ROLE_LABELS.get(normalize_role(user.get("role", user.get("permiso"))), "Consulta"),
-        "Alcance": user.get("scope_value") or "Compañía",
-        **recovery_summary,
-    }
-    pdf_table = table if table is not None and not table.empty else recovery_detail.head(200)
-    generic_pdf_button(
-        "Centro Ejecutivo",
-        "Resumen personalizado conforme al perfil y alcance del usuario",
-        pdf_table,
-        pdf_summary,
-        file_name="PS_Operaciones_Ropa_Centro_Ejecutivo.pdf",
-        key="pdf_centro_ejecutivo_v03",
-    )
-
-    insight_col, status_col = st.columns([6.5, 3.5], gap="large")
-    with insight_col:
-        st.markdown("### Prioridades y hallazgos")
-        insights = executive_insights(recovery_summary, recovery_detail, stores)
-        if not insights:
-            st.info("No se detectaron hallazgos suficientes con la información disponible.")
-        for level, message in insights:
-            getattr(st, level)(message)
-    with status_col:
-        st.markdown("### Mi alcance")
-        st.write(f"**Perfil:** {ROLE_LABELS.get(normalize_role(user.get('role', user.get('permiso'))), 'Consulta')}")
-        st.write(f"**Asignación:** {user.get('scope_value') or 'Compañía'}")
-        st.write(f"**Tiendas visibles:** {len(stores)}")
-        st.write(f"**Modo:** {SYSTEM_STATUS_LABELS.get(get_system_status().get('status','ACTIVE'),'Activo')}")
-
+    # Gráficas en dos columnas como el boceto.
     if table is not None and not table.empty:
-        panel("Resumen operativo por tienda", table, height=380)
-        combined_chart(table, "Ingreso vs Acondicionado vs Ubicado — alcance autorizado")
+        left,right=st.columns([1.7,1],gap="large")
+        with left:
+            combined_chart(table, "Desempeño operativo por tienda", income_column="Total")
+        with right:
+            chart=table.sort_values("% Ubic.",ascending=False).head(8)
+            fig=go.Figure(go.Bar(x=chart["% Ubic."],y=chart["Tienda"],orientation="h",marker_color="#3366CC"))
+            fig.update_layout(title="Top tiendas por % ubicado",height=430,margin=dict(l=10,r=15,t=50,b=20),paper_bgcolor="white",plot_bgcolor="white",xaxis=dict(range=[0,100],ticksuffix="%"),yaxis=dict(autorange="reversed"))
+            st.plotly_chart(fig,width="stretch",config={"displayModeBar":False,"responsive":True})
 
     if recovery_detail is not None and not recovery_detail.empty:
         macro = recovery_detail.groupby("Tienda", as_index=False).agg({
             "Dev Pzs": "sum", "Piezas Recuperadas": "sum",
             "Valor de la Devolución a Precio Neto": "sum", "Recuperación $": "sum",
         })
-        macro["% Recuperación Piezas"] = macro["Piezas Recuperadas"] / macro["Dev Pzs"].replace(0, np.nan) * 100
-        macro["% Recuperación $"] = macro["Recuperación $"] / macro["Valor de la Devolución a Precio Neto"].replace(0, np.nan) * 100
-        macro = macro.fillna(0).sort_values("% Recuperación Piezas", ascending=False)
-        panel("Macro de recuperación por tienda", macro, height=390)
+        macro["% Conv."] = macro["Piezas Recuperadas"] / macro["Dev Pzs"].replace(0, np.nan) * 100
+        macro["% Rec. $"] = macro["Recuperación $"] / macro["Valor de la Devolución a Precio Neto"].replace(0, np.nan) * 100
+        macro = macro.fillna(0).sort_values("% Conv.", ascending=False)
+        macro = macro.rename(columns={
+            "Piezas Recuperadas":"Rec. Pzs",
+            "Valor de la Devolución a Precio Neto":"Valor Dev.",
+            "Recuperación $":"Rec. $",
+        })[["Tienda","Dev Pzs","Rec. Pzs","% Conv.","Valor Dev.","Rec. $","% Rec. $"]]
+        st.markdown('<div class="v26-section-heading">Macro por tiendas</div>',unsafe_allow_html=True)
+        st.dataframe(
+            macro,
+            hide_index=True,
+            width="stretch",
+            height=min(520, 42+35*len(macro)),
+            column_config={
+                "Tienda":st.column_config.TextColumn("Tienda",width="medium"),
+                "Dev Pzs":st.column_config.NumberColumn("Dev Pzs",format="%,.0f"),
+                "Rec. Pzs":st.column_config.NumberColumn("Rec. Pzs",format="%,.0f"),
+                "% Conv.":st.column_config.NumberColumn("% Conv.",format="%.1f%%"),
+                "Valor Dev.":st.column_config.NumberColumn("Valor Dev.",format="$%,.0f"),
+                "Rec. $":st.column_config.NumberColumn("Rec. $",format="$%,.0f"),
+                "% Rec. $":st.column_config.NumberColumn("% Rec. $",format="%.1f%%"),
+            },
+        )
 
+    pdf_summary={"Perfil":ROLE_LABELS.get(normalize_role(user.get("role",user.get("permiso"))),"Consulta"),"Alcance":user.get("scope_value") or "Compañía",**recovery_summary}
+    pdf_table=table if table is not None and not table.empty else recovery_detail.head(200)
+    generic_pdf_button("Centro Ejecutivo","Resumen personalizado conforme al perfil y alcance del usuario",pdf_table,pdf_summary,file_name="PS_Operaciones_Ropa_Centro_Ejecutivo.pdf",key="pdf_centro_ejecutivo_v26")
 
 def page_por_dia(op, co):
     op = reliable_operation(op, co)
@@ -9450,21 +9428,44 @@ st.markdown(
 )
 
 
+def apply_v26_shell_styles():
+    """Capa visual única V26, alineada a los mockups aprobados."""
+    st.markdown("""
+    <style>
+    :root{--ps-blue:#173B73;--ps-blue2:#3366CC;--ps-pink:#E6007E;--ps-bg:#F4F6F9;--ps-text:#1F2937;--ps-muted:#667085;}
+    html,body,[data-testid="stAppViewContainer"],.stApp{background:var(--ps-bg)!important;color:var(--ps-text)!important;}
+    [data-testid="stHeader"]{background:transparent!important;height:3rem!important;}
+    [data-testid="stMain"]{margin-left:0!important;width:auto!important;max-width:none!important;}
+    [data-testid="stMainBlockContainer"],.block-container{max-width:1600px!important;width:100%!important;margin:0 auto!important;padding:1rem 1.6rem 3rem!important;overflow-x:hidden!important;}
+    [data-testid="stSidebar"]{background:linear-gradient(180deg,#102E67 0%,#173B73 100%)!important;border-right:none!important;}
+    [data-testid="stSidebar"] *{color:white!important;}
+    [data-testid="stSidebar"] [role="radiogroup"] label{border-radius:10px!important;padding:.55rem .7rem!important;margin:.15rem 0!important;}
+    [data-testid="stSidebar"] [role="radiogroup"] label:has(input:checked){background:#3366CC!important;border-left:4px solid white!important;}
+    [data-testid="stSidebar"] [role="radiogroup"] label:hover{background:rgba(255,255,255,.10)!important;}
+    [data-testid="collapsedControl"],[data-testid="stSidebarCollapsedControl"]{display:flex!important;visibility:visible!important;opacity:1!important;background:#173B73!important;border-radius:10px!important;z-index:9999!important;}
+    .v26-sidebar-head{display:flex;align-items:center;gap:10px;padding:8px 4px 14px;border-bottom:1px solid rgba(255,255,255,.18);margin-bottom:10px}.v26-sidebar-mark{width:42px;height:42px;border-radius:11px;background:white;color:#173B73!important;display:grid;place-items:center;font-weight:900}.v26-sidebar-head b{display:block;font-size:16px}.v26-sidebar-head span,.v26-sidebar-user span{display:block;font-size:11px;opacity:.75}.v26-sidebar-user{padding:8px 6px 12px}.v26-sidebar-user b{display:block;font-size:13px}
+    .v26-app-header{display:flex;align-items:center;justify-content:space-between;gap:20px;background:white;border:1px solid #E2E8F0;border-radius:16px;padding:10px 18px;margin:0 0 18px;box-shadow:0 6px 20px rgba(23,59,115,.06)}
+    .v26-brand{display:flex;align-items:center;gap:14px;min-width:0}.v26-brand img{width:104px;height:58px;object-fit:contain;flex:0 0 auto}.v26-brand-title{font-size:24px;font-weight:900;color:#173B73;white-space:nowrap}.v26-brand-sub{font-size:12px;color:#667085;margin-top:2px}.v26-user-chip{display:flex;align-items:center;gap:10px;min-width:210px;justify-content:flex-end}.v26-avatar{width:38px;height:38px;border-radius:50%;background:#3366CC;color:white;display:grid;place-items:center;font-weight:900}.v26-user-text b,.v26-user-text span{display:block;text-align:right}.v26-user-text b{font-size:13px;color:#173B73}.v26-user-text span{font-size:11px;color:#667085}
+    .v26-section-heading{font-size:22px;font-weight:900;color:#1F2937;margin:20px 0 10px}
+    .v26-alert-row{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin-bottom:18px}.v26-alert{min-height:74px;border-radius:13px;padding:13px 15px;display:flex;align-items:center;font-size:13px;font-weight:750;line-height:1.35;border:1px solid transparent}.v26-green{background:#E9F8F0;color:#157A45;border-color:#CBEEDB}.v26-amber{background:#FFF8E5;color:#946200;border-color:#F7E4A7}.v26-blue{background:#EAF2FF;color:#1557A6;border-color:#CFE0FA}.v26-red{background:#FDECEC;color:#B42318;border-color:#F8D0CD}
+    div[data-testid="stMetric"]{background:white!important;border:1px solid #E2E8F0!important;border-radius:14px!important;padding:13px 14px!important;box-shadow:0 5px 15px rgba(23,59,115,.05)!important;min-height:108px!important}div[data-testid="stMetricLabel"] p{font-size:11px!important;text-transform:uppercase!important;letter-spacing:.45px!important;color:#667085!important;font-weight:800!important}div[data-testid="stMetricValue"]{font-size:25px!important;color:#173B73!important;font-weight:900!important}
+    [data-testid="stDataFrame"]{width:100%!important;max-width:100%!important;border:1px solid #E2E8F0!important;border-radius:14px!important;overflow:hidden!important}[data-testid="stDataFrame"] [role="gridcell"],[data-testid="stDataFrame"] [role="columnheader"]{font-size:12px!important}[data-testid="stDataFrame"] [role="columnheader"]{background:#173B73!important;color:white!important;font-weight:800!important}
+    .stPlotlyChart{background:white;border:1px solid #E2E8F0;border-radius:14px;padding:6px;overflow:hidden}
+    .v20-header,.v21-header-brand,.ps-profile-card,.v20-portal-content{display:none!important}
+    @media(max-width:1200px){.v26-alert-row{grid-template-columns:repeat(2,minmax(0,1fr))}.v26-brand-title{font-size:20px}.v26-user-chip{min-width:160px}}
+    @media(max-width:800px){[data-testid="stMainBlockContainer"],.block-container{padding:.8rem .75rem 2rem!important}.v26-app-header{padding:8px 10px}.v26-brand img{width:76px;height:44px}.v26-brand-title{font-size:17px;white-space:normal}.v26-brand-sub,.v26-user-text{display:none}.v26-user-chip{min-width:auto}.v26-alert-row{grid-template-columns:1fr}[data-testid="stHorizontalBlock"]{flex-wrap:wrap!important}[data-testid="stColumn"]{min-width:100%!important;flex:1 1 100%!important}}
+    </style>
+    """,unsafe_allow_html=True)
+
 if not login_sidebar():
     st.stop()
 
 if "active_app" not in st.session_state:
-    st.session_state["active_app"] = None
+    st.session_state["active_app"] = "Cambios y Muertos"
 if "portal_view" not in st.session_state:
     st.session_state["portal_view"] = "apps"
 
-if not st.session_state.get("active_app"):
-    if st.session_state.get("portal_view") == "admin":
-        page_portal_admin()
-    else:
-        render_app_portal()
-    st.stop()
-
+apply_v26_shell_styles()
 render_header()
 page = nav_bar()
 
@@ -10388,7 +10389,7 @@ if page in DATA_PAGES and ACTIVE_FILE.exists() and cache_valid():
         st.caption(window_notes[page])
 
 # Marcador de despliegue para confirmar que GitHub/Streamlit usa esta versión.
-st.caption("PS Operaciones Ropa · V25.3 · Layout, menú y tablas ajustados")
+st.caption("PS Operaciones Ropa · V26 · Interfaz restaurada según mockups")
 
 try:
     route_handler = ROUTES.get(page)
