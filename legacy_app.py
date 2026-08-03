@@ -7773,7 +7773,13 @@ def render_app_portal():
 
 
 def nav_bar():
-    """Navegación V26 en sidebar nativo, plegable y siempre recuperable."""
+    """Navegación V27.1: sidebar corporativo + selector superior de respaldo.
+
+    El selector superior garantiza que siempre se pueda cambiar de módulo,
+    incluso si el navegador conserva el sidebar nativo en estado colapsado.
+    Las solicitudes programáticas (por ejemplo, «Ir a Carga de Excel») usan
+    ``nav_request`` para evitar que el estado anterior del radio las revierta.
+    """
     role = normalize_role(
         st.session_state.get("user", {}).get("role")
         or st.session_state.get("user", {}).get("permiso", "Consulta")
@@ -7799,9 +7805,27 @@ def nav_bar():
         pages += ["Centro de Control", "Administración", "Configuración de Metas",
                   "Carga de Excel", "Diagnóstico del Archivo"]
 
-    current = st.session_state.get("nav_page", "Centro Ejecutivo")
+    requested = st.session_state.pop("nav_request", None)
+    current = requested or st.session_state.get("nav_page", "Centro Ejecutivo")
     if current not in pages:
         current = "Centro Ejecutivo"
+    st.session_state["nav_page"] = current
+
+    # Menú superior de respaldo: siempre visible y funcional.
+    top_key = "v271_top_navigation"
+    if st.session_state.get(top_key) != current:
+        st.session_state[top_key] = current
+    selected_top = st.selectbox(
+        "Menú principal",
+        pages,
+        index=pages.index(current),
+        key=top_key,
+        label_visibility="collapsed",
+        help="Selecciona el módulo que deseas consultar.",
+    )
+    if selected_top != current:
+        current = selected_top
+        st.session_state["nav_page"] = current
 
     user = st.session_state.get("user", {})
     full_name = str(user.get("nombre", "Consulta"))
@@ -7817,21 +7841,22 @@ def nav_bar():
             """,
             unsafe_allow_html=True,
         )
-        label_to_page = {f"{page_icons.get(item, '•')}  {item}": item for item in pages}
-        labels = list(label_to_page)
-        current_label = next(label for label, value in label_to_page.items() if value == current)
-        selected_label = st.radio(
-            "Navegación", labels, index=labels.index(current_label),
-            label_visibility="collapsed", key="v27_navigation"
-        )
-        selected = label_to_page[selected_label]
+        for item in pages:
+            label = f"{page_icons.get(item, '•')}  {item}"
+            if st.button(
+                label,
+                key=f"v271_nav_{item}",
+                width="stretch",
+                type="primary" if item == current else "secondary",
+            ):
+                st.session_state["nav_request"] = item
+                st.rerun()
         st.divider()
-        if st.button("Cerrar sesión", key="v26_logout", width="stretch"):
+        if st.button("Cerrar sesión", key="v271_logout", width="stretch"):
             logout_current_session()
             st.rerun()
 
-    st.session_state["nav_page"] = selected
-    return selected
+    return current
 
 def reliable_data_horizon(op, co):
     """Obtiene el horizonte real sin eliminar la nueva operación de julio.
@@ -9466,6 +9491,10 @@ def apply_v26_shell_styles():
     [data-testid="stSidebar"] [role="radiogroup"] label{border-radius:10px!important;padding:.55rem .7rem!important;margin:.15rem 0!important;}
     [data-testid="stSidebar"] [role="radiogroup"] label:has(input:checked){background:#3366CC!important;border-left:4px solid white!important;}
     [data-testid="stSidebar"] [role="radiogroup"] label:hover{background:rgba(255,255,255,.10)!important;}
+    div[data-testid="stSelectbox"]:has([aria-label="Menú principal"]){max-width:360px;margin:0 0 14px auto!important;}
+    [data-testid="stSidebar"] .stButton>button{justify-content:flex-start!important;text-align:left!important;border:none!important;margin:.08rem 0!important;}
+    [data-testid="stSidebar"] .stButton>button[kind="primary"]{background:#3366CC!important;border-left:4px solid white!important;}
+    [data-testid="stSidebarCollapsedControl"],[data-testid="collapsedControl"]{position:fixed!important;top:72px!important;left:10px!important;display:flex!important;visibility:visible!important;opacity:1!important;}
     [data-testid="collapsedControl"],[data-testid="stSidebarCollapsedControl"]{display:flex!important;visibility:visible!important;opacity:1!important;background:#173B73!important;border-radius:10px!important;z-index:9999!important;}
     .v26-sidebar-head{display:flex;align-items:center;gap:10px;padding:8px 4px 14px;border-bottom:1px solid rgba(255,255,255,.18);margin-bottom:10px}.v26-sidebar-mark{width:42px;height:42px;border-radius:11px;background:white;color:#173B73!important;display:grid;place-items:center;font-weight:900}.v26-sidebar-head b{display:block;font-size:16px}.v26-sidebar-head span,.v26-sidebar-user span{display:block;font-size:11px;opacity:.75}.v26-sidebar-user{padding:8px 6px 12px}.v26-sidebar-user b{display:block;font-size:13px}
     .v26-app-header{display:flex;align-items:center;justify-content:space-between;gap:20px;background:white;border:1px solid #E2E8F0;border-radius:16px;padding:10px 18px;margin:0 0 18px;box-shadow:0 6px 20px rgba(23,59,115,.06)}
@@ -9530,7 +9559,7 @@ if needs_data:
                 unsafe_allow_html=True,
             )
             if role_level() >= ROLE_LEVEL["ADMIN"] and st.button("Ir a Carga de Excel", key="v27_go_upload", type="primary"):
-                st.session_state["nav_page"] = "Carga de Excel"
+                st.session_state["nav_request"] = "Carga de Excel"
                 st.rerun()
         else:
             st.warning(
@@ -10447,7 +10476,7 @@ st.markdown(
 )
 
 # Marcador de despliegue para confirmar que GitHub/Streamlit usa esta versión.
-st.caption("PS Operaciones Ropa · V27 · Layout maestro y reportes ejecutivos")
+st.caption("PS Operaciones Ropa · V27.1 · Menú y carga de Excel corregidos")
 
 try:
     route_handler = ROUTES.get(page)
