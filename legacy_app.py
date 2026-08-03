@@ -7785,12 +7785,11 @@ def render_app_portal():
 
 
 def nav_bar():
-    """Navegación V27.1: sidebar corporativo + selector superior de respaldo.
+    """Navegación V28 persistente mediante sidebar.
 
-    El selector superior garantiza que siempre se pueda cambiar de módulo,
-    incluso si el navegador conserva el sidebar nativo en estado colapsado.
-    Las solicitudes programáticas (por ejemplo, «Ir a Carga de Excel») usan
-    ``nav_request`` para evitar que el estado anterior del radio las revierta.
+    El módulo activo se conserva en ``st.session_state`` y no vuelve al Centro
+    Ejecutivo durante los reruns normales de Streamlit. Las redirecciones
+    programáticas usan ``nav_request`` y sincronizan el radio antes de crearlo.
     """
     role = normalize_role(
         st.session_state.get("user", {}).get("role")
@@ -7818,26 +7817,18 @@ def nav_bar():
                   "Carga de Excel", "Diagnóstico del Archivo"]
 
     requested = st.session_state.pop("nav_request", None)
-    current = requested or st.session_state.get("nav_page", "Centro Ejecutivo")
+    if requested in pages:
+        st.session_state["nav_page"] = requested
+        st.session_state["v28_sidebar_navigation"] = requested
+
+    current = st.session_state.get("nav_page", "Centro Ejecutivo")
     if current not in pages:
         current = "Centro Ejecutivo"
-    st.session_state["nav_page"] = current
-
-    # Menú superior de respaldo: siempre visible y funcional.
-    top_key = "v271_top_navigation"
-    if st.session_state.get(top_key) != current:
-        st.session_state[top_key] = current
-    selected_top = st.selectbox(
-        "Menú principal",
-        pages,
-        index=pages.index(current),
-        key=top_key,
-        label_visibility="collapsed",
-        help="Selecciona el módulo que deseas consultar.",
-    )
-    if selected_top != current:
-        current = selected_top
         st.session_state["nav_page"] = current
+
+    # Sincronizar solo antes de crear el widget. Nunca se reasigna su key después.
+    if st.session_state.get("v28_sidebar_navigation") not in pages:
+        st.session_state["v28_sidebar_navigation"] = current
 
     user = st.session_state.get("user", {})
     full_name = str(user.get("nombre", "Consulta"))
@@ -7853,21 +7844,27 @@ def nav_bar():
             """,
             unsafe_allow_html=True,
         )
-        for item in pages:
-            label = f"{page_icons.get(item, '•')}  {item}"
-            if st.button(
-                label,
-                key=f"v271_nav_{item}",
-                width="stretch",
-                type="primary" if item == current else "secondary",
-            ):
-                st.session_state["nav_request"] = item
-                st.rerun()
+        labels = [f"{page_icons.get(item, '•')}  {item}" for item in pages]
+        label_to_page = dict(zip(labels, pages))
+        selected_label = st.radio(
+            "Menú principal",
+            labels,
+            index=pages.index(st.session_state["v28_sidebar_navigation"]),
+            key="v28_sidebar_radio_label",
+            label_visibility="collapsed",
+        )
+        selected_page = label_to_page[selected_label]
+        st.session_state["v28_sidebar_navigation"] = selected_page
+        st.session_state["nav_page"] = selected_page
+        current = selected_page
+
         st.divider()
-        if st.button("Cerrar sesión", key="v271_logout", width="stretch"):
+        if st.button("Cerrar sesión", key="v28_logout", width="stretch"):
             logout_current_session()
             st.rerun()
 
+    # Indicador compacto; no es un segundo control de navegación.
+    st.caption(f"Módulo activo: {current}")
     return current
 
 def reliable_data_horizon(op, co):
@@ -10421,27 +10418,34 @@ h1,h2,h3{letter-spacing:-.35px;color:#172B4D}.v25-kpi-grid{display:grid;grid-tem
 ''',unsafe_allow_html=True)
 
 
+# V28: alcance de datos por módulo.
+# Recuperación consulta todas las tiendas permitidas por el perfil autenticado.
+# Los demás indicadores operativos se restringen a las 17 tiendas del proyecto.
+project_op = filter_stores(op_all, list(PROJECT_STORES)) if op_all is not None else op_all
+project_co = filter_stores(co_all, list(PROJECT_STORES)) if co_all is not None else co_all
+
 ROUTES = {
-    "Centro Ejecutivo": lambda: page_resumen(op_all, co_all),
-    "Operación Diaria": lambda: page_por_dia(op_all, co_all),
-    "Reporte Semanal": lambda: page_semanal(op_all, co_all),
-    "Reporte Mensual": lambda: page_mensual(op_all, co_all),
-    "Productividad": lambda: page_productividad(op_all, co_all),
+    "Centro Ejecutivo": lambda: page_resumen(project_op, project_co),
+    "Operación Diaria": lambda: page_por_dia(project_op, project_co),
+    "Reporte Semanal": lambda: page_semanal(project_op, project_co),
+    "Reporte Mensual": lambda: page_mensual(project_op, project_co),
+    "Productividad": lambda: page_productividad(project_op, project_co),
     "Recuperación": lambda: page_recuperacion(op_all, co_all),
-    "Recorridos": lambda: page_recorridos(op_all, co_all),
-    "Reportes": lambda: page_reportes(op_all, co_all),
-    "Detalle por Tienda": lambda: page_detalle_tienda_v17(op_all, co_all),
-    "Detalle por Colaborador": lambda: page_detalle_colaborador_v17(op_all, co_all),
+    "Recorridos": lambda: page_recorridos(project_op, project_co),
+    "Reportes": lambda: page_reportes(project_op, project_co),
+    "Detalle por Tienda": lambda: page_detalle_tienda_v17(project_op, project_co),
+    "Detalle por Colaborador": lambda: page_detalle_colaborador_v17(project_op, project_co),
     "Histórico de Descargas": page_historico_descargas_v17,
-    "Alertas Inteligentes": lambda: page_alertas_inteligentes_v17(op_all, co_all),
+    "Alertas Inteligentes": lambda: page_alertas_inteligentes_v17(project_op, project_co),
     "Perfil de Usuario": page_perfil_usuario_v17,
-    "Inteligencia Operativa": lambda: page_inteligencia_operativa_v17(op_all, co_all),
+    "Inteligencia Operativa": lambda: page_inteligencia_operativa_v17(project_op, project_co),
     "Centro de Control": page_centro_control,
     "Administración": page_administracion_v17,
     "Configuración de Metas": page_configuracion_metas_v17,
     "Carga de Excel": page_carga_excel_v17,
     "Diagnóstico del Archivo": lambda: page_diagnostico_archivo_v17(op_all, co_all, diag_df),
 }
+
 
 if page in DATA_PAGES and ACTIVE_FILE.exists() and cache_valid():
     window_notes = {
@@ -10488,7 +10492,7 @@ st.markdown(
 )
 
 # Marcador de despliegue para confirmar que GitHub/Streamlit usa esta versión.
-st.caption("PS Operaciones Ropa · V27.2 · Procesamiento final corregido")
+st.caption("PS Operaciones Ropa · V28 · Navegación persistente y alcance por módulo")
 
 try:
     route_handler = ROUTES.get(page)
