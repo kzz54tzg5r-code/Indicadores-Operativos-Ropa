@@ -7784,51 +7784,102 @@ def render_app_portal():
     st.markdown("</main>", unsafe_allow_html=True)
 
 
-def nav_bar():
-    """Navegación V28 persistente mediante sidebar.
+def _navigate_to(page_name: str) -> None:
+    """Navega de forma estable entre módulos sin depender de un radio persistido."""
+    st.session_state["nav_page"] = page_name
+    st.session_state["nav_request"] = page_name
 
-    El módulo activo se conserva en ``st.session_state`` y no vuelve al Centro
-    Ejecutivo durante los reruns normales de Streamlit. Las redirecciones
-    programáticas usan ``nav_request`` y sincronizan el radio antes de crearlo.
-    """
+
+def page_inicio():
+    """Menú principal de aplicativos y reportes, visible aun sin fuente de datos."""
+    user = st.session_state.get("user", {})
+    role = normalize_role(user.get("role") or user.get("permiso", "Consulta"))
+    st.markdown(
+        """
+        <section class="v29-home-hero">
+          <div>
+            <div class="v29-eyebrow">PS OPERACIONES ROPA</div>
+            <h1>Menú principal</h1>
+            <p>Selecciona el reporte o proceso que deseas consultar.</p>
+          </div>
+        </section>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    modules = [
+        ("Centro Ejecutivo", "Resumen integral de los principales indicadores.", "▦"),
+        ("Operación Diaria", "Ingresos, acondicionado, ubicado y pendientes del día.", "◷"),
+        ("Reporte Semanal", "Comparativo y cumplimiento por semana ISO.", "▥"),
+        ("Reporte Mensual", "Consolidado mensual y tendencias.", "▤"),
+        ("Productividad", "Productividad por colaborador y tienda.", "↗"),
+        ("Recuperación", "Conversión y recuperación económica de todas las tiendas.", "♻"),
+        ("Recorridos", "Cumplimiento de recorridos y metas.", "◎"),
+        ("Reportes", "Generación y descarga de reportes.", "⇩"),
+        ("Detalle por Tienda", "Vista integral de una tienda.", "⌂"),
+        ("Detalle por Colaborador", "Desempeño individual y actividades.", "♙"),
+        ("Alertas Inteligentes", "Prioridades, riesgos y seguimiento.", "△"),
+        ("Inteligencia Operativa", "Tendencias y recomendaciones ejecutivas.", "✦"),
+    ]
+    if role_level() >= ROLE_LEVEL["ADMIN"]:
+        modules.extend([
+            ("Carga de Excel", "Carga, guarda y procesa la fuente de datos.", "⇧"),
+            ("Diagnóstico del Archivo", "Valida la estructura y calidad del Excel.", "✓"),
+            ("Administración", "Usuarios, roles y alcances.", "☷"),
+            ("Configuración de Metas", "Metas operativas y comerciales.", "⌁"),
+            ("Centro de Control", "Estado, auditoría y control del sistema.", "⚙"),
+        ])
+
+    cols = st.columns(3, gap="medium")
+    for i, (name, desc, icon) in enumerate(modules):
+        with cols[i % 3]:
+            st.markdown(
+                f'<div class="v29-module-card"><div class="v29-module-icon">{icon}</div>'
+                f'<div class="v29-module-name">{name}</div>'
+                f'<div class="v29-module-desc">{desc}</div></div>',
+                unsafe_allow_html=True,
+            )
+            if st.button(f"Abrir {name}", key=f"v29_open_{i}", width="stretch"):
+                st.session_state["nav_page"] = name
+                st.rerun()
+
+
+def nav_bar():
+    """Menú lateral estable mediante botones y página inicial de módulos."""
     role = normalize_role(
         st.session_state.get("user", {}).get("role")
         or st.session_state.get("user", {}).get("permiso", "Consulta")
     )
     pages = [
-        "Centro Ejecutivo", "Operación Diaria", "Reporte Semanal",
+        "Inicio", "Centro Ejecutivo", "Operación Diaria", "Reporte Semanal",
         "Reporte Mensual", "Productividad", "Recuperación", "Recorridos",
         "Reportes", "Detalle por Tienda", "Detalle por Colaborador",
         "Histórico de Descargas", "Alertas Inteligentes", "Perfil de Usuario",
         "Inteligencia Operativa",
     ]
     page_icons = {
-        "Centro Ejecutivo":"▦", "Operación Diaria":"◷", "Reporte Semanal":"▥",
-        "Reporte Mensual":"▤", "Productividad":"↗", "Recuperación":"♻",
-        "Recorridos":"◎", "Reportes":"⇩", "Detalle por Tienda":"⌂",
-        "Detalle por Colaborador":"♙", "Histórico de Descargas":"↧",
-        "Alertas Inteligentes":"△", "Perfil de Usuario":"●",
-        "Inteligencia Operativa":"✦", "Centro de Control":"⚙",
-        "Administración":"☷", "Configuración de Metas":"⌁",
-        "Carga de Excel":"⇧", "Diagnóstico del Archivo":"✓",
+        "Inicio":"⌂", "Centro Ejecutivo":"▦", "Operación Diaria":"◷",
+        "Reporte Semanal":"▥", "Reporte Mensual":"▤", "Productividad":"↗",
+        "Recuperación":"♻", "Recorridos":"◎", "Reportes":"⇩",
+        "Detalle por Tienda":"⌂", "Detalle por Colaborador":"♙",
+        "Histórico de Descargas":"↧", "Alertas Inteligentes":"△",
+        "Perfil de Usuario":"●", "Inteligencia Operativa":"✦",
+        "Centro de Control":"⚙", "Administración":"☷",
+        "Configuración de Metas":"⌁", "Carga de Excel":"⇧",
+        "Diagnóstico del Archivo":"✓",
     }
     if role_level() >= ROLE_LEVEL["ADMIN"]:
-        pages += ["Centro de Control", "Administración", "Configuración de Metas",
-                  "Carga de Excel", "Diagnóstico del Archivo"]
+        pages += ["Carga de Excel", "Diagnóstico del Archivo", "Administración",
+                  "Configuración de Metas", "Centro de Control"]
 
     requested = st.session_state.pop("nav_request", None)
     if requested in pages:
         st.session_state["nav_page"] = requested
-        st.session_state["v28_sidebar_navigation"] = requested
 
-    current = st.session_state.get("nav_page", "Centro Ejecutivo")
+    current = st.session_state.get("nav_page", "Inicio")
     if current not in pages:
-        current = "Centro Ejecutivo"
+        current = "Inicio"
         st.session_state["nav_page"] = current
-
-    # Sincronizar solo antes de crear el widget. Nunca se reasigna su key después.
-    if st.session_state.get("v28_sidebar_navigation") not in pages:
-        st.session_state["v28_sidebar_navigation"] = current
 
     user = st.session_state.get("user", {})
     full_name = str(user.get("nombre", "Consulta"))
@@ -7844,27 +7895,21 @@ def nav_bar():
             """,
             unsafe_allow_html=True,
         )
-        labels = [f"{page_icons.get(item, '•')}  {item}" for item in pages]
-        label_to_page = dict(zip(labels, pages))
-        selected_label = st.radio(
-            "Menú principal",
-            labels,
-            index=pages.index(st.session_state["v28_sidebar_navigation"]),
-            key="v28_sidebar_radio_label",
-            label_visibility="collapsed",
-        )
-        selected_page = label_to_page[selected_label]
-        st.session_state["v28_sidebar_navigation"] = selected_page
-        st.session_state["nav_page"] = selected_page
-        current = selected_page
-
+        for idx, item in enumerate(pages):
+            button_type = "primary" if item == current else "secondary"
+            if st.button(
+                f"{page_icons.get(item, '•')}  {item}",
+                key=f"v29_nav_{idx}_{item}",
+                type=button_type,
+                width="stretch",
+            ):
+                st.session_state["nav_page"] = item
+                st.rerun()
         st.divider()
-        if st.button("Cerrar sesión", key="v28_logout", width="stretch"):
+        if st.button("Cerrar sesión", key="v29_logout", width="stretch"):
             logout_current_session()
             st.rerun()
 
-    # Indicador compacto; no es un segundo control de navegación.
-    st.caption(f"Módulo activo: {current}")
     return current
 
 def reliable_data_horizon(op, co):
@@ -9524,6 +9569,8 @@ if not login_sidebar():
 
 if "active_app" not in st.session_state:
     st.session_state["active_app"] = "Cambios y Muertos"
+if "nav_page" not in st.session_state:
+    st.session_state["nav_page"] = "Inicio"
 if "portal_view" not in st.session_state:
     st.session_state["portal_view"] = "apps"
 
@@ -10425,6 +10472,7 @@ project_op = filter_stores(op_all, list(PROJECT_STORES)) if op_all is not None e
 project_co = filter_stores(co_all, list(PROJECT_STORES)) if co_all is not None else co_all
 
 ROUTES = {
+    "Inicio": page_inicio,
     "Centro Ejecutivo": lambda: page_resumen(project_op, project_co),
     "Operación Diaria": lambda: page_por_dia(project_op, project_co),
     "Reporte Semanal": lambda: page_semanal(project_op, project_co),
@@ -10492,7 +10540,7 @@ st.markdown(
 )
 
 # Marcador de despliegue para confirmar que GitHub/Streamlit usa esta versión.
-st.caption("PS Operaciones Ropa · V28 · Navegación persistente y alcance por módulo")
+st.caption("PS Operaciones Ropa · V29 · Menú principal y carga restaurados")
 
 try:
     route_handler = ROUTES.get(page)
@@ -10589,3 +10637,37 @@ st.markdown(
     '<div class="footer">CONFIDENCIAL | Price Shoes | Operaciones Ropa</div>',
     unsafe_allow_html=True,
 )
+
+
+# V29: layout autoritativo final para menú visible y navegación estable.
+st.markdown("""
+<style>
+@media (min-width: 901px){
+  [data-testid="stSidebar"]{
+    display:block!important;visibility:visible!important;opacity:1!important;
+    position:fixed!important;left:0!important;top:0!important;bottom:0!important;
+    width:286px!important;min-width:286px!important;max-width:286px!important;
+    transform:none!important;background:linear-gradient(180deg,#102E67,#173B73)!important;
+    z-index:1000!important;overflow-y:auto!important;
+  }
+  [data-testid="stSidebar"]>div{width:286px!important;}
+  [data-testid="stMain"]{margin-left:286px!important;width:calc(100% - 286px)!important;max-width:calc(100% - 286px)!important;}
+  [data-testid="collapsedControl"],[data-testid="stSidebarCollapsedControl"]{display:none!important;}
+}
+[data-testid="stSidebar"] .stButton>button{
+  justify-content:flex-start!important;text-align:left!important;color:#fff!important;
+  border:0!important;background:transparent!important;border-radius:10px!important;
+  min-height:39px!important;padding:.45rem .7rem!important;font-weight:650!important;
+}
+[data-testid="stSidebar"] .stButton>button:hover{background:rgba(255,255,255,.12)!important;}
+[data-testid="stSidebar"] .stButton>button[kind="primary"]{background:#3366CC!important;border-left:4px solid #fff!important;}
+.v29-home-hero{background:linear-gradient(135deg,#173B73,#2F5AA3);color:#fff;border-radius:18px;padding:26px 30px;margin:4px 0 22px;box-shadow:0 12px 30px rgba(23,59,115,.14)}
+.v29-home-hero h1{color:#fff!important;margin:3px 0 5px!important;font-size:34px!important}.v29-home-hero p{margin:0;opacity:.88}.v29-eyebrow{font-size:12px;font-weight:850;letter-spacing:1.2px;opacity:.8}
+.v29-module-card{background:#fff;border:1px solid #E2E8F0;border-radius:15px;padding:17px 18px 12px;min-height:138px;box-shadow:0 6px 18px rgba(23,59,115,.06);margin-top:8px}.v29-module-icon{width:42px;height:42px;border-radius:11px;background:#EAF2FF;color:#173B73;display:grid;place-items:center;font-size:22px;font-weight:900}.v29-module-name{font-size:16px;font-weight:850;color:#173B73;margin-top:12px}.v29-module-desc{font-size:12px;line-height:1.4;color:#667085;margin-top:5px;min-height:34px}
+@media(max-width:900px){
+  [data-testid="stSidebar"]{position:fixed!important;left:0!important;top:0!important;bottom:0!important;width:286px!important;max-width:82vw!important;z-index:1400!important;}
+  [data-testid="stMain"]{margin-left:0!important;width:100%!important;max-width:100%!important;}
+  [data-testid="collapsedControl"],[data-testid="stSidebarCollapsedControl"]{display:flex!important;visibility:visible!important;opacity:1!important;}
+}
+</style>
+""", unsafe_allow_html=True)
