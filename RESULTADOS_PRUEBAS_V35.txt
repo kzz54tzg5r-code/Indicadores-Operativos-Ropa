@@ -1,0 +1,4 @@
+PS Operaciones Ropa V35
+- Compilación app.py: OK
+- Compilación legacy_app.py: OK
+- Pruebas automatizadas: 15 aprobadas, 0 fallidas

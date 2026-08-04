@@ -405,32 +405,45 @@ def fmt_pct(x):
 
 
 def _compact_multiselect(label, options, default=None, key=None, help=None, **kwargs):
-    """Selector múltiple compacto: las etiquetas quedan dentro de un menú desplegable."""
-    options = list(options or [])
+    """Menú desplegable compacto con selección múltiple mediante casillas.
+
+    Evita que Streamlit muestre etiquetas/chips fuera del control. El botón
+    permanece de una sola línea y el listado se abre únicamente al pulsarlo.
+    """
+    options = [str(x) for x in list(options or []) if str(x).strip()]
     if default is None:
         default = options
-    default = [x for x in list(default or []) if x in options]
-    current = st.session_state.get(key, default) if key else default
-    current = [x for x in list(current or []) if x in options]
-    summary = "Todos" if options and len(current) == len(options) else f"{len(current)} de {len(options)}"
+    default = [str(x) for x in list(default or []) if str(x) in options]
+    state_key = key or f"compact_{re.sub(r'[^a-z0-9]+', '_', label.lower()).strip('_')}"
+    if state_key not in st.session_state:
+        st.session_state[state_key] = list(default)
+    current = [x for x in list(st.session_state.get(state_key, [])) if x in options]
+    st.session_state[state_key] = current
+    summary = "Todos" if options and len(current) == len(options) else ("Ninguna" if not current else f"{len(current)} seleccionadas")
     with st.popover(f"{label}: {summary}", use_container_width=True, help=help):
-        selected = st.multiselect(
-            label, options, default=default, key=key, help=help,
-            label_visibility="collapsed", **kwargs
-        )
-        if options:
-            c1, c2 = st.columns(2)
-            with c1:
-                if st.button("Seleccionar todas", key=f"{key}_all" if key else None, width="stretch"):
-                    if key:
-                        st.session_state[key] = options
-                    st.rerun()
-            with c2:
-                if st.button("Limpiar", key=f"{key}_clear" if key else None, width="stretch"):
-                    if key:
-                        st.session_state[key] = []
-                    st.rerun()
-    return selected
+        c1, c2 = st.columns(2)
+        with c1:
+            if st.button("Seleccionar todas", key=f"{state_key}_all", use_container_width=True):
+                st.session_state[state_key] = list(options)
+                st.rerun()
+        with c2:
+            if st.button("Limpiar", key=f"{state_key}_clear", use_container_width=True):
+                st.session_state[state_key] = []
+                st.rerun()
+        st.divider()
+        changed = False
+        selected = []
+        for idx, option in enumerate(options):
+            checked = option in current
+            value = st.checkbox(option, value=checked, key=f"{state_key}_opt_{idx}")
+            if value:
+                selected.append(option)
+            if value != checked:
+                changed = True
+        if changed:
+            st.session_state[state_key] = selected
+            st.rerun()
+    return list(st.session_state.get(state_key, []))
 
 
 def _secret_or_env(name, default=""):
@@ -9799,7 +9812,7 @@ def page_administracion_v17():
         ], columns=["Rol", "Alcance", "Estado"])
         panel("Roles configurados", roles, height=260)
     with tab3:
-        tiendas = pd.DataFrame({"Tienda": STORES, "Estado": "Activa"})
+        tiendas = pd.DataFrame({"Tienda": _available_store_catalog(), "Estado": "Activa"})
         panel("Catálogo de tiendas", tiendas, height=420)
     with tab4:
         regions = pd.DataFrame([
@@ -10434,10 +10447,8 @@ def page_por_dia(op, co):
     for frame in (op,co):
         if frame is not None and not frame.empty and "Fecha" in frame: dates += pd.to_datetime(frame["Fecha"],errors="coerce").dropna().tolist()
     default = pd.Timestamp(max(dates)).date() if dates else date.today()
-    f1,f2 = st.columns([1,3])
-    with f1: selected = st.date_input("Fecha", value=default, key="v25_daily_date")
-    stores = authorized_stores(op, co)
-    with f2: selected_stores = _compact_multiselect("Tiendas", stores, default=stores, key="v25_daily_stores")
+    selected = st.date_input("Fecha", value=default, key="v25_daily_date")
+    selected_stores = authorized_stores(op, co)
     start=end=pd.Timestamp(selected)
     table, metrics = _v25_operational_period(op, co, start, end, selected_stores, carryover="previous_day")
     recm, detail = _v25_recovery_period(co, start, end, selected_stores)
@@ -10450,6 +10461,7 @@ def page_por_dia(op, co):
         ("Conversión",fmt_pct(recm["% Recuperación Piezas"]),"Misma semana ISO","#10B981"),
     ])
     if not table.empty:
+        panel("Detalle diario por tienda", table, height=390)
         combined_chart(table,"Ingreso vs Acondicionado vs Ubicado", income_column="Total")
         pending = table[[c for c in ["Tienda","Total","Pend. Hab.","Pend. Ub."] if c in table.columns]].copy()
         if not pending.empty:
@@ -10457,7 +10469,6 @@ def page_por_dia(op, co):
             if "Pend. Hab." in pending: fig.add_bar(x=pending["Tienda"],y=pending["Pend. Hab."],name="Pendiente acondicionar",marker_color="#173B73")
             if "Pend. Ub." in pending: fig.add_bar(x=pending["Tienda"],y=pending["Pend. Ub."],name="Pendiente ubicar",marker_color="#E6007E")
             fig.update_layout(title="Pendientes operativos por tienda",height=390,barmode="group",plot_bgcolor="white",paper_bgcolor="white",margin=dict(l=8,r=8,t=60,b=58),legend=dict(orientation="h",y=1.10,x=1,xanchor="right")); fig.update_xaxes(fixedrange=True); fig.update_yaxes(fixedrange=True,gridcolor="#E5E7EB"); st.plotly_chart(fig,width="stretch",config={"displayModeBar":False,"responsive":True})
-        panel("Detalle diario por tienda",table,height=390)
     summary={**metrics,**recm,"Fecha":str(selected)}
     _v25_downloads("Operación Diaria",f"Fecha: {pd.Timestamp(selected).strftime('%d/%m/%Y')}",table,summary,"v25_daily",{"Recuperación":detail})
 
@@ -10465,11 +10476,11 @@ def page_por_dia(op, co):
 def page_semanal(op, co):
     op = reliable_operation(op, co); co=normalize_commercial_df(co)
     _v17_title("Reporte Semanal", "Operación, productividad, recorridos y recuperación cerrados por semana ISO.")
-    stores=authorized_stores(op,co); c1,c2=st.columns([2,5]); pairs=available_iso_weeks(op,co)
+    stores=authorized_stores(op,co); pairs=available_iso_weeks(op,co)
     if not pairs: st.info("Sin semanas válidas detectadas."); return
     labels=[f"{y}-Semana {w:02d}" for y,w in pairs]
-    with c1: label=st.selectbox("Semana ISO",labels,index=len(labels)-1,key="v25_week")
-    with c2: selected_stores=_compact_multiselect("Tiendas",stores,default=stores,key="v25_week_stores")
+    label=st.selectbox("Semana ISO",labels,index=len(labels)-1,key="v25_week")
+    selected_stores=stores
     year,week=pairs[labels.index(label)]; start,end=_v25_week_bounds(year,week)
     table,opm=_v25_operational_period(op,co,start,end,selected_stores,carryover="previous_sunday")
     recm,detail=_v25_recovery_period(co,start,end,selected_stores)
@@ -10513,9 +10524,8 @@ def page_mensual(op, co):
         if frame is not None and not frame.empty and "Fecha" in frame: months.update(pd.to_datetime(frame["Fecha"],errors="coerce").dropna().dt.to_period("M").astype(str).tolist())
     months=sorted(months)
     if not months: st.info("Sin meses detectados."); return
-    c1,c2=st.columns([2,5]);
-    with c1: month=st.selectbox("Mes",months,index=len(months)-1,key="v25_month")
-    with c2: selected_stores=_compact_multiselect("Tiendas",stores,default=stores,key="v25_month_stores")
+    month=st.selectbox("Mes",months,index=len(months)-1,key="v25_month")
+    selected_stores=stores
     period=pd.Period(month,freq="M"); start=period.start_time.normalize(); end=period.end_time.normalize()
     table,opm=_v25_operational_period(op,co,start,end,selected_stores,"none"); recm,detail=_v25_recovery_period(co,start,end,selected_stores); prod_table,prodm=_v25_productivity_period(op,start,end,selected_stores); route_table,routem=_v25_recorridos_period(op,start,end,selected_stores,47)
     prev=period-1; _,prev_op=_v25_operational_period(op,co,prev.start_time,prev.end_time,selected_stores,"none"); prev_rec,_=_v25_recovery_period(co,prev.start_time,prev.end_time,selected_stores)
@@ -10548,10 +10558,9 @@ def page_productividad(op, co):
     _v17_title("Productividad", "Ranking real por colaborador, metas acumuladas, top y oportunidades.")
     if op is None or op.empty: st.info("Sin información operativa."); return
     dates=pd.to_datetime(op["Fecha"],errors="coerce").dropna(); end=dates.max().normalize(); start=max(dates.min().normalize(),end-pd.Timedelta(days=29)); stores=authorized_stores(op,co)
-    c1,c2=st.columns([2,5]);
-    with c1: period=st.date_input("Periodo",value=(start.date(),end.date()),key="v25_prod_dates")
+    period=st.date_input("Periodo",value=(start.date(),end.date()),key="v25_prod_dates")
     if isinstance(period,(tuple,list)) and len(period)==2: start,end=map(pd.Timestamp,period)
-    with c2: selected_stores=_compact_multiselect("Tiendas",stores,default=stores,key="v25_prod_stores")
+    selected_stores=stores
     detail,summary=_v25_productivity_period(op,start,end,selected_stores)
     _v25_kpi_cards([("Piezas procesadas",fmt_num(summary["Piezas"]),"Actividades productivas","#3366CC"),("Días trabajados",fmt_num(summary["Días"]),"Suma colaborador-día","#7C3AED"),("Productividad",f"{summary['Productividad']:,.0f}","Piezas por colaborador/día","#E6007E"),("Cumplimiento",fmt_pct(summary["% Productividad"]),"Meta 784 pzs/día","#10B981")])
     if detail.empty: st.info("Sin registros productivos en el periodo."); return
@@ -10569,8 +10578,8 @@ def page_recorridos(op, co):
     pairs=available_iso_weeks(op,co)
     if not pairs: st.info("Sin semanas detectadas."); return
     stores=authorized_stores(op,co); labels=[f"{y}-Semana {w:02d}" for y,w in pairs]; c1,c2=st.columns([2,5])
-    with c1: label=st.selectbox("Semana ISO",labels,index=len(labels)-1,key="v25_routes_week")
-    with c2: selected_stores=_compact_multiselect("Tiendas",stores,default=stores,key="v25_routes_stores")
+    label=st.selectbox("Semana ISO",labels,index=len(labels)-1,key="v25_routes_week")
+    selected_stores=stores
     year,week=pairs[labels.index(label)]; start,end=_v25_week_bounds(year,week); detail,summary=_v25_recorridos_period(op,start,end,selected_stores)
     _v25_kpi_cards([("Meta consolidada",fmt_num(summary["Meta"]),"47 por tienda","#3366CC"),("Realizados",fmt_num(summary["Realizados"]),"Semana seleccionada","#7C3AED"),("Cumplimiento",fmt_pct(summary["% Recorridos"]),"Realizados / meta","#10B981"),("Faltante",fmt_num(summary["Faltante"]),"Meta - realizados","#EF4444")])
     if not detail.empty:
@@ -10628,9 +10637,9 @@ h1,h2,h3{letter-spacing:-.35px;color:#172B4D}.v25-kpi-grid{display:grid;grid-tem
 ''',unsafe_allow_html=True)
 
 
-# V33: alcance configurable y filtro múltiple por módulo.
-# Las tiendas del proyecto se administran desde Configuración de Metas.
-PROJECT_FILTER_PAGES = {
+# V35: alcance del proyecto aplicado automáticamente por módulo.
+# Solo Recuperación y Detalle por Tienda muestran filtro explícito de tiendas.
+PROJECT_SCOPE_PAGES = {
     "Centro Ejecutivo", "Operación Diaria", "Reporte Semanal", "Reporte Mensual",
     "Productividad", "Recorridos", "Reportes", "Detalle por Colaborador",
     "Alertas Inteligentes", "Inteligencia Operativa",
@@ -10645,28 +10654,16 @@ def _module_store_multiselect(page_name: str, options: list[str]) -> list[str]:
     if not options:
         return []
     key = "module_store_filter_" + re.sub(r"[^a-z0-9]+", "_", page_name.lower()).strip("_")
-    current_values = st.session_state.get(key)
-    if current_values is not None:
-        clean = [x for x in current_values if x in options]
-        if clean != current_values:
-            st.session_state[key] = clean or options
     selected = _compact_multiselect(
         "Tiendas", options, default=options, key=key,
-        help="Puedes seleccionar una o varias tiendas. El filtro se aplica a todos los indicadores, tablas, gráficas y descargas de esta pestaña.",
+        help="Selecciona una o varias tiendas para esta consulta.",
     )
     return selected or options
 
-module_store_options = []
-if page in PROJECT_FILTER_PAGES:
-    module_store_options = [x for x in configured_project_stores if x in all_authorized_stores]
-    st.markdown('<div class="v33-store-filter-marker"></div>', unsafe_allow_html=True)
-    selected_module_stores = _module_store_multiselect(page, module_store_options)
-elif page in ALL_STORE_FILTER_PAGES:
-    module_store_options = all_authorized_stores
-    st.markdown('<div class="v33-store-filter-marker"></div>', unsafe_allow_html=True)
-    selected_module_stores = _module_store_multiselect(page, module_store_options)
+if page in ALL_STORE_FILTER_PAGES:
+    selected_module_stores = _module_store_multiselect(page, all_authorized_stores)
 else:
-    selected_module_stores = configured_project_stores
+    selected_module_stores = [x for x in configured_project_stores if x in all_authorized_stores]
 
 project_op = filter_stores(op_all, selected_module_stores) if op_all is not None else op_all
 project_co = filter_stores(co_all, selected_module_stores) if co_all is not None else co_all
@@ -10763,7 +10760,7 @@ st.markdown(
 )
 
 # Marcador de despliegue para confirmar que GitHub/Streamlit usa esta versión.
-st.caption("PS Operaciones Ropa · V34")
+st.caption("PS Operaciones Ropa · V35")
 
 try:
     route_handler = ROUTES.get(page)
