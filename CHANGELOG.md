@@ -1,3 +1,6 @@
+# V36
+- Menús múltiples estables, tiendas del proyecto resaltadas y recorridos corregidos.
+
 # V34
 - Persistencia remota opcional, filtros compactos, permisos OWNER y tablas azules.
 

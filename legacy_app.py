@@ -405,10 +405,10 @@ def fmt_pct(x):
 
 
 def _compact_multiselect(label, options, default=None, key=None, help=None, **kwargs):
-    """Menú desplegable compacto con selección múltiple mediante casillas.
+    """Selector múltiple compacto y estable.
 
-    Evita que Streamlit muestre etiquetas/chips fuera del control. El botón
-    permanece de una sola línea y el listado se abre únicamente al pulsarlo.
+    El control se mantiene en una sola línea. Las opciones aparecen únicamente
+    dentro de un menú desplegable amplio, sin chips permanentes en la página.
     """
     options = [str(x) for x in list(options or []) if str(x).strip()]
     if default is None:
@@ -419,30 +419,36 @@ def _compact_multiselect(label, options, default=None, key=None, help=None, **kw
         st.session_state[state_key] = list(default)
     current = [x for x in list(st.session_state.get(state_key, [])) if x in options]
     st.session_state[state_key] = current
-    summary = "Todos" if options and len(current) == len(options) else ("Ninguna" if not current else f"{len(current)} seleccionadas")
-    with st.popover(f"{label}: {summary}", use_container_width=True, help=help):
-        c1, c2 = st.columns(2)
-        with c1:
-            if st.button("Seleccionar todas", key=f"{state_key}_all", use_container_width=True):
-                st.session_state[state_key] = list(options)
+    summary = "Todas" if options and len(current) == len(options) else ("Ninguna" if not current else f"{len(current)} seleccionadas")
+
+    # El contenedor con key genera una clase CSS propia y evita que el menú se
+    # comprima en una columna de pocos píxeles.
+    with st.container(key=f"filter_wrap_{state_key}"):
+        with st.popover(f"{label}: {summary}", use_container_width=True, help=help):
+            c1, c2 = st.columns(2)
+            with c1:
+                if st.button("Seleccionar todas", key=f"{state_key}_all", use_container_width=True):
+                    st.session_state[state_key] = list(options)
+                    st.rerun()
+            with c2:
+                if st.button("Limpiar", key=f"{state_key}_clear", use_container_width=True):
+                    st.session_state[state_key] = []
+                    st.rerun()
+            st.divider()
+            selected = []
+            changed = False
+            # Dos columnas en catálogos grandes para reducir altura sin deformar.
+            cols = st.columns(2) if len(options) > 8 else [st.container()]
+            for idx, option in enumerate(options):
+                checked = option in current
+                with cols[idx % len(cols)]:
+                    value = st.checkbox(option, value=checked, key=f"{state_key}_opt_{idx}")
+                if value:
+                    selected.append(option)
+                changed = changed or (value != checked)
+            if changed:
+                st.session_state[state_key] = selected
                 st.rerun()
-        with c2:
-            if st.button("Limpiar", key=f"{state_key}_clear", use_container_width=True):
-                st.session_state[state_key] = []
-                st.rerun()
-        st.divider()
-        changed = False
-        selected = []
-        for idx, option in enumerate(options):
-            checked = option in current
-            value = st.checkbox(option, value=checked, key=f"{state_key}_opt_{idx}")
-            if value:
-                selected.append(option)
-            if value != checked:
-                changed = True
-        if changed:
-            st.session_state[state_key] = selected
-            st.rerun()
     return list(st.session_state.get(state_key, []))
 
 
@@ -6092,6 +6098,27 @@ def split_operation(op):
         df["Piezas"],
         0,
     )
+
+    # Recorridos: aceptar tanto una columna numérica específica como registros
+    # cuya actividad o motivo identifique un recorrido. En fuentes donde cada
+    # fila representa un recorrido, se contabiliza una unidad por registro.
+    recorrido_cols = [c for c in df.columns if "RECORRIDO" in norm_text(c)]
+    recorrido_numeric = pd.Series(0.0, index=df.index)
+    for col in recorrido_cols:
+        if col == "Recorridos":
+            continue
+        vals = pd.to_numeric(df[col], errors="coerce").fillna(0)
+        recorrido_numeric = recorrido_numeric.add(vals, fill_value=0)
+    recorrido_rows = (
+        act.str.contains("RECORRIDO", na=False)
+        | mot.str.contains("RECORRIDO", na=False)
+    )
+    # Cuando no existe una cantidad numérica positiva, cada fila válida vale 1.
+    df["Recorridos"] = np.where(
+        recorrido_numeric > 0,
+        recorrido_numeric,
+        recorrido_rows.astype(int),
+    )
     return df
 
 
@@ -6431,6 +6458,17 @@ def format_display(df):
 # ============================================================
 # COMPONENTES VISUALES
 # ============================================================
+def _configured_project_stores():
+    """Devuelve las tiendas guardadas para el proyecto Muertos y Cambios."""
+    try:
+        metas_file = CONFIG_DIR / "metas.json"
+        data = json.loads(metas_file.read_text(encoding="utf-8")) if metas_file.exists() else {}
+        stores = data.get("tiendas_proyecto", list(PROJECT_STORES))
+    except Exception:
+        stores = list(PROJECT_STORES)
+    return {canon_store(x) for x in stores if str(x).strip()}
+
+
 def aggrid_table(df, height=360, editable=False, key=None):
     if df is None or df.empty:
         st.info("Sin información para mostrar.")
@@ -6482,11 +6520,17 @@ def aggrid_table(df, height=360, editable=False, key=None):
     opts["onGridSizeChanged"] = JsCode("function(params){setTimeout(function(){params.api.sizeColumnsToFit();},50);}")
     opts["enableCellTextSelection"] = True
     opts["suppressRowClickSelection"] = True
-    opts["getRowStyle"] = JsCode("""
-        function(params) {
-            if (params.node.rowIndex % 2 === 0) { return {'backgroundColor':'#FFFFFF'}; }
-            return {'backgroundColor':'#F8FAFC'};
-        }
+    project_stores_js = sorted(_configured_project_stores())
+    opts["getRowStyle"] = JsCode(f"""
+        function(params) {{
+            const projectStores = {project_stores_js!r};
+            const tienda = String((params.data && params.data.Tienda) || '').trim();
+            if (projectStores.includes(tienda)) {{
+                return {{'backgroundColor':'#EAF2FF','borderLeft':'4px solid #3366CC','fontWeight':'650'}};
+            }}
+            if (params.node.rowIndex % 2 === 0) {{ return {{'backgroundColor':'#FFFFFF'}}; }}
+            return {{'backgroundColor':'#F8FAFC'}};
+        }}
     """)
     css = {
         ".ag-header": {"background-color": "#173B73 !important"},
@@ -10295,18 +10339,34 @@ def _v25_productivity_period(op, start, end, stores=None, meta=784):
 def _v25_recorridos_period(op, start, end, stores=None, weekly_goal=47):
     current = _v25_date_filter(normalize_operation_df(op), start, end)
     current = filter_stores(current, stores)
-    if current.empty:
-        return pd.DataFrame(), {"Realizados": 0.0, "Meta": 0.0, "% Recorridos": 0.0, "Faltante": 0.0}
+    selected_stores = [canon_store(x) for x in (stores or [])]
+    if current is None or current.empty:
+        base = pd.DataFrame({"Tienda": selected_stores}) if selected_stores else pd.DataFrame()
+        if not base.empty:
+            days = max((pd.Timestamp(end).normalize() - pd.Timestamp(start).normalize()).days + 1, 1)
+            meta_store = float(weekly_goal) if days >= 7 else float(weekly_goal) / 7 * days
+            base["Recorridos"] = 0.0; base["Meta"] = meta_store; base["Faltante"] = meta_store; base["% Cumplimiento"] = 0.0
+        return base, {"Realizados": 0.0, "Meta": float(base.get("Meta", pd.Series(dtype=float)).sum()), "% Recorridos": 0.0, "Faltante": float(base.get("Faltante", pd.Series(dtype=float)).sum())}
+
     split = split_operation(current)
-    act = split["Actividad"].map(norm_text)
-    if "Recorridos" in split.columns:
-        numeric = pd.to_numeric(split["Recorridos"], errors="coerce").fillna(0)
-        if numeric.sum() <= 0:
-            numeric = act.str.contains("RECORRIDO", na=False).astype(int)
-    else:
-        numeric = act.str.contains("RECORRIDO", na=False).astype(int)
+    numeric = pd.to_numeric(split.get("Recorridos", 0), errors="coerce").fillna(0)
+    # Respaldo final: localizar cualquier columna cuyo nombre contenga RECORRIDO.
+    if numeric.sum() <= 0:
+        candidates = [c for c in split.columns if "RECORRIDO" in norm_text(c)]
+        for col in candidates:
+            vals = pd.to_numeric(split[col], errors="coerce").fillna(0)
+            if vals.sum() > numeric.sum():
+                numeric = vals
+    if numeric.sum() <= 0:
+        act = split.get("Actividad", pd.Series('', index=split.index)).map(norm_text)
+        mot = split.get("Motivo", pd.Series('', index=split.index)).map(norm_text)
+        numeric = (act.str.contains("RECORRIDO", na=False) | mot.str.contains("RECORRIDO", na=False)).astype(int)
+
     split["Recorridos calculados"] = numeric
     by_store = split.groupby("Tienda", as_index=False)["Recorridos calculados"].sum().rename(columns={"Recorridos calculados": "Recorridos"})
+    if selected_stores:
+        by_store = pd.DataFrame({"Tienda": selected_stores}).merge(by_store, on="Tienda", how="left")
+        by_store["Recorridos"] = pd.to_numeric(by_store["Recorridos"], errors="coerce").fillna(0)
     days = max((pd.Timestamp(end).normalize() - pd.Timestamp(start).normalize()).days + 1, 1)
     meta_store = float(weekly_goal) if days >= 7 else float(weekly_goal) / 7 * days
     by_store["Meta"] = meta_store
@@ -10314,7 +10374,7 @@ def _v25_recorridos_period(op, start, end, stores=None, weekly_goal=47):
     by_store["% Cumplimiento"] = by_store["Recorridos"].div(by_store["Meta"].replace(0, np.nan)).mul(100).fillna(0)
     total = float(by_store["Recorridos"].sum())
     meta = float(by_store["Meta"].sum())
-    return by_store.sort_values("% Cumplimiento", ascending=False), {
+    return by_store.sort_values(["% Cumplimiento", "Recorridos"], ascending=[False, False]), {
         "Realizados": total, "Meta": meta, "% Recorridos": total / meta * 100 if meta else 0.0, "Faltante": max(meta-total, 0)
     }
 
@@ -10583,8 +10643,8 @@ def page_recorridos(op, co):
     year,week=pairs[labels.index(label)]; start,end=_v25_week_bounds(year,week); detail,summary=_v25_recorridos_period(op,start,end,selected_stores)
     _v25_kpi_cards([("Meta consolidada",fmt_num(summary["Meta"]),"47 por tienda","#3366CC"),("Realizados",fmt_num(summary["Realizados"]),"Semana seleccionada","#7C3AED"),("Cumplimiento",fmt_pct(summary["% Recorridos"]),"Realizados / meta","#10B981"),("Faltante",fmt_num(summary["Faltante"]),"Meta - realizados","#EF4444")])
     if not detail.empty:
-        fig=go.Figure(); ranked=detail.sort_values("% Cumplimiento"); fig.add_bar(y=ranked["Tienda"],x=ranked["% Cumplimiento"],orientation="h",marker_color=np.where(ranked["% Cumplimiento"]>=90,"#10B981",np.where(ranked["% Cumplimiento"]>=80,"#F59E0B","#EF4444")),text=ranked["% Cumplimiento"].map(lambda x:f"{x:.1f}%"),textposition="outside"); fig.add_vline(x=100,line_dash="dash",line_color="#173B73"); fig.update_layout(title="Cumplimiento por tienda",height=max(420,len(ranked)*32),xaxis_title="% Cumplimiento"); st.plotly_chart(fig,width="stretch")
         panel("Detalle de recorridos",detail,height=390)
+        fig=go.Figure(); ranked=detail.sort_values("% Cumplimiento"); fig.add_bar(y=ranked["Tienda"],x=ranked["% Cumplimiento"],orientation="h",marker_color=np.where(ranked["% Cumplimiento"]>=90,"#10B981",np.where(ranked["% Cumplimiento"]>=80,"#F59E0B","#EF4444")),text=ranked["% Cumplimiento"].map(lambda x:f"{x:.1f}%"),textposition="outside"); fig.add_vline(x=100,line_dash="dash",line_color="#173B73"); fig.update_layout(title="Cumplimiento por tienda",height=max(420,len(ranked)*32),xaxis_title="% Cumplimiento"); st.plotly_chart(fig,width="stretch")
     _v25_downloads("Recorridos",f"Semana ISO {week:02d}/{year}",detail,summary,"v25_routes")
 
 
@@ -10760,7 +10820,7 @@ st.markdown(
 )
 
 # Marcador de despliegue para confirmar que GitHub/Streamlit usa esta versión.
-st.caption("PS Operaciones Ropa · V35")
+st.caption("PS Operaciones Ropa · V36")
 
 try:
     route_handler = ROUTES.get(page)
@@ -10914,6 +10974,29 @@ st.markdown(
     div[data-testid="stPopover"]>button:hover{border-color:#3366CC!important;background:#F8FAFF!important;}
     /* Los chips solo viven dentro del popover; no ocupan espacio permanente en la página. */
     .v33-store-filter-marker{display:none!important;}
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
+
+# V36: menús múltiples estables y resaltado visual del alcance del proyecto.
+st.markdown(
+    """
+    <style>
+    /* Cada selector múltiple compacto conserva un ancho útil y no se deforma. */
+    [class*="st-key-filter_wrap_"]{width:min(100%,720px)!important;max-width:720px!important;min-width:320px!important;}
+    [class*="st-key-filter_wrap_"] [data-testid="stPopover"]{width:100%!important;min-width:320px!important;max-width:720px!important;}
+    [class*="st-key-filter_wrap_"] [data-testid="stPopover"]>button{width:100%!important;min-width:320px!important;max-width:720px!important;white-space:nowrap!important;}
+    [class*="st-key-filter_wrap_"] [data-testid="stPopover"]>button p{white-space:nowrap!important;overflow:hidden!important;text-overflow:ellipsis!important;}
+    div[data-baseweb="popover"] [data-testid="stPopoverBody"]{min-width:520px!important;max-width:min(760px,92vw)!important;width:max-content!important;}
+    div[data-baseweb="popover"] [data-testid="stPopoverBody"] label p{white-space:normal!important;word-break:normal!important;line-height:1.25!important;}
+    @media(max-width:700px){
+      [class*="st-key-filter_wrap_"]{min-width:0!important;max-width:100%!important;width:100%!important;}
+      [class*="st-key-filter_wrap_"] [data-testid="stPopover"],
+      [class*="st-key-filter_wrap_"] [data-testid="stPopover"]>button{min-width:0!important;max-width:100%!important;width:100%!important;}
+      div[data-baseweb="popover"] [data-testid="stPopoverBody"]{min-width:92vw!important;max-width:92vw!important;width:92vw!important;}
+    }
     </style>
     """,
     unsafe_allow_html=True,

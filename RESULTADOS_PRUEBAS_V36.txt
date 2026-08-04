@@ -1,0 +1,4 @@
+PS Operaciones Ropa V36
+- app.py: compilación correcta
+- legacy_app.py: compilación correcta
+- pytest: 15 aprobadas, 0 fallidas
