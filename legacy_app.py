@@ -9733,14 +9733,53 @@ def page_administracion_v17():
         panel("Regiones operativas", regions, height=300)
 
 
-def page_configuracion_metas_v17():
-    _v17_title("Configuración de Metas", "Parámetros operativos editables por administrador.")
+def _available_store_catalog() -> list[str]:
+    """Catálogo de tiendas disponible en la fuente activa y configuración base."""
+    values = set(PROJECT_STORES)
+    for frame in (globals().get("op_all"), globals().get("co_all")):
+        if frame is None or getattr(frame, "empty", True):
+            continue
+        col = next((c for c in ["Tienda", "TIENDA", "Sucursal", "Sucursal/Tienda"] if c in frame.columns), None)
+        if col:
+            values.update(frame[col].dropna().astype(str).str.strip().tolist())
+    return sorted(v for v in values if v and v.lower() not in {"nan", "none"})
+
+
+def _load_configured_project_stores() -> list[str]:
+    """Lee las tiendas configuradas para el proyecto Muertos y Cambios."""
     metas_file = CONFIG_DIR / "metas.json"
     try:
         metas = json.loads(metas_file.read_text(encoding="utf-8")) if metas_file.exists() else {}
     except Exception:
         metas = {}
-    t1, t2, t3, t4 = st.tabs(["Productividad", "Recorridos", "Conversión", "Recuperación"])
+    configured = [str(x).strip() for x in metas.get("tiendas_proyecto", []) if str(x).strip()]
+    catalog = _available_store_catalog()
+    valid = [x for x in configured if x in catalog]
+    return valid or [x for x in PROJECT_STORES if x in catalog] or catalog
+
+
+def page_configuracion_metas_v17():
+    _v17_title("Configuración de Metas", "Parámetros operativos y alcance del proyecto editables por administrador.")
+    metas_file = CONFIG_DIR / "metas.json"
+    try:
+        metas = json.loads(metas_file.read_text(encoding="utf-8")) if metas_file.exists() else {}
+    except Exception:
+        metas = {}
+
+    t0, t1, t2, t3, t4 = st.tabs(["Tiendas del proyecto", "Productividad", "Recorridos", "Conversión", "Recuperación"])
+    with t0:
+        catalog = _available_store_catalog()
+        configured = [x for x in metas.get("tiendas_proyecto", list(PROJECT_STORES)) if x in catalog]
+        if not configured:
+            configured = [x for x in PROJECT_STORES if x in catalog]
+        project_stores = st.multiselect(
+            "Selecciona las tiendas que forman parte de Muertos y Cambios",
+            catalog,
+            default=configured,
+            key="goal_project_stores",
+            help="Este alcance se aplicará a Centro Ejecutivo, Operación Diaria, Reportes, Productividad, Recorridos, Detalle por Colaborador, Alertas e Inteligencia Operativa.",
+        )
+        st.caption(f"{len(project_stores)} tienda(s) seleccionada(s). Recuperación y Detalle por Tienda continuarán mostrando todas las tiendas autorizadas.")
     with t1:
         productividad = st.number_input("Meta productividad diaria", min_value=1, value=int(metas.get("productividad", 784)))
     with t2:
@@ -9755,15 +9794,22 @@ def page_configuracion_metas_v17():
     with t3:
         conversion = st.number_input("Meta conversión misma semana ISO (%)", min_value=0.0, max_value=100.0, value=float(metas.get("conversion", 30.0)))
     with t4:
-        recovery = st.number_input("Meta recuperación económica (%)", min_value=0.0, value=float(metas.get("recuperacion", 100.0)))
+        recovery = st.number_input("Meta recuperación económica (%)", min_value=0.0, max_value=100.0, value=float(metas.get("recuperacion", 100.0)))
     if st.button("Guardar cambios", type="primary"):
+        if not project_stores:
+            st.error("Selecciona al menos una tienda para el proyecto.")
+            return
         metas_file.write_text(json.dumps({
             "productividad": productividad,
             "recorridos": rec,
             "conversion": conversion,
             "recuperacion": recovery,
+            "tiendas_proyecto": project_stores,
         }, ensure_ascii=False, indent=2), encoding="utf-8")
-        st.success("Metas guardadas correctamente.")
+        for key in list(st.session_state.keys()):
+            if key.startswith("module_store_filter_"):
+                st.session_state.pop(key, None)
+        st.success("Metas y tiendas del proyecto guardadas correctamente.")
 
 
 
@@ -10504,11 +10550,50 @@ h1,h2,h3{letter-spacing:-.35px;color:#172B4D}.v25-kpi-grid{display:grid;grid-tem
 ''',unsafe_allow_html=True)
 
 
-# V28: alcance de datos por módulo.
-# Recuperación consulta todas las tiendas permitidas por el perfil autenticado.
-# Los demás indicadores operativos se restringen a las 17 tiendas del proyecto.
-project_op = filter_stores(op_all, list(PROJECT_STORES)) if op_all is not None else op_all
-project_co = filter_stores(co_all, list(PROJECT_STORES)) if co_all is not None else co_all
+# V33: alcance configurable y filtro múltiple por módulo.
+# Las tiendas del proyecto se administran desde Configuración de Metas.
+PROJECT_FILTER_PAGES = {
+    "Centro Ejecutivo", "Operación Diaria", "Reporte Semanal", "Reporte Mensual",
+    "Productividad", "Recorridos", "Reportes", "Detalle por Colaborador",
+    "Alertas Inteligentes", "Inteligencia Operativa",
+}
+ALL_STORE_FILTER_PAGES = {"Recuperación", "Detalle por Tienda"}
+
+configured_project_stores = _load_configured_project_stores()
+all_authorized_stores = _available_store_catalog()
+
+def _module_store_multiselect(page_name: str, options: list[str]) -> list[str]:
+    options = [x for x in options if x]
+    if not options:
+        return []
+    key = "module_store_filter_" + re.sub(r"[^a-z0-9]+", "_", page_name.lower()).strip("_")
+    current_values = st.session_state.get(key)
+    if current_values is not None:
+        clean = [x for x in current_values if x in options]
+        if clean != current_values:
+            st.session_state[key] = clean or options
+    selected = st.multiselect(
+        "Tiendas", options, default=options, key=key,
+        help="Puedes seleccionar una o varias tiendas. El filtro se aplica a todos los indicadores, tablas, gráficas y descargas de esta pestaña.",
+    )
+    return selected or options
+
+module_store_options = []
+if page in PROJECT_FILTER_PAGES:
+    module_store_options = [x for x in configured_project_stores if x in all_authorized_stores]
+    st.markdown('<div class="v33-store-filter-marker"></div>', unsafe_allow_html=True)
+    selected_module_stores = _module_store_multiselect(page, module_store_options)
+elif page in ALL_STORE_FILTER_PAGES:
+    module_store_options = all_authorized_stores
+    st.markdown('<div class="v33-store-filter-marker"></div>', unsafe_allow_html=True)
+    selected_module_stores = _module_store_multiselect(page, module_store_options)
+else:
+    selected_module_stores = configured_project_stores
+
+project_op = filter_stores(op_all, selected_module_stores) if op_all is not None else op_all
+project_co = filter_stores(co_all, selected_module_stores) if co_all is not None else co_all
+all_selected_op = filter_stores(op_all, selected_module_stores) if op_all is not None else op_all
+all_selected_co = filter_stores(co_all, selected_module_stores) if co_all is not None else co_all
 
 ROUTES = {
     "Inicio": page_inicio,
@@ -10517,10 +10602,10 @@ ROUTES = {
     "Reporte Semanal": lambda: page_semanal(project_op, project_co),
     "Reporte Mensual": lambda: page_mensual(project_op, project_co),
     "Productividad": lambda: page_productividad(project_op, project_co),
-    "Recuperación": lambda: page_recuperacion(op_all, co_all),
+    "Recuperación": lambda: page_recuperacion(all_selected_op, all_selected_co),
     "Recorridos": lambda: page_recorridos(project_op, project_co),
     "Reportes": lambda: page_reportes(project_op, project_co),
-    "Detalle por Tienda": lambda: page_detalle_tienda_v17(project_op, project_co),
+    "Detalle por Tienda": lambda: page_detalle_tienda_v17(all_selected_op, all_selected_co),
     "Detalle por Colaborador": lambda: page_detalle_colaborador_v17(project_op, project_co),
     "Histórico de Descargas": page_historico_descargas_v17,
     "Alertas Inteligentes": lambda: page_alertas_inteligentes_v17(project_op, project_co),
@@ -10600,7 +10685,7 @@ st.markdown(
 )
 
 # Marcador de despliegue para confirmar que GitHub/Streamlit usa esta versión.
-st.caption("PS Operaciones Ropa · V32")
+st.caption("PS Operaciones Ropa · V33")
 
 try:
     route_handler = ROUTES.get(page)
@@ -10775,3 +10860,24 @@ st.markdown("""
 }
 </style>
 """, unsafe_allow_html=True)
+
+
+# V33: ancho completo autoritativo y filtro de tiendas compacto.
+st.markdown(
+    """
+    <style>
+    [data-testid="stSidebar"],[data-testid="stSidebarCollapsedControl"],[data-testid="collapsedControl"]{display:none!important;visibility:hidden!important;width:0!important;min-width:0!important;max-width:0!important;}
+    [data-testid="stMain"]{margin-left:0!important;width:100%!important;max-width:100%!important;}
+    [data-testid="stMainBlockContainer"],.block-container{max-width:none!important;width:100%!important;margin:0!important;padding:.65rem 1.25rem 2.25rem!important;box-sizing:border-box!important;overflow-x:hidden!important;}
+    .v27-app-header,.v30-home-hero,.v30-project-context,.v25-kpi-grid,.v27-kpi-grid,.v253-alert-grid,.v26-alert-row,[data-testid="stPlotlyChart"],[data-testid="stDataFrame"]{width:100%!important;max-width:none!important;box-sizing:border-box!important;}
+    div[data-testid="stSelectbox"]:has([aria-label="Menú de Muertos y Cambios"]){max-width:430px!important;margin:0 0 8px auto!important;}
+    .v33-store-filter-marker + div[data-testid="stMultiSelect"],
+    div[data-testid="stMultiSelect"]:has([aria-label="Tiendas"]){width:100%!important;max-width:none!important;margin:2px 0 12px!important;}
+    div[data-testid="stMultiSelect"]:has([aria-label="Tiendas"]) [data-baseweb="select"]>div{min-height:44px!important;background:#fff!important;border:1px solid #CBD5E1!important;border-radius:11px!important;}
+    [data-testid="stHorizontalBlock"]{width:100%!important;max-width:none!important;}
+    [data-testid="stColumn"]{min-width:0!important;}
+    @media(max-width:900px){[data-testid="stMainBlockContainer"],.block-container{padding:.55rem .75rem 1.75rem!important;}div[data-testid="stSelectbox"]:has([aria-label="Menú de Muertos y Cambios"]){max-width:100%!important;margin:0 0 8px!important;}}
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
