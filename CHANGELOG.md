@@ -1,3 +1,6 @@
+# V34
+- Persistencia remota opcional, filtros compactos, permisos OWNER y tablas azules.
+
 # V32
 
 - Navegación interna persistente corregida.

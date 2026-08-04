@@ -1,0 +1,6 @@
+PS Operaciones Ropa V34
+- Compilación app.py: OK
+- Compilación legacy_app.py: OK
+- Compilación core/services/pages_app: OK
+- Pytest: 15 aprobadas, 0 fallidas
+- Advertencias: 6 FutureWarning de pandas, no bloqueantes

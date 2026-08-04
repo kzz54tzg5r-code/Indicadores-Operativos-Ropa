@@ -15,6 +15,7 @@ from datetime import datetime, date, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo
 from urllib.parse import quote
+from urllib.request import Request, urlopen
 
 import numpy as np
 import pandas as pd
@@ -401,6 +402,84 @@ def fmt_money(x):
 
 def fmt_pct(x):
     return f"{safe_num(x):.1f}%"
+
+
+def _compact_multiselect(label, options, default=None, key=None, help=None, **kwargs):
+    """Selector múltiple compacto: las etiquetas quedan dentro de un menú desplegable."""
+    options = list(options or [])
+    if default is None:
+        default = options
+    default = [x for x in list(default or []) if x in options]
+    current = st.session_state.get(key, default) if key else default
+    current = [x for x in list(current or []) if x in options]
+    summary = "Todos" if options and len(current) == len(options) else f"{len(current)} de {len(options)}"
+    with st.popover(f"{label}: {summary}", use_container_width=True, help=help):
+        selected = st.multiselect(
+            label, options, default=default, key=key, help=help,
+            label_visibility="collapsed", **kwargs
+        )
+        if options:
+            c1, c2 = st.columns(2)
+            with c1:
+                if st.button("Seleccionar todas", key=f"{key}_all" if key else None, width="stretch"):
+                    if key:
+                        st.session_state[key] = options
+                    st.rerun()
+            with c2:
+                if st.button("Limpiar", key=f"{key}_clear" if key else None, width="stretch"):
+                    if key:
+                        st.session_state[key] = []
+                    st.rerun()
+    return selected
+
+
+def _secret_or_env(name, default=""):
+    try:
+        value = st.secrets.get(name, default)
+    except Exception:
+        value = os.getenv(name, default)
+    return str(value or "").strip()
+
+
+def restore_active_file_from_remote():
+    """Restaura automáticamente el Excel desde una URL persistente configurada.
+
+    Configurar en Streamlit Secrets: PS_DATA_SOURCE_URL = "URL de descarga directa".
+    La descarga solo se ejecuta cuando el archivo local no existe.
+    """
+    if ACTIVE_FILE.exists():
+        return True
+    if st.session_state.get("remote_restore_attempted"):
+        return False
+    st.session_state["remote_restore_attempted"] = True
+    url = _secret_or_env("PS_DATA_SOURCE_URL")
+    if not url:
+        return False
+    try:
+        request = Request(url, headers={"User-Agent": "PS-Operaciones-Ropa/34"})
+        temporary = ACTIVE_FILE.with_suffix(".xlsx.download")
+        with urlopen(request, timeout=180) as response, temporary.open("wb") as out:
+            shutil.copyfileobj(response, out, length=1024 * 1024)
+        if temporary.stat().st_size < 1024:
+            temporary.unlink(missing_ok=True)
+            return False
+        temporary.replace(ACTIVE_FILE)
+        file_hash = _file_sha256(ACTIVE_FILE)
+        META_FILE.write_text(json.dumps({
+            "nombre_original": Path(url.split("?",1)[0]).name or "base_activa.xlsx",
+            "fecha_carga": datetime.now(MX_TZ).strftime("%Y-%m-%d %H:%M:%S"),
+            "mtime": ACTIVE_FILE.stat().st_mtime,
+            "sha256": file_hash,
+            "origen": "remoto_persistente",
+        }, ensure_ascii=False, indent=2), encoding="utf-8")
+        return True
+    except Exception as exc:
+        try:
+            PROCESS_LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
+            PROCESS_LOG_FILE.write_text(f"Restauración remota: {exc}", encoding="utf-8")
+        except Exception:
+            pass
+        return False
 
 
 def logo_html():
@@ -6400,7 +6479,6 @@ def aggrid_table(df, height=360, editable=False, key=None):
         ".ag-header": {"background-color": "#173B73 !important"},
         ".ag-header-row": {"background-color": "#173B73 !important"},
         ".ag-header-cell": {"background-color": "#173B73 !important", "color": "#FFFFFF !important", "font-weight": "900 !important", "padding-left": "5px !important", "padding-right": "5px !important", "border-right": "1px solid rgba(255,255,255,.20) !important"},
-        ".ag-header-cell:nth-child(even)": {"background-color": "#E6007E !important"},
         ".ag-header-cell-label": {"color": "#FFFFFF !important", "font-weight": "900 !important"},
         ".ag-header-cell-label *": {"color": "#FFFFFF !important", "fill": "#FFFFFF !important"},
         ".ag-header-cell-text": {"color": "#FFFFFF !important", "font-weight": "900 !important", "font-size": "10px !important", "white-space": "normal !important", "line-height": "1.1 !important"},
@@ -8357,7 +8435,7 @@ def page_semanal(op, co):
     op = reliable_operation(op, co)
     st.markdown("## Reporte Semanal")
     available_stores = authorized_stores(op, co)
-    tiendas = st.multiselect("Tiendas", available_stores, default=available_stores, key="sem_tiendas")
+    tiendas = _compact_multiselect("Tiendas", available_stores, default=available_stores, key="sem_tiendas")
 
     week_pairs = available_iso_weeks(op, co)
     if not week_pairs:
@@ -8398,7 +8476,7 @@ def page_mensual(op, co):
     op = reliable_operation(op, co)
     st.markdown("## Reporte Mensual")
     available_stores = authorized_stores(op, co)
-    tiendas = st.multiselect("Tiendas", available_stores, default=available_stores, key="mes_tiendas")
+    tiendas = _compact_multiselect("Tiendas", available_stores, default=available_stores, key="mes_tiendas")
     meses = sorted(op["Mes"].dropna().unique().tolist()) if op is not None and not op.empty else []
     if not meses:
         st.info("Sin meses detectados.")
@@ -8798,7 +8876,7 @@ def render_recovery_enterprise(co, key_prefix, title):
     c1, c2, c3 = st.columns([1.1, 1.4, 2.5])
     with c1:
         years = sorted(detail_all["Año ISO"].dropna().astype(int).unique())
-        selected_years = st.multiselect(
+        selected_years = _compact_multiselect(
             "Año ISO", years, default=years[-1:], key=f"{key_prefix}_years"
         )
     year_base = detail_all[
@@ -8807,13 +8885,13 @@ def render_recovery_enterprise(co, key_prefix, title):
 
     with c2:
         weeks = sorted(year_base["Semana ISO"].dropna().astype(int).unique())
-        selected_weeks = st.multiselect(
+        selected_weeks = _compact_multiselect(
             "Semana ISO", weeks, default=weeks[-1:] if weeks else [],
             key=f"{key_prefix}_weeks",
         )
     with c3:
         stores = sorted(year_base["Tienda"].dropna().astype(str).unique())
-        selected_stores = st.multiselect(
+        selected_stores = _compact_multiselect(
             "Tienda", stores, default=stores, key=f"{key_prefix}_stores"
         )
 
@@ -8828,7 +8906,7 @@ def render_recovery_enterprise(co, key_prefix, title):
         colors_available = sorted(
             year_base["Color"].dropna().astype(str).unique()
         )
-        selected_colors = st.multiselect(
+        selected_colors = _compact_multiselect(
             "Color", colors_available, default=[],
             key=f"{key_prefix}_colors",
             help="Vacío equivale a todos los colores.",
@@ -8983,7 +9061,7 @@ def page_productividad(op, co):
         )
     with c3:
         available_stores = authorized_stores(op, co)
-        tiendas = st.multiselect(
+        tiendas = _compact_multiselect(
             "Tienda", available_stores, default=available_stores,
             key="prod_tiendas",
         )
@@ -9638,6 +9716,9 @@ diag_df = pd.DataFrame()
 
 needs_data = page in DATA_PAGES
 
+# V34: restaura la fuente persistente al iniciar una instancia nueva de Streamlit.
+restore_active_file_from_remote()
+
 if needs_data:
     if ACTIVE_FILE.exists() and cache_valid():
         with st.spinner("Consultando el periodo requerido..."):
@@ -9649,13 +9730,7 @@ if needs_data:
             co_all = apply_user_scope(co_all)
     else:
         if not ACTIVE_FILE.exists():
-            st.markdown(
-                '<div class="v27-data-banner"><b>Fuente de datos pendiente</b><span>No hay un archivo activo. Carga y procesa el Excel para habilitar todos los indicadores.</span></div>',
-                unsafe_allow_html=True,
-            )
-            if role_level() >= ROLE_LEVEL["ADMIN"] and st.button("Ir a Carga de Excel", key="v27_go_upload", type="primary"):
-                st.session_state["nav_request"] = "Carga de Excel"
-                st.rerun()
+            st.info("La fuente de datos no está disponible. Utiliza el módulo **Carga de Excel** del menú del proyecto.")
         else:
             st.warning(
                 "El archivo está guardado, pero todavía no está procesado. "
@@ -9710,6 +9785,9 @@ def page_reportes(op, co):
 
 def page_administracion_v17():
     _v17_title("Administración", "Usuarios, roles, permisos, tiendas y regiones.")
+    if not is_admin():
+        st.error("Acceso disponible para Administrador o Propietario del Sistema.")
+        return
     tab1, tab2, tab3, tab4 = st.tabs(["Usuarios", "Roles y permisos", "Tiendas", "Regiones"])
     with tab1:
         page_usuarios()
@@ -9772,7 +9850,7 @@ def page_configuracion_metas_v17():
         configured = [x for x in metas.get("tiendas_proyecto", list(PROJECT_STORES)) if x in catalog]
         if not configured:
             configured = [x for x in PROJECT_STORES if x in catalog]
-        project_stores = st.multiselect(
+        project_stores = _compact_multiselect(
             "Selecciona las tiendas que forman parte de Muertos y Cambios",
             catalog,
             default=configured,
@@ -10359,7 +10437,7 @@ def page_por_dia(op, co):
     f1,f2 = st.columns([1,3])
     with f1: selected = st.date_input("Fecha", value=default, key="v25_daily_date")
     stores = authorized_stores(op, co)
-    with f2: selected_stores = st.multiselect("Tiendas", stores, default=stores, key="v25_daily_stores")
+    with f2: selected_stores = _compact_multiselect("Tiendas", stores, default=stores, key="v25_daily_stores")
     start=end=pd.Timestamp(selected)
     table, metrics = _v25_operational_period(op, co, start, end, selected_stores, carryover="previous_day")
     recm, detail = _v25_recovery_period(co, start, end, selected_stores)
@@ -10391,7 +10469,7 @@ def page_semanal(op, co):
     if not pairs: st.info("Sin semanas válidas detectadas."); return
     labels=[f"{y}-Semana {w:02d}" for y,w in pairs]
     with c1: label=st.selectbox("Semana ISO",labels,index=len(labels)-1,key="v25_week")
-    with c2: selected_stores=st.multiselect("Tiendas",stores,default=stores,key="v25_week_stores")
+    with c2: selected_stores=_compact_multiselect("Tiendas",stores,default=stores,key="v25_week_stores")
     year,week=pairs[labels.index(label)]; start,end=_v25_week_bounds(year,week)
     table,opm=_v25_operational_period(op,co,start,end,selected_stores,carryover="previous_sunday")
     recm,detail=_v25_recovery_period(co,start,end,selected_stores)
@@ -10437,7 +10515,7 @@ def page_mensual(op, co):
     if not months: st.info("Sin meses detectados."); return
     c1,c2=st.columns([2,5]);
     with c1: month=st.selectbox("Mes",months,index=len(months)-1,key="v25_month")
-    with c2: selected_stores=st.multiselect("Tiendas",stores,default=stores,key="v25_month_stores")
+    with c2: selected_stores=_compact_multiselect("Tiendas",stores,default=stores,key="v25_month_stores")
     period=pd.Period(month,freq="M"); start=period.start_time.normalize(); end=period.end_time.normalize()
     table,opm=_v25_operational_period(op,co,start,end,selected_stores,"none"); recm,detail=_v25_recovery_period(co,start,end,selected_stores); prod_table,prodm=_v25_productivity_period(op,start,end,selected_stores); route_table,routem=_v25_recorridos_period(op,start,end,selected_stores,47)
     prev=period-1; _,prev_op=_v25_operational_period(op,co,prev.start_time,prev.end_time,selected_stores,"none"); prev_rec,_=_v25_recovery_period(co,prev.start_time,prev.end_time,selected_stores)
@@ -10473,7 +10551,7 @@ def page_productividad(op, co):
     c1,c2=st.columns([2,5]);
     with c1: period=st.date_input("Periodo",value=(start.date(),end.date()),key="v25_prod_dates")
     if isinstance(period,(tuple,list)) and len(period)==2: start,end=map(pd.Timestamp,period)
-    with c2: selected_stores=st.multiselect("Tiendas",stores,default=stores,key="v25_prod_stores")
+    with c2: selected_stores=_compact_multiselect("Tiendas",stores,default=stores,key="v25_prod_stores")
     detail,summary=_v25_productivity_period(op,start,end,selected_stores)
     _v25_kpi_cards([("Piezas procesadas",fmt_num(summary["Piezas"]),"Actividades productivas","#3366CC"),("Días trabajados",fmt_num(summary["Días"]),"Suma colaborador-día","#7C3AED"),("Productividad",f"{summary['Productividad']:,.0f}","Piezas por colaborador/día","#E6007E"),("Cumplimiento",fmt_pct(summary["% Productividad"]),"Meta 784 pzs/día","#10B981")])
     if detail.empty: st.info("Sin registros productivos en el periodo."); return
@@ -10492,7 +10570,7 @@ def page_recorridos(op, co):
     if not pairs: st.info("Sin semanas detectadas."); return
     stores=authorized_stores(op,co); labels=[f"{y}-Semana {w:02d}" for y,w in pairs]; c1,c2=st.columns([2,5])
     with c1: label=st.selectbox("Semana ISO",labels,index=len(labels)-1,key="v25_routes_week")
-    with c2: selected_stores=st.multiselect("Tiendas",stores,default=stores,key="v25_routes_stores")
+    with c2: selected_stores=_compact_multiselect("Tiendas",stores,default=stores,key="v25_routes_stores")
     year,week=pairs[labels.index(label)]; start,end=_v25_week_bounds(year,week); detail,summary=_v25_recorridos_period(op,start,end,selected_stores)
     _v25_kpi_cards([("Meta consolidada",fmt_num(summary["Meta"]),"47 por tienda","#3366CC"),("Realizados",fmt_num(summary["Realizados"]),"Semana seleccionada","#7C3AED"),("Cumplimiento",fmt_pct(summary["% Recorridos"]),"Realizados / meta","#10B981"),("Faltante",fmt_num(summary["Faltante"]),"Meta - realizados","#EF4444")])
     if not detail.empty:
@@ -10572,7 +10650,7 @@ def _module_store_multiselect(page_name: str, options: list[str]) -> list[str]:
         clean = [x for x in current_values if x in options]
         if clean != current_values:
             st.session_state[key] = clean or options
-    selected = st.multiselect(
+    selected = _compact_multiselect(
         "Tiendas", options, default=options, key=key,
         help="Puedes seleccionar una o varias tiendas. El filtro se aplica a todos los indicadores, tablas, gráficas y descargas de esta pestaña.",
     )
@@ -10685,7 +10763,7 @@ st.markdown(
 )
 
 # Marcador de despliegue para confirmar que GitHub/Streamlit usa esta versión.
-st.caption("PS Operaciones Ropa · V33")
+st.caption("PS Operaciones Ropa · V34")
 
 try:
     route_handler = ROUTES.get(page)
@@ -10817,6 +10895,28 @@ st.markdown(
       .v30-home-hero{padding:22px 20px!important;}
       div[data-testid="stSelectbox"]:has([aria-label="Menú de Muertos y Cambios"]){max-width:100%!important;margin:0 0 8px!important;}
     }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
+
+# V34: tablas exclusivamente azules y filtros múltiples desplegables.
+st.markdown(
+    """
+    <style>
+    .ag-theme-streamlit .ag-header,.ag-theme-streamlit .ag-header-row,
+    .ag-theme-streamlit .ag-header-cell,.ag-header,.ag-header-row,.ag-header-cell,
+    [data-testid="stDataFrame"] [role="columnheader"]{background:#173B73!important;color:#FFFFFF!important;}
+    .ag-theme-streamlit .ag-header-cell:nth-child(even),.ag-header-cell:nth-child(even){background:#173B73!important;}
+    .ag-header-cell-text,.ag-header-cell-label,.ag-header-cell-label *,
+    .ag-theme-streamlit .ag-header-cell-text,.ag-theme-streamlit .ag-icon,
+    [data-testid="stDataFrame"] [role="columnheader"],
+    [data-testid="stDataFrame"] [role="columnheader"] *{color:#FFFFFF!important;fill:#FFFFFF!important;}
+    div[data-testid="stPopover"]>button{background:#FFFFFF!important;border:1px solid #CBD5E1!important;border-radius:11px!important;min-height:43px!important;color:#173B73!important;font-weight:750!important;justify-content:space-between!important;width:100%!important;}
+    div[data-testid="stPopover"]>button:hover{border-color:#3366CC!important;background:#F8FAFF!important;}
+    /* Los chips solo viven dentro del popover; no ocupan espacio permanente en la página. */
+    .v33-store-filter-marker{display:none!important;}
     </style>
     """,
     unsafe_allow_html=True,
