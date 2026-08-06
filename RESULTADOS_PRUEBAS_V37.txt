@@ -1,0 +1,4 @@
+PS Operaciones Ropa V37
+- Compilación: app.py, legacy_app.py y core/settings.py OK.
+- Pytest: 15 pruebas aprobadas, 0 fallidas.
+- Nota: el entorno de construcción no incluye el ejecutable Streamlit para una prueba de servidor local; se validó sintaxis y suite automatizada.

@@ -58,3 +58,10 @@
 
 ## V25.3
 - Layout principal, menú lateral, alertas y tablas ajustadas.
+
+## V37
+- Centro Ejecutivo mensual con selector de mes.
+- Tarjetas de las últimas cuatro semanas con indicadores comerciales completos.
+- Macro por tiendas filtrable por semana ISO.
+- Reporte semanal: tabla antes de gráfica operativa y tendencia sin series vacías.
+- Ajustes de layout en gráficas mensuales y semanales.

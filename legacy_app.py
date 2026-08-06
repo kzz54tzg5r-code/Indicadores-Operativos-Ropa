@@ -8365,99 +8365,118 @@ def executive_insights(recovery_summary, recovery_detail, stores):
         messages.append(("info", f"Existen {recovery_summary['Pendiente Pzs']:,.0f} piezas pendientes dentro del periodo disponible."))
     return messages
 
+def _v37_weekly_recovery_cards(co, stores, week_pairs):
+    # Renderiza cuatro tarjetas semanales con los indicadores comerciales clave.
+    if not week_pairs:
+        return
+    html = '<div class="v37-week-grid">'
+    for year, week in week_pairs:
+        ws, we = _v25_week_bounds(year, week)
+        metrics, _ = _v25_recovery_period(co, ws, we, stores)
+        html += f'''
+        <div class="v37-week-card">
+          <div class="v37-week-title">Semana {week:02d} · {year}</div>
+          <div class="v37-week-row"><span>Dev Pzs</span><b>{metrics.get('Dev Pzs',0):,.0f}</b></div>
+          <div class="v37-week-row"><span>Recup. Pzs</span><b>{metrics.get('Piezas Recuperadas',0):,.0f}</b></div>
+          <div class="v37-week-row"><span>Conversión</span><b>{metrics.get('% Recuperación Piezas',0):.1f}%</b></div>
+          <div class="v37-week-row"><span>Valor Dev.</span><b>{fmt_money(metrics.get('Valor Devolución',0))}</b></div>
+          <div class="v37-week-row"><span>Recuperación</span><b>{fmt_money(metrics.get('Recuperación $',0))}</b></div>
+          <div class="v37-week-row"><span>Recup. económica</span><b>{metrics.get('% Recuperación $',0):.1f}%</b></div>
+        </div>'''
+    html += '</div>'
+    st.markdown(html, unsafe_allow_html=True)
+
+
 def page_resumen(op, co):
-    op = reliable_operation(op, co)
-    co = normalize_commercial_df(co)
+    op = reliable_operation(op, co); co = normalize_commercial_df(co)
     user = st.session_state.get("user", {})
     render_personalized_executive_header(user, op, co)
-
     if (op is None or op.empty) and (co is None or co.empty):
-        st.info("Sin información disponible dentro del alcance asignado.")
-        return
-
+        st.info("Sin información disponible dentro del alcance asignado."); return
     stores = authorized_stores(op, co, user)
-    recovery_summary, recovery_detail = recovery_executive_summary(co)
-    table = pd.DataFrame()
-    op_summary = {"Ingresos":0,"Acondicionado":0,"Ubicado":0,"Pendiente":0,"% Procesado":0}
-    if op is not None and not op.empty:
-        dates = pd.to_datetime(op["Fecha"], errors="coerce").dropna()
-        if not dates.empty:
-            start, end = dates.min().normalize(), dates.max().normalize()
-            table = table_by_store(op, co, start, end, stores)
-            op_summary = summary_from_table(table)
-            st.caption(f"Periodo ejecutivo: {start.strftime('%d/%m/%Y')} al {end.strftime('%d/%m/%Y')} · Última actualización real: {end.strftime('%d/%m/%Y')}")
 
-    # KPI principales en una cuadrícula responsive que no se deforma.
-    st.markdown('<div class="v27-section-heading">Resumen general</div>', unsafe_allow_html=True)
-    ingreso = float(op_summary.get("Ingresos", 0) or 0)
-    acondicionado = float(op_summary.get("Acondicionado", 0) or 0)
-    ubicado = float(op_summary.get("Ubicado", 0) or 0)
-    pct_acond = acondicionado / ingreso * 100 if ingreso else 0
-    pct_ubic = float(op_summary.get("% Procesado", 0) or 0)
-    executive_cards = [
-        ("Piezas ingresadas", fmt_num(ingreso), "Volumen del periodo", "#3366CC"),
-        ("Acondicionado", fmt_num(acondicionado), f"{pct_acond:.1f}% de ingresos", "#7C3AED"),
-        ("Ubicado", fmt_num(ubicado), f"{pct_ubic:.1f}% de ingresos", "#10B981"),
-        ("Conversión", fmt_pct(recovery_summary.get("% Recuperación Piezas",0)), "Misma semana ISO", "#E6007E"),
-        ("Recuperación económica", fmt_pct(recovery_summary.get("% Recuperación $",0)), "Recuperación sobre valor", "#F59E0B"),
-        ("Pendiente", fmt_num(recovery_summary.get("Pendiente Pzs",0)), "Piezas por recuperar", "#EF4444"),
-    ]
-    card_html = '<div class="v27-kpi-grid">'
-    for title, value, subtitle, accent in executive_cards:
-        card_html += (
-            f'<div class="v27-kpi-card" style="--accent:{accent}">'
-            f'<div class="v27-kpi-label">{title}</div>'
-            f'<div class="v27-kpi-value">{value}</div>'
-            f'<div class="v27-kpi-sub">{subtitle}</div></div>'
-        )
-    st.markdown(card_html + '</div>', unsafe_allow_html=True)
+    # El bloque ejecutivo principal trabaja por mes y permite consultar cualquier mes disponible.
+    months = set()
+    for frame in (op, co):
+        if frame is not None and not frame.empty and "Fecha" in frame:
+            months.update(pd.to_datetime(frame["Fecha"], errors="coerce").dropna().dt.to_period("M").astype(str).tolist())
+    months = sorted(months)
+    if not months:
+        st.info("No se detectaron periodos válidos."); return
+    selected_month = st.selectbox("Mes ejecutivo", months, index=len(months)-1, key="v37_center_month")
+    period = pd.Period(selected_month, freq="M")
+    start, end = period.start_time.normalize(), period.end_time.normalize()
 
-    # Alertas arriba de cualquier tabla, compactas y ejecutivas.
-    insights = executive_insights(recovery_summary, recovery_detail, stores)
-    alert_html=[]
-    palette={"success":"green","warning":"amber","info":"blue","error":"red"}
-    for level,message in insights[:4]:
-        alert_html.append(f'<div class="v26-alert v26-{palette.get(level,"blue")}"><span>{message}</span></div>')
-    if op_summary.get("Pendiente",0)>0 and len(alert_html)<4:
-        alert_html.append(f'<div class="v26-alert v26-blue"><span>Pendiente operativo por ubicar: {op_summary.get("Pendiente",0):,.0f} piezas.</span></div>')
-    if alert_html:
-        st.markdown('<div class="v26-section-heading">Alertas y prioridades</div><div class="v26-alert-row">'+''.join(alert_html)+'</div>', unsafe_allow_html=True)
+    op_table, opm = _v25_operational_period(op, co, start, end, stores, carryover="none")
+    recm, rec_detail = _v25_recovery_period(co, start, end, stores)
+    prod_table, prodm = _v25_productivity_period(op, start, end, stores)
+    route_table, routem = _v25_recorridos_period(op, start, end, stores)
+    score, components = _v25_score(opm, recm, prodm, routem)
+    last_real = max([d for frame in (op,co) if frame is not None and not frame.empty and "Fecha" in frame for d in pd.to_datetime(frame["Fecha"],errors="coerce").dropna().tolist()], default=end)
+    st.caption(f"Periodo ejecutivo: {start.strftime('%d/%m/%Y')} al {end.strftime('%d/%m/%Y')} · Última actualización real: {pd.Timestamp(last_real).strftime('%d/%m/%Y')}")
+    _v25_kpi_cards([
+        ("Piezas ingresadas", fmt_num(opm["Piezas ingresadas"]), f"Acondicionado {opm['% Acondicionado']:.1f}%", "#3366CC"),
+        ("Conversión", fmt_pct(recm["% Recuperación Piezas"]), f"{recm['Piezas Recuperadas']:,.0f} piezas recuperadas", "#7C3AED"),
+        ("Recuperación económica", fmt_pct(recm["% Recuperación $"]), fmt_money(recm["Recuperación $"]), "#E6007E"),
+        ("Productividad", fmt_pct(prodm["% Productividad"]), f"{prodm['Productividad']:,.0f} pzs/día", "#10B981"),
+        ("Recorridos", fmt_pct(routem["% Recorridos"]), f"{routem['Realizados']:,.0f} de {routem['Meta']:,.0f}", "#F59E0B"),
+        ("PS Score", f"{score:.1f}", "Excelente" if score>=90 else "Estable" if score>=80 else "Atención" if score>=70 else "Crítico", "#173B73"),
+    ])
 
-    # Gráficas en dos columnas como el boceto.
-    if table is not None and not table.empty:
-        left,right=st.columns([1.7,1],gap="large")
-        with left:
-            combined_chart(table, "Desempeño operativo por tienda", income_column="Total")
-        with right:
-            chart=table.sort_values("% Ubic.",ascending=False).head(8)
-            fig=go.Figure(go.Bar(x=chart["% Ubic."],y=chart["Tienda"],orientation="h",marker_color="#3366CC"))
-            fig.update_layout(title="Top tiendas por % ubicado",height=430,margin=dict(l=10,r=15,t=50,b=20),paper_bgcolor="white",plot_bgcolor="white",xaxis=dict(range=[0,100],ticksuffix="%"),yaxis=dict(autorange="reversed"))
-            st.plotly_chart(fig,width="stretch",config={"displayModeBar":False,"responsive":True})
+    # Últimas cuatro semanas, incluyendo la semana más reciente/en curso.
+    pairs = available_iso_weeks(op, co)
+    latest_pos = len(pairs)-1
+    last_four = pairs[max(0, latest_pos-3):latest_pos+1]
+    st.markdown("### Últimas 4 semanas")
+    _v37_weekly_recovery_cards(co, stores, last_four)
 
-    if recovery_detail is not None and not recovery_detail.empty:
-        macro = recovery_detail.groupby("Tienda", as_index=False).agg({
-            "Dev Pzs": "sum", "Piezas Recuperadas": "sum",
-            "Valor de la Devolución a Precio Neto": "sum", "Recuperación $": "sum",
+    # Macro semanal: filtro por semana y todas las tiendas del proyecto.
+    st.markdown("### Macro por tiendas")
+    week_labels = [f"{y}-Semana {w:02d}" for y,w in pairs]
+    selected_week_label = st.selectbox("Semana del ranking", week_labels, index=len(week_labels)-1, key="v37_center_week") if week_labels else None
+    if selected_week_label:
+        sy, sw = pairs[week_labels.index(selected_week_label)]
+        ws, we = _v25_week_bounds(sy, sw)
+        week_recm, week_detail = _v25_recovery_period(co, ws, we, stores)
+        macro = _v25_macro(week_detail)
+    else:
+        macro = pd.DataFrame()
+
+    st.markdown("### Alertas y prioridades")
+    alert_items = []
+    if not macro.empty:
+        worst = macro.sort_values("Pendiente $", ascending=False).head(2)
+        best = macro.sort_values("% Recuperación económica", ascending=False).head(1)
+        if not best.empty:
+            row = best.iloc[0]
+            alert_items.append(("Mejor resultado", f"{row['Tienda']} · {row['% Recuperación económica']:.1f}% recuperación económica", "#DCFCE7", "#166534"))
+        for _, row in worst.iterrows():
+            alert_items.append(("Prioridad económica", f"{row['Tienda']} · {row['Pendiente Pzs']:,.0f} pzas · {fmt_money(row['Pendiente $'])}", "#FEF3C7", "#92400E"))
+    if opm["Pendiente ubicar"] > 0:
+        alert_items.append(("Pendiente operativo", f"{opm['Pendiente ubicar']:,.0f} piezas por ubicar", "#DBEAFE", "#1D4ED8"))
+    if alert_items:
+        html = '<div class="v253-alert-grid">'
+        for title, text, bg, color in alert_items:
+            html += f'<div class="v253-alert-card" style="background:{bg};color:{color}"><b>{title}</b><span>{text}</span></div>'
+        html += '</div>'
+        st.markdown(html, unsafe_allow_html=True)
+
+    if not macro.empty:
+        ranked = macro.sort_values(["% Recuperación económica","% Conversión"], ascending=False).copy()
+        ranked = ranked.rename(columns={
+            "Piezas Recuperadas":"Recup. Pzs", "Valor de la Devolución a Precio Neto":"Valor Dev. $",
+            "Recuperación $":"Recup. $", "% Conversión":"Conv. %",
+            "% Recuperación económica":"Recup. %", "Pendiente Pzs":"Pend. Pzs", "Pendiente $":"Pend. $",
         })
-        macro["% Conv."] = macro["Piezas Recuperadas"] / macro["Dev Pzs"].replace(0, np.nan) * 100
-        macro["% Rec. $"] = macro["Recuperación $"] / macro["Valor de la Devolución a Precio Neto"].replace(0, np.nan) * 100
-        macro = macro.fillna(0).sort_values("% Conv.", ascending=False)
-        macro = macro.rename(columns={
-            "Piezas Recuperadas":"Rec. Pzs",
-            "Valor de la Devolución a Precio Neto":"Valor Dev.",
-            "Recuperación $":"Rec. $",
-        })[["Tienda","Dev Pzs","Rec. Pzs","% Conv.","Valor Dev.","Rec. $","% Rec. $"]]
-        st.markdown('<div class="v26-section-heading">Macro por tiendas</div>',unsafe_allow_html=True)
-        aggrid_table(
-            macro,
-            height=min(520, 118 + 34 * len(macro)),
-            editable=False,
-            key="v27_macro_tiendas",
-        )
+        preferred = ["Tienda","Dev Pzs","Recup. Pzs","Conv. %","Valor Dev. $","Recup. $","Recup. %","Pend. Pzs","Pend. $"]
+        panel("Ranking ejecutivo semanal", ranked[[c for c in preferred if c in ranked.columns]], height=430)
+    else:
+        st.info("Sin información comercial para la semana seleccionada.")
 
-    pdf_summary={"Perfil":ROLE_LABELS.get(normalize_role(user.get("role",user.get("permiso"))),"Consulta"),"Alcance":user.get("scope_value") or "Compañía",**recovery_summary}
-    pdf_table=table if table is not None and not table.empty else recovery_detail.head(200)
-    generic_pdf_button("Centro Ejecutivo","Resumen personalizado conforme al perfil y alcance del usuario",pdf_table,pdf_summary,file_name="PS_Operaciones_Ropa_Centro_Ejecutivo.pdf",key="pdf_centro_ejecutivo_v26")
+    if not op_table.empty:
+        combined_chart(op_table, f"Ingreso vs Acondicionado vs Ubicado — {selected_month}")
+    summary = {**opm, **recm, **prodm, **routem, "PS Score": score, "Periodo": selected_month}
+    _v25_downloads("Centro Ejecutivo", "Resumen integral por alcance autorizado", macro if not macro.empty else op_table, summary, "v37_center", {"Operación":op_table,"Productividad":prod_table,"Recorridos":route_table})
 
 def page_por_dia(op, co):
     op = reliable_operation(op, co)
@@ -8489,45 +8508,67 @@ def page_por_dia(op, co):
 
 
 def page_semanal(op, co):
-    op = reliable_operation(op, co)
-    st.markdown("## Reporte Semanal")
-    available_stores = authorized_stores(op, co)
-    tiendas = _compact_multiselect("Tiendas", available_stores, default=available_stores, key="sem_tiendas")
+    op = reliable_operation(op, co); co = normalize_commercial_df(co)
+    _v17_title("Reporte Semanal", "Operación, productividad, recorridos y recuperación cerrados por semana ISO.")
+    stores = authorized_stores(op, co); pairs = available_iso_weeks(op, co)
+    if not pairs:
+        st.info("Sin semanas válidas detectadas."); return
+    labels = [f"{y}-Semana {w:02d}" for y,w in pairs]
+    label = st.selectbox("Semana ISO", labels, index=len(labels)-1, key="v25_week")
+    selected_stores = stores
+    year, week = pairs[labels.index(label)]; start, end = _v25_week_bounds(year, week)
+    table, opm = _v25_operational_period(op, co, start, end, selected_stores, carryover="previous_sunday")
+    recm, detail = _v25_recovery_period(co, start, end, selected_stores)
+    prod_table, prodm = _v25_productivity_period(op, start, end, selected_stores)
+    route_table, routem = _v25_recorridos_period(op, start, end, selected_stores)
+    pstart, pend = start-pd.Timedelta(days=7), end-pd.Timedelta(days=7)
+    _, prev_op = _v25_operational_period(op, co, pstart, pend, selected_stores, carryover="previous_sunday")
+    prev_rec, _ = _v25_recovery_period(co, pstart, pend, selected_stores)
+    delta_ing = opm["Piezas ingresadas"] - prev_op["Piezas ingresadas"]
+    delta_conv = recm["% Recuperación Piezas"] - prev_rec["% Recuperación Piezas"]
+    _v25_kpi_cards([
+        ("Piezas ingresadas",fmt_num(opm["Piezas ingresadas"]),f"Δ {delta_ing:+,.0f}","#3366CC"),
+        ("Acondicionado",fmt_pct(opm["% Acondicionado"]),fmt_num(opm["Acondicionado"]),"#7C3AED"),
+        ("Ubicado",fmt_pct(opm["% Ubicado / Ingresos"]),fmt_num(opm["Ubicado"]),"#E6007E"),
+        ("Conversión",fmt_pct(recm["% Recuperación Piezas"]),f"Δ {delta_conv:+.1f} pp","#10B981"),
+        ("Recuperación económica",fmt_pct(recm["% Recuperación $"]),fmt_money(recm["Recuperación $"]),"#173B73"),
+        ("Productividad",fmt_pct(prodm["% Productividad"]),f"{prodm['Productividad']:,.0f} pzs/día","#F59E0B"),
+        ("Recorridos",fmt_pct(routem["% Recorridos"]),f"{routem['Realizados']:,.0f}/{routem['Meta']:,.0f}","#EF4444"),
+    ])
 
-    week_pairs = available_iso_weeks(op, co)
-    if not week_pairs:
-        st.info("Sin semanas válidas detectadas.")
-        return
+    trends = []
+    selected_pos = pairs.index((year,week)); relevant = pairs[max(0,selected_pos-3):selected_pos+1]
+    for y,w in relevant:
+        ws,we = _v25_week_bounds(y,w)
+        _,om = _v25_operational_period(op,co,ws,we,selected_stores,"none")
+        rm,_ = _v25_recovery_period(co,ws,we,selected_stores)
+        _,pm = _v25_productivity_period(op,ws,we,selected_stores)
+        _,rr = _v25_recorridos_period(op,ws,we,selected_stores)
+        trends.append({"Semana":f"{y}-{w:02d}","Ingresos":om["Piezas ingresadas"],"% Acondicionado":om["% Acondicionado"],"% Ubicado":om["% Ubicado / Ingresos"],"% Conversión":rm["% Recuperación Piezas"],"% Recuperación $":rm["% Recuperación $"],"% Productividad":pm["% Productividad"],"% Recorridos":rr["% Recorridos"]})
+    trend_df = pd.DataFrame(trends)
+    macro = _v25_macro(detail)
+    if not macro.empty:
+        panel("Top y oportunidades por tienda", macro.sort_values("% Recuperación económica",ascending=False), height=360)
 
-    labels = [f"{year}-Sem {week:02d}" for year, week in week_pairs]
-    selected_label = st.selectbox("Semana ISO", labels, index=len(labels)-1, key="sem_iso")
-    year, week = week_pairs[labels.index(selected_label)]
+    # La tabla operativa va primero y la gráfica operativa inmediatamente debajo.
+    panel(f"Detalle operativo · Semana {week:02d}", table, height=380)
+    if not table.empty:
+        combined_chart(table, f"Ingreso vs Acondicionado vs Ubicado · Semana {week:02d}", income_column="Total")
 
-    dates = pd.to_datetime(op["Fecha"], errors="coerce")
-    iso = dates.dt.isocalendar()
-    mask = (iso.year.astype(int) == year) & (iso.week.astype(int) == week)
-    week_dates = dates[mask]
-    if week_dates.empty:
-        st.info("Sin fechas para la semana seleccionada.")
-        return
+    if not trend_df.empty:
+        fig = go.Figure()
+        series = [("% Conversión","#3366CC"),("% Recuperación $","#E6007E"),("% Productividad","#10B981")]
+        if pd.to_numeric(trend_df.get("% Recorridos",0),errors="coerce").fillna(0).abs().sum() > 0:
+            series.append(("% Recorridos","#F59E0B"))
+        for col,color in series:
+            fig.add_scatter(x=trend_df["Semana"],y=trend_df[col],mode="lines+markers",name=col,line=dict(color=color,width=3),marker=dict(size=8))
+        ymax = max(100, float(trend_df[[c for c,_ in series]].max().max())*1.15)
+        fig.update_layout(title="Tendencia últimas 4 semanas",height=390,yaxis_title="%",hovermode="x unified",legend=dict(orientation="h",y=1.12,x=0),margin=dict(l=40,r=30,t=75,b=45),plot_bgcolor="white",paper_bgcolor="white")
+        fig.update_yaxes(range=[0,ymax],gridcolor="#E5E7EB")
+        st.plotly_chart(fig,width="stretch",config={"displayModeBar":False,"responsive":True})
 
-    start, end = week_dates.min().normalize(), week_dates.max().normalize()
-    df = table_by_store(op, co, start, end, tiendas, carryover_mode="previous_sunday")
-    resumen = summary_from_table(df, income_column="Total")
-    kpis(resumen)
-    st.caption("La base semanal incluye el saldo pendiente acumulado al cierre del domingo anterior.")
-
-    generic_pdf_button(
-        f"Reporte Semanal - Semana {week}",
-        f"Periodo: {start.strftime('%d-%m-%Y')} al {end.strftime('%d-%m-%Y')}",
-        df,
-        resumen,
-        file_name=f"Reporte_Semanal_Semana_{week:02d}_{year}.pdf",
-        key=f"pdf_sem_{year}_{week}",
-    )
-    panel(f"Tabla por tienda - Semana {week}", df, height=360)
-    combined_chart(df, f"Ingreso vs Habilitado vs Ubicado - Semana {week}")
-
+    summary = {**opm,**recm,**prodm,**routem,"Año ISO":year,"Semana ISO":week,"Variación ingresos":delta_ing,"Variación conversión pp":delta_conv}
+    _v25_downloads("Reporte Semanal",f"Semana ISO {week:02d}/{year} · {start.strftime('%d/%m')} al {end.strftime('%d/%m/%Y')}",table,summary,"v37_weekly",{"Tendencia 4 semanas":trend_df,"Recuperación":macro,"Productividad":prod_table,"Recorridos":route_table})
 
 def page_mensual(op, co):
     op = reliable_operation(op, co)
@@ -10603,9 +10644,15 @@ def page_mensual(op, co):
         _,om=_v25_operational_period(op,co,p.start_time,p.end_time,selected_stores,"none"); rm,_=_v25_recovery_period(co,p.start_time,p.end_time,selected_stores); _,pm=_v25_productivity_period(op,p.start_time,p.end_time,selected_stores); _,rr=_v25_recorridos_period(op,p.start_time,p.end_time,selected_stores)
         trend.append({"Mes":str(p),"Ingresos":om["Piezas ingresadas"],"% Acondicionado":om["% Acondicionado"],"% Ubicado":om["% Ubicado / Ingresos"],"% Conversión":rm["% Recuperación Piezas"],"% Recuperación $":rm["% Recuperación $"],"% Productividad":pm["% Productividad"],"% Recorridos":rr["% Recorridos"]})
     trend_df=pd.DataFrame(trend)
-    fig=go.Figure();
-    for col,color in [("% Conversión","#3366CC"),("% Recuperación $","#E6007E"),("% Productividad","#10B981"),("% Recorridos","#F59E0B")]: fig.add_scatter(x=trend_df["Mes"],y=trend_df[col],mode="lines+markers",name=col,line=dict(color=color,width=3))
-    fig.update_layout(title="Comparativo últimos 3 meses",height=430,yaxis_title="%",hovermode="x unified"); st.plotly_chart(fig,width="stretch")
+    fig=go.Figure()
+    monthly_series=[("% Conversión","#3366CC"),("% Recuperación $","#E6007E"),("% Productividad","#10B981")]
+    if pd.to_numeric(trend_df.get("% Recorridos",0),errors="coerce").fillna(0).abs().sum()>0:
+        monthly_series.append(("% Recorridos","#F59E0B"))
+    for col,color in monthly_series:
+        fig.add_scatter(x=trend_df["Mes"],y=trend_df[col],mode="lines+markers",name=col,line=dict(color=color,width=3),marker=dict(size=8))
+    fig.update_layout(title="Comparativo últimos 3 meses",height=390,yaxis_title="%",hovermode="x unified",legend=dict(orientation="h",y=1.12,x=0),margin=dict(l=40,r=30,t=75,b=45),plot_bgcolor="white",paper_bgcolor="white")
+    fig.update_yaxes(range=[0,max(100,float(trend_df[[c for c,_ in monthly_series]].max().max())*1.15)],gridcolor="#E5E7EB")
+    st.plotly_chart(fig,width="stretch",config={"displayModeBar":False,"responsive":True})
     macro=_v25_macro(detail)
     if not macro.empty:
         heat=macro.pivot_table(index="Tienda",values=["% Conversión","% Recuperación económica"],aggfunc="mean"); st.markdown("### Heatmap de desempeño"); st.dataframe(heat.style.background_gradient(cmap="RdYlGn",vmin=0,vmax=100),width="stretch")
@@ -10820,7 +10867,8 @@ st.markdown(
 )
 
 # Marcador de despliegue para confirmar que GitHub/Streamlit usa esta versión.
-st.caption("PS Operaciones Ropa · V36")
+st.markdown('\n<style>\n.v37-week-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px;margin:10px 0 22px}.v37-week-card{background:#fff;border:1px solid #dbe3ef;border-radius:16px;padding:16px;box-shadow:0 8px 24px rgba(23,59,115,.07)}.v37-week-title{font-weight:800;color:#173B73;font-size:16px;margin-bottom:10px;border-bottom:2px solid #3366CC;padding-bottom:8px}.v37-week-row{display:flex;justify-content:space-between;gap:10px;padding:5px 0;font-size:13px;color:#667085}.v37-week-row b{color:#173B73;text-align:right}.v25-kpi-grid{align-items:stretch}.v25-kpi-card{min-height:150px}.js-plotly-plot,.plot-container{max-width:100%!important}@media(max-width:1100px){.v37-week-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}@media(max-width:650px){.v37-week-grid{grid-template-columns:1fr}}\n</style>\n', unsafe_allow_html=True)
+st.caption("PS Operaciones Ropa · V37")
 
 try:
     route_handler = ROUTES.get(page)
@@ -10980,7 +11028,7 @@ st.markdown(
 )
 
 
-# V36: menús múltiples estables y resaltado visual del alcance del proyecto.
+# V37: centro ejecutivo semanal/mensual y gráficas operativas reordenadas.
 st.markdown(
     """
     <style>
