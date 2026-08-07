@@ -8,6 +8,7 @@ contexto de importación diferente y, sin esta protección, no encuentra
 from __future__ import annotations
 
 import sys
+import time
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent
@@ -33,8 +34,28 @@ if missing:
 
 from core.bootstrap import initialize_application
 
-initialize_application()
+_boot_started = time.perf_counter()
+print("[BOOT] app.py iniciado", flush=True)
+try:
+    initialize_application()
+    print(f"[BOOT] bootstrap listo en {time.perf_counter()-_boot_started:.2f}s", flush=True)
+except Exception as exc:
+    print(f"[BOOT][ERROR] bootstrap: {type(exc).__name__}: {exc}", flush=True)
+    raise
 
 # Ejecuta la capa compatible en el mismo contexto de Streamlit.
 _source = PROJECT_ROOT / "legacy_app.py"
-exec(compile(_source.read_text(encoding="utf-8"), str(_source), "exec"), globals(), globals())
+try:
+    print("[BOOT] iniciando legacy_app.py", flush=True)
+    _legacy_text = _source.read_text(encoding="utf-8")
+    exec(compile(_legacy_text, str(_source), "exec"), globals(), globals())
+    print(f"[BOOT] legacy_app.py finalizó en {time.perf_counter()-_boot_started:.2f}s", flush=True)
+except Exception as exc:
+    print(f"[BOOT][ERROR] legacy_app.py: {type(exc).__name__}: {exc}", flush=True)
+    try:
+        import streamlit as st
+        st.error("No fue posible iniciar PS Operaciones Ropa.")
+        st.exception(exc)
+        st.stop()
+    except Exception:
+        raise

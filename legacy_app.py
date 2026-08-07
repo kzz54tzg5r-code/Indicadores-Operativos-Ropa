@@ -6,6 +6,7 @@ import hashlib
 import gc
 import os
 import traceback
+import time
 import re
 import sqlite3
 import secrets
@@ -28,6 +29,7 @@ from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.graphics.shapes import Drawing, String, PolyLine, Circle, Rect, Line
 from reportlab.graphics.charts.barcharts import VerticalBarChart
 import streamlit as st
+print("[BOOT] imports principales completados", flush=True)
 from openpyxl import load_workbook
 
 from core.settings import (
@@ -491,10 +493,18 @@ def restore_active_file_from_remote():
     if not url:
         return False
     try:
-        request = Request(url, headers={"User-Agent": "PS-Operaciones-Ropa/38"})
+        request = Request(url, headers={"User-Agent": "PS-Operaciones-Ropa/40"})
         temporary = ACTIVE_FILE.with_suffix(".xlsx.download")
-        with urlopen(request, timeout=180) as response, temporary.open("wb") as out:
-            shutil.copyfileobj(response, out, length=1024 * 1024)
+        print("[DATA] restauración remota solicitada", flush=True)
+        started = time.perf_counter()
+        # El arranque nunca debe quedar bloqueado minutos por una URL remota.
+        with urlopen(request, timeout=12) as response, temporary.open("wb") as out:
+            while True:
+                chunk = response.read(1024 * 1024)
+                if not chunk:
+                    break
+                out.write(chunk)
+        print(f"[DATA] restauración remota terminada en {time.perf_counter()-started:.2f}s", flush=True)
         if temporary.stat().st_size < 1024:
             temporary.unlink(missing_ok=True)
             return False
@@ -504,11 +514,17 @@ def restore_active_file_from_remote():
             "nombre_original": Path(url.split("?",1)[0]).name or "base_activa.xlsx",
             "fecha_carga": datetime.now(MX_TZ).strftime("%Y-%m-%d %H:%M:%S"),
             "mtime": ACTIVE_FILE.stat().st_mtime,
+            "size": ACTIVE_FILE.stat().st_size,
             "sha256": file_hash,
             "origen": "remoto_persistente",
         }, ensure_ascii=False, indent=2), encoding="utf-8")
         return True
     except Exception as exc:
+        print(f"[DATA][WARN] restauración remota omitida: {type(exc).__name__}: {exc}", flush=True)
+        try:
+            ACTIVE_FILE.with_suffix(".xlsx.download").unlink(missing_ok=True)
+        except Exception:
+            pass
         try:
             PROCESS_LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
             PROCESS_LOG_FILE.write_text(f"Restauración remota: {exc}", encoding="utf-8")
@@ -583,7 +599,9 @@ def _table_columns(con, table):
 
 
 def init_db():
-    con = sqlite3.connect(DB_FILE)
+    started = time.perf_counter()
+    con = sqlite3.connect(DB_FILE, timeout=3)
+    con.execute("PRAGMA busy_timeout=3000")
     cur = con.cursor()
     cur.execute(
         """
@@ -654,6 +672,7 @@ def init_db():
     cur.execute("UPDATE usuarios SET role=CASE WHEN permiso='Administrador' THEN 'ADMIN' ELSE COALESCE(NULLIF(role,''),'CONSULTA') END WHERE upper(nomina)<>'JDA'")
     con.commit()
     con.close()
+    print(f"[BOOT] usuarios/control listos en {time.perf_counter()-started:.2f}s", flush=True)
 
 
 def get_system_status():
@@ -4266,10 +4285,17 @@ def cache_valid():
         if float(meta.get("mtime", 0)) == float(active_stat.st_mtime):
             return True
 
-        # Si el archivo fue guardado de nuevo, validar por contenido.
+        # Si el archivo fue guardado de nuevo, evita recalcular SHA-256 en cada
+        # rerun. Primero compara tamaño cuando esté disponible en metadatos.
+        saved_size = int(meta.get("size", 0) or 0)
+        if saved_size and saved_size != int(active_stat.st_size):
+            return False
         saved_hash = str(meta.get("sha256", "")).strip()
         if saved_hash:
-            return saved_hash == _file_sha256(ACTIVE_FILE)
+            hash_key = f"cache_hash::{active_stat.st_size}::{active_stat.st_mtime_ns}"
+            if hash_key not in st.session_state:
+                st.session_state[hash_key] = _file_sha256(ACTIVE_FILE)
+            return saved_hash == st.session_state[hash_key]
 
         return False
     except Exception:
@@ -9753,8 +9779,11 @@ def apply_v26_shell_styles():
     </style>
     """,unsafe_allow_html=True)
 
+print("[BOOT] renderizando acceso/sesión", flush=True)
 if not login_sidebar():
+    print("[BOOT] pantalla de acceso lista", flush=True)
     st.stop()
+print("[BOOT] sesión autenticada", flush=True)
 
 if "active_app" not in st.session_state:
     st.session_state["active_app"] = None
@@ -9808,6 +9837,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 render_header()
 page = nav_bar()
+print(f"[PAGE] {page}", flush=True)
 
 DATA_PAGES = {
     "Centro Ejecutivo",
@@ -9830,11 +9860,16 @@ diag_df = pd.DataFrame()
 
 needs_data = page in DATA_PAGES
 
-# V34: restaura la fuente persistente al iniciar una instancia nueva de Streamlit.
-restore_active_file_from_remote()
+# V40: restauración remota diferida. Solo se intenta si la página realmente
+# necesita datos y el archivo local no existe. Un origen remoto lento nunca
+# debe impedir que el portal, administración o login abran.
+if needs_data and not ACTIVE_FILE.exists():
+    restore_active_file_from_remote()
 
 if needs_data:
     if ACTIVE_FILE.exists() and cache_valid():
+        _data_started = time.perf_counter()
+        print(f"[DATA] cargando caché para {page}", flush=True)
         with st.spinner("Consultando el periodo requerido..."):
             op_all, co_all, diag_df = load_data_for_page(
                 page,
@@ -9842,6 +9877,7 @@ if needs_data:
             )
             op_all = apply_user_scope(op_all)
             co_all = apply_user_scope(co_all)
+        print(f"[DATA] {page} listo: op={len(op_all):,}, co={len(co_all):,} en {time.perf_counter()-_data_started:.2f}s", flush=True)
     else:
         if not ACTIVE_FILE.exists():
             st.info("La fuente de datos no está disponible. Utiliza el módulo **Carga de Excel** del menú del proyecto.")

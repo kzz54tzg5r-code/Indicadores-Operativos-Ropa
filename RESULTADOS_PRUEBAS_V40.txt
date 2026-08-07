@@ -1,0 +1,16 @@
+PS Operaciones Ropa V40 - Estabilizacion de arranque
+
+Validacion local estatica:
+- app.py: compila correctamente
+- legacy_app.py: compila correctamente
+- core/bootstrap.py: compila correctamente
+- core/database.py: compila correctamente
+- core/settings.py: compila correctamente
+- pytest: 15 passed, 0 failed
+
+Cambios de estabilidad:
+- Checkpoints [BOOT], [PAGE], [DATA] agregados a logs.
+- Restauracion remota diferida y timeout de 12 segundos.
+- SQLite con busy_timeout de 3 segundos.
+- File watcher de Streamlit desactivado.
+- No se modificaron formulas ni KPIs de V39.
