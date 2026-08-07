@@ -4698,19 +4698,18 @@ def load_data_for_page(page, mtime):
         latest_value = pd.Timestamp(latest_value).normalize()
         if page_name == "Operación Diaria":
             return latest_value, latest_value
-        if page_name in {"Centro Ejecutivo", "Reporte Semanal"}:
-            start_value = _monday(latest_value) - pd.Timedelta(weeks=3)
-            return start_value, _monday(latest_value) + pd.Timedelta(days=6)
-        if page_name == "Reporte Mensual":
-            return _month_start(latest_value) - pd.DateOffset(months=2), latest_value
+        # V41: los reportes con selector de periodo deben conocer TODO el histórico
+        # procesado. De lo contrario, el selector solo veía las últimas semanas/meses
+        # y ocultaba abril/mayo aunque sí existieran en el caché.
+        if page_name in {"Centro Ejecutivo", "Reporte Semanal", "Reporte Mensual"}:
+            return None, None
         if page_name == "Productividad" and source == "op":
             return latest_value - pd.Timedelta(days=30), latest_value
         if page_name == "Recorridos" and source == "op":
             start_value = _monday(latest_value)
             return start_value, start_value + pd.Timedelta(days=6)
         if page_name == "Recuperación" and source == "co":
-            start_value = _monday(latest_value) - pd.Timedelta(weeks=11)
-            return start_value, _monday(latest_value) + pd.Timedelta(days=6)
+            return None, None
         if page_name in {
             "Detalle por Tienda", "Detalle por Colaborador",
             "Alertas Inteligentes", "Inteligencia Operativa",
@@ -10351,16 +10350,138 @@ def _v25_excel_bytes(sheets):
     return output.getvalue()
 
 
+def _pdf_value_for_key(key, value):
+    """Formato de KPI para que el PDF use la misma lectura que la pantalla."""
+    if value is None or (isinstance(value, float) and np.isnan(value)):
+        return "N/A"
+    k = norm_text(key)
+    try:
+        num = float(value)
+    except Exception:
+        return str(value)
+    if "%" in str(key) or "PORCENTAJE" in k:
+        return f"{num:.1f}%"
+    if "$" in str(key) or any(x in k for x in ["RECUPERACION $", "VALOR DEVOLUCION", "PENDIENTE $"]):
+        return f"${num:,.0f}"
+    if "SCORE" in k or "PRODUCTIVIDAD" in k:
+        return f"{num:,.1f}"
+    return f"{num:,.0f}"
+
+
+def _pdf_dynamic_kpi_cards(summary, styles):
+    """Tarjetas del PDF basadas en los KPI reales de cada página, no en claves fijas."""
+    if not summary:
+        return []
+    ordered = [
+        ("Piezas ingresadas", "Piezas ingresadas", "#3366CC"),
+        ("Acondicionado", "Acondicionado", "#7C3AED"),
+        ("Ubicado", "Ubicado", "#E6007E"),
+        ("% Acondicionado", "% Acondicionado", "#7C3AED"),
+        ("% Ubicado / Ingresos", "% Ubicado", "#E6007E"),
+        ("% Recuperación Piezas", "Conversión", "#10B981"),
+        ("% Recuperación $", "Recuperación económica", "#173B73"),
+        ("Recuperación $", "Recuperación $", "#E6007E"),
+        ("Productividad", "Productividad", "#10B981"),
+        ("% Productividad", "% Productividad", "#10B981"),
+        ("Realizados", "Recorridos", "#F59E0B"),
+        ("% Recorridos", "% Recorridos", "#F59E0B"),
+        ("PS Score", "PS Score", "#173B73"),
+    ]
+    cards=[]
+    used=set()
+    for key,label,color in ordered:
+        if key in summary and key not in used:
+            cards.append(_pdf_kpi_card("•", label, _pdf_value_for_key(key, summary[key]), "", color, styles))
+            used.add(key)
+        if len(cards)>=8:
+            break
+    return cards
+
+
+def _pdf_table_flowable(df, styles, title=None):
+    if df is None or df.empty:
+        return []
+    out=df.copy()
+    # Evita PDFs ilegibles: conserva hasta 12 columnas en vista, manteniendo todas en Excel.
+    if len(out.columns)>12:
+        out=out.iloc[:, :12].copy()
+    for col in out.columns:
+        vals=pd.to_numeric(out[col], errors="coerce")
+        if vals.notna().sum() == len(out) and len(out)>0:
+            if "%" in str(col): out[col]=vals.map(lambda x:f"{x:.1f}%")
+            elif "$" in str(col) or "VALOR" in norm_text(col) or "RECUPERACION" in norm_text(col): out[col]=vals.map(lambda x:f"${x:,.0f}")
+            else: out[col]=vals.map(lambda x:f"{x:,.0f}")
+    elems=[]
+    if title:
+        elems.append(Paragraph(f"<b>{title}</b>", ParagraphStyle("sec", parent=styles["Normal"], fontSize=9.3, textColor=colors.HexColor("#173B73"), spaceBefore=5, spaceAfter=4)))
+    widths=[730/max(1,len(out.columns))]*len(out.columns)
+    data=[list(out.columns)]+out.astype(str).values.tolist()
+    t=Table(data,colWidths=widths,repeatRows=1)
+    t.setStyle(TableStyle([
+        ("BACKGROUND",(0,0),(-1,0),colors.HexColor("#173B73")),("TEXTCOLOR",(0,0),(-1,0),colors.white),
+        ("FONTNAME",(0,0),(-1,0),"Helvetica-Bold"),("FONTSIZE",(0,0),(-1,0),6.0),("FONTSIZE",(0,1),(-1,-1),5.7),
+        ("GRID",(0,0),(-1,-1),0.25,colors.HexColor("#DDE4F0")),("ROWBACKGROUNDS",(0,1),(-1,-1),[colors.white,colors.HexColor("#F7F9FC")]),
+        ("ALIGN",(1,1),(-1,-1),"RIGHT"),("TOPPADDING",(0,0),(-1,-1),3),("BOTTOMPADDING",(0,0),(-1,-1),3),
+    ]))
+    elems.append(t)
+    return elems
+
+
+def _pdf_week_cards(week_df, styles):
+    if week_df is None or week_df.empty:
+        return []
+    cards=[]
+    for _,r in week_df.head(4).iterrows():
+        title=f"Semana {int(r.get('Semana ISO',0)):02d} · {int(r.get('Año ISO',0))}"
+        body=(f"Dev Pzs: {float(r.get('Dev Pzs',0)):,.0f}<br/>"
+              f"Recup. Pzs: {float(r.get('Recup. Pzs',0)):,.0f}<br/>"
+              f"Conversión: {float(r.get('% Conversión',0)):.1f}%<br/>"
+              f"Valor Dev.: ${float(r.get('Valor Dev. $',0)):,.0f}<br/>"
+              f"Recup.: ${float(r.get('Recup. $',0)):,.0f}<br/>"
+              f"Recup. económica: {float(r.get('% Recup. $',0)):.1f}%")
+        cell=Table([[Paragraph(f"<b>{title}</b><br/><br/>{body}", ParagraphStyle("week", parent=styles["Normal"], fontSize=7.2, leading=10, textColor=colors.HexColor("#173B73")))]],colWidths=[178],rowHeights=[96])
+        cell.setStyle(TableStyle([("BOX",(0,0),(-1,-1),0.6,colors.HexColor("#CBD5E1")),("BACKGROUND",(0,0),(-1,-1),colors.white),("VALIGN",(0,0),(-1,-1),"TOP"),("LEFTPADDING",(0,0),(-1,-1),8),("TOPPADDING",(0,0),(-1,-1),7)]))
+        cards.append(cell)
+    return [Table([cards], colWidths=[182]*len(cards))]
+
+
+def build_v41_report_pdf(title, subtitle, detail, summary, extra_sheets=None):
+    """PDF espejo de la pestaña: KPI + tablas + gráficos inferibles + tarjetas semanales."""
+    buffer=BytesIO(); styles=getSampleStyleSheet()
+    doc=SimpleDocTemplate(buffer,pagesize=landscape(letter),rightMargin=18,leftMargin=18,topMargin=14,bottomMargin=28)
+    story=[]
+    logo=RLImage(str(LOGO_FILE),width=58,height=34) if LOGO_FILE.exists() else Paragraph("<b>Price Shoes</b>",styles["Normal"])
+    u=st.session_state.get("user",{}); scope=u.get("scope_value") or "Compañía"
+    head=Paragraph(f"<font name='Helvetica-Bold' color='#173B73' size='13'>PS Operaciones Ropa</font><br/><font name='Helvetica-Bold' color='#173B73' size='10'>{title}</font><font name='Helvetica' color='#5B6476' size='8'> | {subtitle}</font><br/><font name='Helvetica' color='#6B7280' size='7'>Usuario: {u.get('nombre','')} · Alcance: {scope} · Generado: {datetime.now(MX_TZ).strftime('%d/%m/%Y %H:%M')}</font>",ParagraphStyle("h",parent=styles["Normal"],leading=14))
+    ht=Table([[logo,head]],colWidths=[72,650],rowHeights=[40]); ht.setStyle(TableStyle([("VALIGN",(0,0),(-1,-1),"MIDDLE"),("LEFTPADDING",(0,0),(-1,-1),0)])); story.append(ht)
+    line=Table([[""]],colWidths=[744],rowHeights=[3]); line.setStyle(TableStyle([("BACKGROUND",(0,0),(-1,-1),colors.HexColor("#E6007E"))])); story += [line,Spacer(1,7)]
+    cards=_pdf_dynamic_kpi_cards(summary,styles)
+    if cards:
+        for i in range(0,len(cards),4):
+            row=cards[i:i+4]; tr=Table([row],colWidths=[184]*len(row),rowHeights=[68]); tr.setStyle(TableStyle([("VALIGN",(0,0),(-1,-1),"MIDDLE"),("LEFTPADDING",(0,0),(-1,-1),2),("RIGHTPADDING",(0,0),(-1,-1),2)])); story += [tr,Spacer(1,5)]
+    if extra_sheets and "Semanas del mes" in extra_sheets:
+        story.append(Paragraph("<b>Semanas del mes seleccionado</b>",ParagraphStyle("wh",parent=styles["Normal"],fontSize=10,textColor=colors.HexColor("#173B73"),spaceBefore=3,spaceAfter=5)))
+        story += _pdf_week_cards(extra_sheets.get("Semanas del mes"),styles); story.append(Spacer(1,7))
+    story += _pdf_table_flowable(detail,styles,"Tabla principal")
+    if detail is not None and not detail.empty and {"Tienda","Total","Habilitadas","Ubicadas"}.issubset(detail.columns):
+        story += [Spacer(1,7),Paragraph("<b>Ingreso vs Acondicionado vs Ubicado</b>",ParagraphStyle("ct",parent=styles["Normal"],fontSize=9,textColor=colors.HexColor("#173B73"),spaceAfter=3)),_pdf_chart(detail)]
+    if extra_sheets:
+        for name,frame in extra_sheets.items():
+            if name=="Semanas del mes" or frame is None or getattr(frame,"empty",True): continue
+            story += [Spacer(1,8)] + _pdf_table_flowable(frame,styles,name)
+            if {"Tienda","Total","Habilitadas","Ubicadas"}.issubset(frame.columns):
+                story += [Spacer(1,5),Paragraph(f"<b>{name} · Ingreso vs Acondicionado vs Ubicado</b>",ParagraphStyle("ect",parent=styles["Normal"],fontSize=8.5,textColor=colors.HexColor("#173B73"))),_pdf_chart(frame)]
+    doc.build(story,onFirstPage=_pdf_footer,onLaterPages=_pdf_footer); buffer.seek(0); return buffer.getvalue()
+
+
 def _v25_downloads(title, subtitle, detail, summary, key, extra_sheets=None):
     c_pdf, c_xlsx = st.columns(2)
     with c_pdf:
-        generic_pdf_button(
-            title,
-            subtitle,
-            detail if detail is not None else pd.DataFrame(),
-            summary,
+        pdf = build_v41_report_pdf(title, subtitle, detail if detail is not None else pd.DataFrame(), summary, extra_sheets)
+        st.download_button(
+            "Descargar PDF", data=pdf,
             file_name=f"PS_Operaciones_Ropa_{re.sub(r'[^A-Za-z0-9]+','_',title).strip('_')}.pdf",
-            key=f"{key}_pdf",
+            mime="application/pdf", key=f"{key}_pdf", width="stretch",
         )
     with c_xlsx:
         summary_df = pd.DataFrame([summary])
@@ -11014,12 +11135,12 @@ ROUTES = {
 if page in DATA_PAGES and ACTIVE_FILE.exists() and cache_valid():
     window_notes = {
         "Operación Diaria": "Consulta optimizada: último día disponible.",
-        "Centro Ejecutivo": "Consulta por mes con desglose de hasta cuatro semanas del mes seleccionado.",
-        "Reporte Semanal": "Consulta exclusiva de la semana ISO seleccionada.",
-        "Reporte Mensual": "Consulta exclusiva del mes seleccionado.",
+        "Centro Ejecutivo": "Consulta histórica completa por mes; tarjetas de hasta cuatro semanas del mes seleccionado.",
+        "Reporte Semanal": "Consulta histórica completa por una semana ISO seleccionada.",
+        "Reporte Mensual": "Consulta histórica completa por el mes seleccionado.",
         "Productividad": "Consulta optimizada: últimos 30 días.",
         "Recorridos": "Consulta optimizada: semana más reciente.",
-        "Recuperación": "Consulta optimizada: últimas 12 semanas.",
+        "Recuperación": "Consulta histórica completa de la fuente procesada.",
     }
     if page in window_notes:
         st.caption(window_notes[page])
@@ -11078,7 +11199,7 @@ st.markdown(
 
 # Marcador de despliegue para confirmar que GitHub/Streamlit usa esta versión.
 st.markdown('\n<style>\n.v37-week-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px;margin:10px 0 22px}.v37-week-card{background:#fff;border:1px solid #dbe3ef;border-radius:16px;padding:16px;box-shadow:0 8px 24px rgba(23,59,115,.07)}.v37-week-title{font-weight:800;color:#173B73;font-size:16px;margin-bottom:10px;border-bottom:2px solid #3366CC;padding-bottom:8px}.v37-week-row{display:flex;justify-content:space-between;gap:10px;padding:5px 0;font-size:13px;color:#667085}.v37-week-row b{color:#173B73;text-align:right}.v25-kpi-grid{align-items:stretch}.v25-kpi-card{min-height:150px}.js-plotly-plot,.plot-container{max-width:100%!important}@media(max-width:1100px){.v37-week-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}@media(max-width:650px){.v37-week-grid{grid-template-columns:1fr}}\n</style>\n', unsafe_allow_html=True)
-st.caption("PS Operaciones Ropa · V39")
+st.caption("PS Operaciones Ropa · V41")
 
 try:
     route_handler = ROUTES.get(page)
