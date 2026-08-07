@@ -405,10 +405,11 @@ def fmt_pct(x):
 
 
 def _compact_multiselect(label, options, default=None, key=None, help=None, **kwargs):
-    """Selector múltiple compacto y estable.
+    """Selector múltiple desplegable, compacto y resistente al layout.
 
-    El control se mantiene en una sola línea. Las opciones aparecen únicamente
-    dentro de un menú desplegable amplio, sin chips permanentes en la página.
+    Evita chips permanentes y nunca depende de columnas estrechas. El botón usa
+    una etiqueta corta y el catálogo se presenta en una sola columna dentro de
+    un popover con ancho controlado.
     """
     options = [str(x) for x in list(options or []) if str(x).strip()]
     if default is None:
@@ -419,36 +420,51 @@ def _compact_multiselect(label, options, default=None, key=None, help=None, **kw
         st.session_state[state_key] = list(default)
     current = [x for x in list(st.session_state.get(state_key, [])) if x in options]
     st.session_state[state_key] = current
+
+    # Etiqueta breve: evita que una frase larga se parta verticalmente.
+    short_label = str(label).strip()
+    short_aliases = {
+        "Selecciona las tiendas que forman parte de Muertos y Cambios": "Tiendas del proyecto",
+        "Tiendas": "Tiendas",
+        "Semana ISO": "Semana ISO",
+        "Año": "Año",
+        "Color": "Color",
+        "Colores": "Colores",
+    }
+    short_label = short_aliases.get(short_label, short_label)
+    if len(short_label) > 34:
+        short_label = short_label[:31].rstrip() + "…"
     summary = "Todas" if options and len(current) == len(options) else ("Ninguna" if not current else f"{len(current)} seleccionadas")
 
-    # El contenedor con key genera una clase CSS propia y evita que el menú se
-    # comprima en una columna de pocos píxeles.
     with st.container(key=f"filter_wrap_{state_key}"):
-        with st.popover(f"{label}: {summary}", use_container_width=True, help=help):
-            c1, c2 = st.columns(2)
-            with c1:
+        if help:
+            st.caption(help)
+        with st.popover(f"{short_label}: {summary}", use_container_width=True):
+            b1, b2 = st.columns(2, gap="small")
+            with b1:
                 if st.button("Seleccionar todas", key=f"{state_key}_all", use_container_width=True):
                     st.session_state[state_key] = list(options)
+                    # Sin depender del estado previo de los checkboxes.
+                    for idx in range(len(options)):
+                        st.session_state[f"{state_key}_opt_{idx}"] = True
                     st.rerun()
-            with c2:
+            with b2:
                 if st.button("Limpiar", key=f"{state_key}_clear", use_container_width=True):
                     st.session_state[state_key] = []
+                    for idx in range(len(options)):
+                        st.session_state[f"{state_key}_opt_{idx}"] = False
                     st.rerun()
             st.divider()
             selected = []
-            changed = False
-            # Dos columnas en catálogos grandes para reducir altura sin deformar.
-            cols = st.columns(2) if len(options) > 8 else [st.container()]
             for idx, option in enumerate(options):
-                checked = option in current
-                with cols[idx % len(cols)]:
-                    value = st.checkbox(option, value=checked, key=f"{state_key}_opt_{idx}")
+                checkbox_key = f"{state_key}_opt_{idx}"
+                if checkbox_key not in st.session_state:
+                    st.session_state[checkbox_key] = option in current
+                value = st.checkbox(option, key=checkbox_key)
                 if value:
                     selected.append(option)
-                changed = changed or (value != checked)
-            if changed:
+            if selected != current:
                 st.session_state[state_key] = selected
-                st.rerun()
     return list(st.session_state.get(state_key, []))
 
 
@@ -475,7 +491,7 @@ def restore_active_file_from_remote():
     if not url:
         return False
     try:
-        request = Request(url, headers={"User-Agent": "PS-Operaciones-Ropa/34"})
+        request = Request(url, headers={"User-Agent": "PS-Operaciones-Ropa/38"})
         temporary = ACTIVE_FILE.with_suffix(".xlsx.download")
         with urlopen(request, timeout=180) as response, temporary.open("wb") as out:
             shutil.copyfileobj(response, out, length=1024 * 1024)
@@ -10868,7 +10884,7 @@ st.markdown(
 
 # Marcador de despliegue para confirmar que GitHub/Streamlit usa esta versión.
 st.markdown('\n<style>\n.v37-week-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px;margin:10px 0 22px}.v37-week-card{background:#fff;border:1px solid #dbe3ef;border-radius:16px;padding:16px;box-shadow:0 8px 24px rgba(23,59,115,.07)}.v37-week-title{font-weight:800;color:#173B73;font-size:16px;margin-bottom:10px;border-bottom:2px solid #3366CC;padding-bottom:8px}.v37-week-row{display:flex;justify-content:space-between;gap:10px;padding:5px 0;font-size:13px;color:#667085}.v37-week-row b{color:#173B73;text-align:right}.v25-kpi-grid{align-items:stretch}.v25-kpi-card{min-height:150px}.js-plotly-plot,.plot-container{max-width:100%!important}@media(max-width:1100px){.v37-week-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}@media(max-width:650px){.v37-week-grid{grid-template-columns:1fr}}\n</style>\n', unsafe_allow_html=True)
-st.caption("PS Operaciones Ropa · V37")
+st.caption("PS Operaciones Ropa · V38")
 
 try:
     route_handler = ROUTES.get(page)
@@ -11044,6 +11060,68 @@ st.markdown(
       [class*="st-key-filter_wrap_"] [data-testid="stPopover"],
       [class*="st-key-filter_wrap_"] [data-testid="stPopover"]>button{min-width:0!important;max-width:100%!important;width:100%!important;}
       div[data-baseweb="popover"] [data-testid="stPopoverBody"]{min-width:92vw!important;max-width:92vw!important;width:92vw!important;}
+    }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
+
+# V38: corrección autoritativa de menús desplegables y aislamiento de páginas.
+st.markdown(
+    """
+    <style>
+    /* El contenedor del filtro siempre ocupa una fila completa. */
+    [class*="st-key-filter_wrap_"]{
+      display:block!important; position:relative!important; width:100%!important;
+      min-width:0!important; max-width:100%!important; clear:both!important;
+      grid-column:1 / -1!important; flex:0 0 100%!important; align-self:stretch!important;
+      margin:.25rem 0 .75rem!important; overflow:visible!important;
+    }
+    [class*="st-key-filter_wrap_"] > div,
+    [class*="st-key-filter_wrap_"] [data-testid="stVerticalBlock"],
+    [class*="st-key-filter_wrap_"] [data-testid="stPopover"]{
+      width:100%!important; min-width:0!important; max-width:100%!important;
+      display:block!important; overflow:visible!important;
+    }
+    [class*="st-key-filter_wrap_"] [data-testid="stPopover"] > button{
+      width:100%!important; min-width:240px!important; max-width:100%!important;
+      height:46px!important; min-height:46px!important; padding:0 14px!important;
+      display:flex!important; align-items:center!important; justify-content:space-between!important;
+      white-space:nowrap!important; overflow:hidden!important;
+    }
+    [class*="st-key-filter_wrap_"] [data-testid="stPopover"] > button p,
+    [class*="st-key-filter_wrap_"] [data-testid="stPopover"] > button span{
+      white-space:nowrap!important; word-break:keep-all!important; overflow:hidden!important;
+      text-overflow:ellipsis!important; line-height:1.2!important; max-width:calc(100% - 28px)!important;
+    }
+    /* El portal del popover tiene ancho útil y texto horizontal. */
+    div[data-baseweb="popover"]{z-index:9999!important;}
+    div[data-baseweb="popover"] [data-testid="stPopoverBody"]{
+      width:min(560px,94vw)!important; min-width:min(420px,94vw)!important; max-width:94vw!important;
+      max-height:66vh!important; overflow-y:auto!important; overflow-x:hidden!important;
+      padding:14px!important; box-sizing:border-box!important;
+    }
+    div[data-baseweb="popover"] [data-testid="stPopoverBody"] label,
+    div[data-baseweb="popover"] [data-testid="stPopoverBody"] label > div{
+      width:100%!important; min-width:0!important; max-width:100%!important;
+    }
+    div[data-baseweb="popover"] [data-testid="stPopoverBody"] label p,
+    div[data-baseweb="popover"] [data-testid="stPopoverBody"] p{
+      white-space:normal!important; word-break:normal!important; overflow-wrap:normal!important;
+      writing-mode:horizontal-tb!important; text-orientation:mixed!important; line-height:1.35!important;
+    }
+    /* Evita que tabs o columnas estrechas compriman el filtro. */
+    [data-testid="stTabs"] [data-testid="stHorizontalBlock"],
+    [data-testid="stTabs"] [data-testid="stColumn"],
+    [data-testid="stTabs"] [data-testid="stVerticalBlock"]{
+      min-width:0!important; max-width:100%!important; width:100%!important;
+    }
+    @media(max-width:700px){
+      [class*="st-key-filter_wrap_"] [data-testid="stPopover"] > button{min-width:0!important;}
+      div[data-baseweb="popover"] [data-testid="stPopoverBody"]{
+        width:94vw!important; min-width:94vw!important; max-width:94vw!important;
+      }
     }
     </style>
     """,

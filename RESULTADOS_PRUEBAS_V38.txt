@@ -1,0 +1,9 @@
+PS Operaciones Ropa V38
+
+Validación de sintaxis:
+- app.py: OK
+- legacy_app.py: OK
+
+Pruebas automatizadas:
+- 15 aprobadas
+- 0 fallidas
