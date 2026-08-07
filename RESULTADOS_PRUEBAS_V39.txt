@@ -1,0 +1,13 @@
+PS Operaciones Ropa V39
+
+Validación de sintaxis:
+- app.py: OK
+- legacy_app.py: OK
+- core/settings.py: OK
+
+Pruebas automatizadas:
+- 15 aprobadas
+- 0 fallidas
+
+Advertencias:
+- 6 FutureWarning de pandas en services/conversion.py; no afectan la ejecución actual.
