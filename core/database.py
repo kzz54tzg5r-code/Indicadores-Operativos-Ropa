@@ -5,7 +5,9 @@ from core.settings import DB_FILE
 @contextmanager
 def connect():
     DB_FILE.parent.mkdir(parents=True, exist_ok=True)
-    con=sqlite3.connect(DB_FILE); con.row_factory=sqlite3.Row
+    con=sqlite3.connect(DB_FILE, timeout=3); con.row_factory=sqlite3.Row
+    con.execute("PRAGMA journal_mode=WAL")
+    con.execute("PRAGMA busy_timeout=3000")
     try: yield con; con.commit()
     finally: con.close()
 def initialize_database():
