@@ -407,24 +407,20 @@ def fmt_pct(x):
 
 
 def _compact_multiselect(label, options, default=None, key=None, help=None, **kwargs):
-    """Selector múltiple desplegable, compacto y resistente al layout.
+    """Multiselección nativa de Streamlit, estable y responsive.
 
-    Evita chips permanentes y nunca depende de columnas estrechas. El botón usa
-    una etiqueta corta y el catálogo se presenta en una sola columna dentro de
-    un popover con ancho controlado.
+    V42 elimina el popover personalizado que podía colapsarse a pocos píxeles.
+    Se conserva el estado y se usa el menú nativo desplegable en todas las páginas.
     """
     options = [str(x) for x in list(options or []) if str(x).strip()]
     if default is None:
         default = options
     default = [str(x) for x in list(default or []) if str(x) in options]
-    state_key = key or f"compact_{re.sub(r'[^a-z0-9]+', '_', label.lower()).strip('_')}"
-    if state_key not in st.session_state:
-        st.session_state[state_key] = list(default)
-    current = [x for x in list(st.session_state.get(state_key, [])) if x in options]
-    st.session_state[state_key] = current
-
-    # Etiqueta breve: evita que una frase larga se parta verticalmente.
-    short_label = str(label).strip()
+    state_key = key or f"compact_{re.sub(r'[^a-z0-9]+', '_', str(label).lower()).strip('_')}"
+    if state_key in st.session_state:
+        current = [str(x) for x in list(st.session_state.get(state_key, [])) if str(x) in options]
+    else:
+        current = list(default)
     short_aliases = {
         "Selecciona las tiendas que forman parte de Muertos y Cambios": "Tiendas del proyecto",
         "Tiendas": "Tiendas",
@@ -433,42 +429,17 @@ def _compact_multiselect(label, options, default=None, key=None, help=None, **kw
         "Color": "Color",
         "Colores": "Colores",
     }
-    short_label = short_aliases.get(short_label, short_label)
-    if len(short_label) > 34:
-        short_label = short_label[:31].rstrip() + "…"
-    summary = "Todas" if options and len(current) == len(options) else ("Ninguna" if not current else f"{len(current)} seleccionadas")
-
-    with st.container(key=f"filter_wrap_{state_key}"):
-        if help:
-            st.caption(help)
-        with st.popover(f"{short_label}: {summary}", use_container_width=True):
-            b1, b2 = st.columns(2, gap="small")
-            with b1:
-                if st.button("Seleccionar todas", key=f"{state_key}_all", use_container_width=True):
-                    st.session_state[state_key] = list(options)
-                    # Sin depender del estado previo de los checkboxes.
-                    for idx in range(len(options)):
-                        st.session_state[f"{state_key}_opt_{idx}"] = True
-                    st.rerun()
-            with b2:
-                if st.button("Limpiar", key=f"{state_key}_clear", use_container_width=True):
-                    st.session_state[state_key] = []
-                    for idx in range(len(options)):
-                        st.session_state[f"{state_key}_opt_{idx}"] = False
-                    st.rerun()
-            st.divider()
-            selected = []
-            for idx, option in enumerate(options):
-                checkbox_key = f"{state_key}_opt_{idx}"
-                if checkbox_key not in st.session_state:
-                    st.session_state[checkbox_key] = option in current
-                value = st.checkbox(option, key=checkbox_key)
-                if value:
-                    selected.append(option)
-            if selected != current:
-                st.session_state[state_key] = selected
-    return list(st.session_state.get(state_key, []))
-
+    short_label = short_aliases.get(str(label).strip(), str(label).strip())
+    selected = st.multiselect(
+        short_label,
+        options=options,
+        default=current,
+        key=state_key,
+        help=help,
+        placeholder="Selecciona una o varias opciones",
+        width="stretch",
+    )
+    return list(selected)
 
 def _secret_or_env(name, default=""):
     try:
@@ -10399,33 +10370,57 @@ def _pdf_dynamic_kpi_cards(summary, styles):
 
 
 def _pdf_table_flowable(df, styles, title=None):
+    """Tabla PDF legible: encabezados envueltos, sin solapamiento horizontal."""
     if df is None or df.empty:
         return []
-    out=df.copy()
-    # Evita PDFs ilegibles: conserva hasta 12 columnas en vista, manteniendo todas en Excel.
-    if len(out.columns)>12:
-        out=out.iloc[:, :12].copy()
+    out = df.copy()
+    if len(out.columns) > 12:
+        out = out.iloc[:, :12].copy()
     for col in out.columns:
-        vals=pd.to_numeric(out[col], errors="coerce")
-        if vals.notna().sum() == len(out) and len(out)>0:
-            if "%" in str(col): out[col]=vals.map(lambda x:f"{x:.1f}%")
-            elif "$" in str(col) or "VALOR" in norm_text(col) or "RECUPERACION" in norm_text(col): out[col]=vals.map(lambda x:f"${x:,.0f}")
-            else: out[col]=vals.map(lambda x:f"{x:,.0f}")
+        vals = pd.to_numeric(out[col], errors="coerce")
+        if len(out) and vals.notna().sum() == len(out):
+            if "%" in str(col):
+                out[col] = vals.map(lambda x: f"{x:.1f}%")
+            elif "$" in str(col) or "VALOR" in norm_text(col) or "RECUPERACION" in norm_text(col):
+                out[col] = vals.map(lambda x: f"${x:,.0f}")
+            else:
+                out[col] = vals.map(lambda x: f"{x:,.0f}")
     elems=[]
     if title:
-        elems.append(Paragraph(f"<b>{title}</b>", ParagraphStyle("sec", parent=styles["Normal"], fontSize=9.3, textColor=colors.HexColor("#173B73"), spaceBefore=5, spaceAfter=4)))
-    widths=[730/max(1,len(out.columns))]*len(out.columns)
-    data=[list(out.columns)]+out.astype(str).values.tolist()
-    t=Table(data,colWidths=widths,repeatRows=1)
+        elems.append(Paragraph(f"<b>{title}</b>", ParagraphStyle(
+            f"sec_{abs(hash(str(title)))%100000}", parent=styles["Normal"], fontSize=9.3,
+            textColor=colors.HexColor("#173B73"), spaceBefore=5, spaceAfter=4)))
+    n=max(1,len(out.columns)); avail=744.0
+    # Ponderación por longitud para evitar que títulos largos se monten entre columnas.
+    weights=[]
+    for c in out.columns:
+        base=max(7,min(24,len(str(c))))
+        if norm_text(c) in {"TIENDA","NOMBRE REAL","COLABORADOR"}: base=max(base,15)
+        weights.append(base)
+    total_w=sum(weights) or n
+    widths=[max(43, avail*w/total_w) for w in weights]
+    scale=avail/sum(widths)
+    widths=[w*scale for w in widths]
+    hstyle=ParagraphStyle("pdf_th", parent=styles["Normal"], fontName="Helvetica-Bold",
+                          fontSize=5.2, leading=6.1, textColor=colors.white, alignment=1)
+    bstyle=ParagraphStyle("pdf_td", parent=styles["Normal"], fontSize=5.5, leading=6.3,
+                          textColor=colors.HexColor("#111827"))
+    headers=[Paragraph(f"<b>{str(c)}</b>",hstyle) for c in out.columns]
+    body=[]
+    for row in out.astype(str).values.tolist():
+        body.append([Paragraph(str(v),bstyle) for v in row])
+    t=Table([headers]+body,colWidths=widths,repeatRows=1,hAlign="LEFT")
     t.setStyle(TableStyle([
-        ("BACKGROUND",(0,0),(-1,0),colors.HexColor("#173B73")),("TEXTCOLOR",(0,0),(-1,0),colors.white),
-        ("FONTNAME",(0,0),(-1,0),"Helvetica-Bold"),("FONTSIZE",(0,0),(-1,0),6.0),("FONTSIZE",(0,1),(-1,-1),5.7),
-        ("GRID",(0,0),(-1,-1),0.25,colors.HexColor("#DDE4F0")),("ROWBACKGROUNDS",(0,1),(-1,-1),[colors.white,colors.HexColor("#F7F9FC")]),
-        ("ALIGN",(1,1),(-1,-1),"RIGHT"),("TOPPADDING",(0,0),(-1,-1),3),("BOTTOMPADDING",(0,0),(-1,-1),3),
+        ("BACKGROUND",(0,0),(-1,0),colors.HexColor("#173B73")),
+        ("TEXTCOLOR",(0,0),(-1,0),colors.white),("VALIGN",(0,0),(-1,-1),"MIDDLE"),
+        ("GRID",(0,0),(-1,-1),0.25,colors.HexColor("#DDE4F0")),
+        ("ROWBACKGROUNDS",(0,1),(-1,-1),[colors.white,colors.HexColor("#F7F9FC")]),
+        ("ALIGN",(1,1),(-1,-1),"RIGHT"),("LEFTPADDING",(0,0),(-1,-1),3),
+        ("RIGHTPADDING",(0,0),(-1,-1),3),("TOPPADDING",(0,0),(-1,-1),3),
+        ("BOTTOMPADDING",(0,0),(-1,-1),3),
     ]))
     elems.append(t)
     return elems
-
 
 def _pdf_week_cards(week_df, styles):
     if week_df is None or week_df.empty:
@@ -10445,34 +10440,133 @@ def _pdf_week_cards(week_df, styles):
     return [Table([cards], colWidths=[182]*len(cards))]
 
 
+def _pdf_center_kpi_cards(summary, styles):
+    ordered=[
+        ("Piezas ingresadas","Piezas ingresadas","#3366CC"),
+        ("% Recuperación Piezas","Conversión","#7C3AED"),
+        ("% Recuperación $","Recuperación económica","#E6007E"),
+        ("% Productividad","Productividad","#10B981"),
+        ("% Recorridos","Recorridos","#F59E0B"),
+        ("PS Score","PS Score","#173B73"),
+    ]
+    cards=[]
+    for key,label,color in ordered:
+        if key in summary:
+            note=""
+            if key=="Piezas ingresadas" and "% Acondicionado" in summary: note=f"Acondicionado {safe_num(summary.get('% Acondicionado')):.1f}%"
+            elif key=="% Recuperación Piezas": note=f"{safe_num(summary.get('Piezas Recuperadas')):,.0f} piezas recuperadas"
+            elif key=="% Recuperación $": note=fmt_money(summary.get("Recuperación $",0))
+            elif key=="% Productividad": note=f"{safe_num(summary.get('Productividad')):,.0f} pzs/día"
+            elif key=="% Recorridos": note=f"{safe_num(summary.get('Realizados')):,.0f} de {safe_num(summary.get('Meta')):,.0f}"
+            cards.append(_pdf_kpi_card("•",label,_pdf_value_for_key(key,summary[key]),note,color,styles))
+    return cards
+
+
+def _pdf_card_rows(cards, per_row=4):
+    elems=[]
+    for i in range(0,len(cards),per_row):
+        row=cards[i:i+per_row]
+        widths=[184]*len(row)
+        tr=Table([row],colWidths=widths,rowHeights=[68],hAlign="LEFT")
+        tr.setStyle(TableStyle([("VALIGN",(0,0),(-1,-1),"MIDDLE"),("LEFTPADDING",(0,0),(-1,-1),2),("RIGHTPADDING",(0,0),(-1,-1),2)]))
+        elems += [tr,Spacer(1,5)]
+    return elems
+
+
+def _pdf_recovery_chart(df):
+    if df is None or df.empty or "Tienda" not in df.columns:
+        return Spacer(1,1)
+    d=Drawing(742,225); x0,y0=105,25; width,height=565,165
+    chart=df.copy()
+    dev_col="Dev Pzs"; rec_col="Piezas Recuperadas" if "Piezas Recuperadas" in chart.columns else "Recup. Pzs"
+    if dev_col not in chart or rec_col not in chart: return Spacer(1,1)
+    chart=chart.head(12).copy(); chart[dev_col]=pd.to_numeric(chart[dev_col],errors="coerce").fillna(0); chart[rec_col]=pd.to_numeric(chart[rec_col],errors="coerce").fillna(0)
+    maxv=max(float(chart[[dev_col,rec_col]].max().max()),1.0); n=max(len(chart),1); group_h=height/n; bar_h=min(8,group_h*.33)
+    for i,(_,r) in enumerate(chart.iterrows()):
+        cy=y0+height-(i+.5)*group_h; dev=float(r[dev_col]); rec=float(r[rec_col]); wd=width*dev/maxv; wr=width*rec/maxv
+        d.add(String(x0-8,cy-2,str(r["Tienda"]),textAnchor="end",fontSize=6,fillColor=colors.HexColor("#4B5563")))
+        d.add(Rect(x0,cy+1,wd,bar_h,fillColor=colors.HexColor("#173B73"),strokeColor=None)); d.add(Rect(x0,cy-bar_h-1,wr,bar_h,fillColor=colors.HexColor("#E6007E"),strokeColor=None))
+        if dev: d.add(String(x0+wd+4,cy+2,f"{dev:,.0f}",fontSize=5.5,fillColor=colors.HexColor("#173B73")))
+        if rec: d.add(String(x0+wr+4,cy-bar_h,f"{rec:,.0f}",fontSize=5.5,fillColor=colors.HexColor("#E6007E")))
+    d.add(Rect(520,207,9,7,fillColor=colors.HexColor("#173B73"),strokeColor=None)); d.add(String(533,207,"Dev Pzs",fontSize=6))
+    d.add(Rect(590,207,9,7,fillColor=colors.HexColor("#E6007E"),strokeColor=None)); d.add(String(603,207,"Recup. Pzs",fontSize=6))
+    return d
+
+
+def _pdf_pending_chart(df):
+    if df is None or df.empty or not {"Tienda","Total"}.issubset(df.columns): return Spacer(1,1)
+    d=Drawing(742,205); x0,y0=48,35; width,height=650,125
+    pend_h="Pend. Hab." if "Pend. Hab." in df.columns else None; pend_u="Pend. Ub." if "Pend. Ub." in df.columns else None
+    tiendas=list(df["Tienda"].astype(str)); totals=pd.to_numeric(df["Total"],errors="coerce").fillna(0).tolist(); ph=pd.to_numeric(df[pend_h],errors="coerce").fillna(0).tolist() if pend_h else [0]*len(df); pu=pd.to_numeric(df[pend_u],errors="coerce").fillna(0).tolist() if pend_u else [0]*len(df)
+    maxv=max(totals+ph+pu+[10]); ymax=maxv*1.25; n=max(len(tiendas),1); gw=width/n; bw=min(22,gw*.25); pts=[]
+    for i,t in enumerate(tiendas):
+        c=x0+gw*(i+.5); hh=height*ph[i]/ymax; hu=height*pu[i]/ymax; py=y0+height*totals[i]/ymax
+        d.add(Rect(c-bw-2,y0,bw,hh,fillColor=colors.HexColor("#173B73"),strokeColor=None)); d.add(Rect(c+2,y0,bw,hu,fillColor=colors.HexColor("#E6007E"),strokeColor=None)); pts.append((c,py)); d.add(String(c,y0-12,t,textAnchor="middle",fontSize=5.5,fillColor=colors.HexColor("#4B5563")))
+    if len(pts)>1: d.add(PolyLine(pts,strokeColor=colors.HexColor("#3366CC"),strokeWidth=2))
+    for x,y in pts: d.add(Circle(x,y,2.5,fillColor=colors.HexColor("#3366CC"),strokeColor=None))
+    return d
+
 def build_v41_report_pdf(title, subtitle, detail, summary, extra_sheets=None):
-    """PDF espejo de la pestaña: KPI + tablas + gráficos inferibles + tarjetas semanales."""
+    """V42: PDF espejo de cada pestaña, respetando el mismo orden visible."""
     buffer=BytesIO(); styles=getSampleStyleSheet()
     doc=SimpleDocTemplate(buffer,pagesize=landscape(letter),rightMargin=18,leftMargin=18,topMargin=14,bottomMargin=28)
-    story=[]
+    story=[]; extra_sheets=extra_sheets or {}
     logo=RLImage(str(LOGO_FILE),width=58,height=34) if LOGO_FILE.exists() else Paragraph("<b>Price Shoes</b>",styles["Normal"])
     u=st.session_state.get("user",{}); scope=u.get("scope_value") or "Compañía"
     head=Paragraph(f"<font name='Helvetica-Bold' color='#173B73' size='13'>PS Operaciones Ropa</font><br/><font name='Helvetica-Bold' color='#173B73' size='10'>{title}</font><font name='Helvetica' color='#5B6476' size='8'> | {subtitle}</font><br/><font name='Helvetica' color='#6B7280' size='7'>Usuario: {u.get('nombre','')} · Alcance: {scope} · Generado: {datetime.now(MX_TZ).strftime('%d/%m/%Y %H:%M')}</font>",ParagraphStyle("h",parent=styles["Normal"],leading=14))
     ht=Table([[logo,head]],colWidths=[72,650],rowHeights=[40]); ht.setStyle(TableStyle([("VALIGN",(0,0),(-1,-1),"MIDDLE"),("LEFTPADDING",(0,0),(-1,-1),0)])); story.append(ht)
     line=Table([[""]],colWidths=[744],rowHeights=[3]); line.setStyle(TableStyle([("BACKGROUND",(0,0),(-1,-1),colors.HexColor("#E6007E"))])); story += [line,Spacer(1,7)]
-    cards=_pdf_dynamic_kpi_cards(summary,styles)
-    if cards:
-        for i in range(0,len(cards),4):
-            row=cards[i:i+4]; tr=Table([row],colWidths=[184]*len(row),rowHeights=[68]); tr.setStyle(TableStyle([("VALIGN",(0,0),(-1,-1),"MIDDLE"),("LEFTPADDING",(0,0),(-1,-1),2),("RIGHTPADDING",(0,0),(-1,-1),2)])); story += [tr,Spacer(1,5)]
-    if extra_sheets and "Semanas del mes" in extra_sheets:
-        story.append(Paragraph("<b>Semanas del mes seleccionado</b>",ParagraphStyle("wh",parent=styles["Normal"],fontSize=10,textColor=colors.HexColor("#173B73"),spaceBefore=3,spaceAfter=5)))
-        story += _pdf_week_cards(extra_sheets.get("Semanas del mes"),styles); story.append(Spacer(1,7))
-    story += _pdf_table_flowable(detail,styles,"Tabla principal")
-    if detail is not None and not detail.empty and {"Tienda","Total","Habilitadas","Ubicadas"}.issubset(detail.columns):
-        story += [Spacer(1,7),Paragraph("<b>Ingreso vs Acondicionado vs Ubicado</b>",ParagraphStyle("ct",parent=styles["Normal"],fontSize=9,textColor=colors.HexColor("#173B73"),spaceAfter=3)),_pdf_chart(detail)]
-    if extra_sheets:
-        for name,frame in extra_sheets.items():
-            if name=="Semanas del mes" or frame is None or getattr(frame,"empty",True): continue
-            story += [Spacer(1,8)] + _pdf_table_flowable(frame,styles,name)
-            if {"Tienda","Total","Habilitadas","Ubicadas"}.issubset(frame.columns):
-                story += [Spacer(1,5),Paragraph(f"<b>{name} · Ingreso vs Acondicionado vs Ubicado</b>",ParagraphStyle("ect",parent=styles["Normal"],fontSize=8.5,textColor=colors.HexColor("#173B73"))),_pdf_chart(frame)]
-    doc.build(story,onFirstPage=_pdf_footer,onLaterPages=_pdf_footer); buffer.seek(0); return buffer.getvalue()
 
+    def h2(txt): return Paragraph(f"<b>{txt}</b>",ParagraphStyle(f"h2_{abs(hash(txt))%100000}",parent=styles["Normal"],fontSize=10,textColor=colors.HexColor("#173B73"),spaceBefore=4,spaceAfter=5))
+
+    if title == "Centro Ejecutivo":
+        weeks=extra_sheets.get("Semanas del mes")
+        if weeks is not None and not getattr(weeks,"empty",True):
+            story.append(h2("Semanas del mes seleccionado")); story += _pdf_week_cards(weeks,styles); story.append(Spacer(1,7))
+        story += _pdf_table_flowable(detail,styles,"Acumulado del mes por tienda")
+        if detail is not None and not detail.empty:
+            story += [Spacer(1,6),h2("Devolución y recuperación por tienda"),_pdf_recovery_chart(detail)]
+        story += [Spacer(1,6),h2("Indicadores acumulados del mes")]
+        story += _pdf_card_rows(_pdf_center_kpi_cards(summary,styles),4)
+        opf=extra_sheets.get("Operación")
+        if opf is not None and not getattr(opf,"empty",True) and {"Tienda","Total","Habilitadas","Ubicadas"}.issubset(opf.columns):
+            story += [Spacer(1,5),h2("Ingreso vs Acondicionado vs Ubicado"),_pdf_chart(opf)]
+    elif title == "Operación Diaria":
+        story += _pdf_card_rows(_pdf_dynamic_kpi_cards(summary,styles),4)
+        story += _pdf_table_flowable(detail,styles,"Detalle diario por tienda")
+        if detail is not None and not detail.empty and {"Tienda","Total","Habilitadas","Ubicadas"}.issubset(detail.columns):
+            story += [Spacer(1,6),h2("Ingreso vs Acondicionado vs Ubicado"),_pdf_chart(detail),Spacer(1,5),h2("Pendientes operativos por tienda"),_pdf_pending_chart(detail)]
+    elif title == "Reporte Semanal":
+        story += _pdf_card_rows(_pdf_dynamic_kpi_cards(summary,styles),4)
+        story += _pdf_table_flowable(detail,styles,"Detalle operativo")
+        if detail is not None and not detail.empty and {"Tienda","Total","Habilitadas","Ubicadas"}.issubset(detail.columns):
+            story += [Spacer(1,6),h2("Ingreso vs Acondicionado vs Ubicado"),_pdf_chart(detail)]
+        rec=extra_sheets.get("Recuperación")
+        if rec is not None and not getattr(rec,"empty",True): story += [Spacer(1,6)]+_pdf_table_flowable(rec,styles,"Recuperación por tienda")
+    elif title == "Reporte Mensual":
+        story += _pdf_card_rows(_pdf_dynamic_kpi_cards(summary,styles),4)
+        story += _pdf_table_flowable(detail,styles,"Detalle mensual")
+        if detail is not None and not detail.empty and {"Tienda","Total","Habilitadas","Ubicadas"}.issubset(detail.columns): story += [Spacer(1,6),h2("Ingreso vs Acondicionado vs Ubicado"),_pdf_chart(detail)]
+        rec=extra_sheets.get("Recuperación")
+        if rec is not None and not getattr(rec,"empty",True): story += [Spacer(1,6)]+_pdf_table_flowable(rec,styles,"Recuperación por tienda")+[Spacer(1,5),h2("Devolución y recuperación por tienda"),_pdf_recovery_chart(rec)]
+    elif title == "Productividad":
+        story += _pdf_card_rows(_pdf_dynamic_kpi_cards(summary,styles),4)
+        top=extra_sheets.get("Top 3"); bottom=extra_sheets.get("Bottom 3")
+        if top is not None and bottom is not None and not getattr(top,"empty",True) and not getattr(bottom,"empty",True):
+            left=_pdf_table_flowable(top,styles,"Top 3 colaboradores")[-1]; right=_pdf_table_flowable(bottom,styles,"Bottom 3 con actividad")[-1]
+            story += [Table([[left,right]],colWidths=[370,370],hAlign="LEFT"),Spacer(1,7)]
+        story += _pdf_table_flowable(detail,styles,"Ranking completo")
+    elif title == "Recorridos":
+        story += _pdf_card_rows(_pdf_dynamic_kpi_cards(summary,styles),4)
+        story += _pdf_table_flowable(detail,styles,"Detalle de recorridos")
+    else:
+        story += _pdf_card_rows(_pdf_dynamic_kpi_cards(summary,styles),4)
+        story += _pdf_table_flowable(detail,styles,"Detalle")
+        for name,frame in extra_sheets.items():
+            if frame is None or getattr(frame,"empty",True): continue
+            story += [Spacer(1,7)] + _pdf_table_flowable(frame,styles,name)
+
+    doc.build(story,onFirstPage=_pdf_footer,onLaterPages=_pdf_footer); buffer.seek(0); return buffer.getvalue()
 
 def _v25_downloads(title, subtitle, detail, summary, key, extra_sheets=None):
     c_pdf, c_xlsx = st.columns(2)
@@ -11502,3 +11596,17 @@ st.markdown(
     """,
     unsafe_allow_html=True,
 )
+
+# V42: CSS autoritativo para filtros nativos; evita texto vertical y columnas colapsadas.
+st.markdown("""
+<style>
+[data-testid="stMultiSelect"],[data-testid="stSelectbox"]{width:100%!important;max-width:100%!important;min-width:260px!important;display:block!important;}
+[data-testid="stMultiSelect"] label,[data-testid="stSelectbox"] label{white-space:nowrap!important;word-break:normal!important;writing-mode:horizontal-tb!important;display:block!important;width:100%!important;}
+[data-testid="stMultiSelect"] [data-baseweb="select"],[data-testid="stSelectbox"] [data-baseweb="select"]{width:100%!important;min-width:260px!important;max-width:100%!important;}
+[data-testid="stMultiSelect"] [data-baseweb="select"]>div,[data-testid="stSelectbox"] [data-baseweb="select"]>div{width:100%!important;min-height:44px!important;box-sizing:border-box!important;}
+[data-testid="stMultiSelect"] p,[data-testid="stSelectbox"] p{writing-mode:horizontal-tb!important;word-break:normal!important;white-space:normal!important;}
+/* Configuración de Metas: el selector de tiendas ocupa una fila completa. */
+[data-testid="stTabs"] [data-testid="stMultiSelect"]{width:min(100%,900px)!important;min-width:520px!important;}
+@media(max-width:800px){[data-testid="stMultiSelect"],[data-testid="stSelectbox"],[data-testid="stTabs"] [data-testid="stMultiSelect"]{min-width:0!important;width:100%!important;max-width:100%!important;}}
+</style>
+""",unsafe_allow_html=True)
