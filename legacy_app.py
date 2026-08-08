@@ -4675,7 +4675,8 @@ def load_data_for_page(page, mtime):
         if page_name in {"Centro Ejecutivo", "Reporte Semanal", "Reporte Mensual"}:
             return None, None
         if page_name == "Productividad" and source == "op":
-            return latest_value - pd.Timedelta(days=30), latest_value
+            # V43: productividad debe permitir consultar todo el histórico cargado.
+            return None, None
         if page_name == "Recorridos" and source == "op":
             start_value = _monday(latest_value)
             return start_value, start_value + pd.Timedelta(days=6)
@@ -6482,48 +6483,64 @@ def _configured_project_stores():
 
 
 def aggrid_table(df, height=360, editable=False, key=None):
+    """Tabla corporativa manteniendo tipos numéricos para ordenamiento correcto.
+
+    V43: antes se enviaban porcentajes/monedas ya convertidos a texto, por lo
+    que 100% podía ordenarse junto a 15% antes que 60%. Ahora AgGrid recibe
+    números reales y solo formatea visualmente con valueFormatter.
+    """
     if df is None or df.empty:
         st.info("Sin información para mostrar.")
         return df
-    show = format_display(df)
-    auto_height = min(max(118 + len(show) * 34, 170), height)
+    raw = df.copy()
+    auto_height = min(max(118 + len(raw) * 34, 170), height)
 
     if not AGGRID_OK:
-        st.dataframe(show, hide_index=True, width="stretch", height=auto_height)
+        st.dataframe(format_display(raw), hide_index=True, width="stretch", height=auto_height)
         return df
 
-    gb = GridOptionsBuilder.from_dataframe(show)
-    column_count = max(len(show.columns), 1)
+    gb = GridOptionsBuilder.from_dataframe(raw)
+    column_count = max(len(raw.columns), 1)
     adaptive_min = 62 if column_count >= 8 else 82
     gb.configure_default_column(
         filter=True, sortable=True, resizable=True, editable=editable,
         minWidth=adaptive_min, wrapHeaderText=True, autoHeaderHeight=True
     )
-    if "Tienda" in show.columns:
-        gb.configure_column("Tienda", pinned="left", minWidth=105, maxWidth=150)
-    for col in show.columns:
-        if col != "Tienda":
-            if col == "% Ubic.":
-                gb.configure_column(
-                    col,
-                    type=["rightAligned"],
-                    minWidth=68,
-                    cellStyle=JsCode("""
-                        function(params) {
-                            const v = parseFloat(String(params.value).replace('%','').replace(',',''));
-                            if (isNaN(v)) return {};
-                            if (v < 75) {
-                                return {'color':'#D71920','fontWeight':'900'};
-                            }
-                            if (v >= 90) {
-                                return {'color':'#008A3B','fontWeight':'900'};
-                            }
-                            return {'color':'#111827','fontWeight':'700'};
-                        }
-                    """)
-                )
+    if "Tienda" in raw.columns:
+        gb.configure_column("Tienda", pinned="left", minWidth=105, maxWidth=155)
+
+    pct_formatter = JsCode("""function(p){if(p.value===null||p.value===undefined||p.value==='')return ''; const v=Number(p.value); return isNaN(v)?p.value:v.toLocaleString('en-US',{minimumFractionDigits:1,maximumFractionDigits:1})+'%';}""")
+    money_formatter = JsCode("""function(p){if(p.value===null||p.value===undefined||p.value==='')return ''; const v=Number(p.value); return isNaN(v)?p.value:'$'+v.toLocaleString('en-US',{maximumFractionDigits:0});}""")
+    num_formatter = JsCode("""function(p){if(p.value===null||p.value===undefined||p.value==='')return ''; const v=Number(p.value); return isNaN(v)?p.value:v.toLocaleString('en-US',{maximumFractionDigits:0});}""")
+
+    for col in raw.columns:
+        if col == "Tienda" or col in ["Nombre", "Nombre Real", "Colaborador", "Actividad", "Estado"]:
+            continue
+        ser = pd.to_numeric(raw[col], errors="coerce")
+        is_numeric = ser.notna().mean() > 0.70
+        kwargs = {"type": ["rightAligned"], "minWidth": 62}
+        if is_numeric:
+            # Fuerza comparación numérica aun cuando una fila venga como string.
+            kwargs["comparator"] = JsCode("""function(a,b){const x=parseFloat(String(a).replace(/[$,%]/g,'')); const y=parseFloat(String(b).replace(/[$,%]/g,'')); if(isNaN(x)&&isNaN(y))return 0; if(isNaN(x))return -1; if(isNaN(y))return 1; return x-y;}""")
+            cname = str(col)
+            if "%" in cname:
+                kwargs["valueFormatter"] = pct_formatter
+            elif "$" in cname or "IMPORTE" in norm_text(cname) or "VALOR" in norm_text(cname) or "VENTA" in norm_text(cname):
+                kwargs["valueFormatter"] = money_formatter
             else:
-                gb.configure_column(col, type=["rightAligned"], minWidth=62)
+                kwargs["valueFormatter"] = num_formatter
+        if col == "% Ubic.":
+            kwargs["cellStyle"] = JsCode("""
+                function(params) {
+                    const v = Number(params.value);
+                    if (isNaN(v)) return {};
+                    if (v < 75) return {'color':'#D71920','fontWeight':'900'};
+                    if (v >= 90) return {'color':'#008A3B','fontWeight':'900'};
+                    return {'color':'#111827','fontWeight':'700'};
+                }
+            """)
+        gb.configure_column(col, **kwargs)
+
     opts = gb.build()
     opts["rowHeight"] = 34
     opts["headerHeight"] = 46
@@ -6540,7 +6557,7 @@ def aggrid_table(df, height=360, editable=False, key=None):
             if (projectStores.includes(tienda)) {{
                 return {{'backgroundColor':'#EAF2FF','borderLeft':'4px solid #3366CC','fontWeight':'650'}};
             }}
-            if (params.node.rowIndex % 2 === 0) {{ return {{'backgroundColor':'#FFFFFF'}}; }}
+            if (params.node.rowIndex % 2 === 0) return {{'backgroundColor':'#FFFFFF'}};
             return {{'backgroundColor':'#F8FAFC'}};
         }}
     """)
@@ -6558,16 +6575,10 @@ def aggrid_table(df, height=360, editable=False, key=None):
         ".ag-cell": {"font-size": "11px !important", "padding-left": "6px !important", "padding-right": "6px !important"},
     }
     result = AgGrid(
-        show,
-        gridOptions=opts,
-        height=auto_height,
-        width="100%",
-        fit_columns_on_grid_load=True,
-        allow_unsafe_jscode=True,
-        custom_css=css,
-        theme="alpine",
-        key=key or f"ag_{abs(hash(str(show.columns.tolist())+str(len(show))))}",
-            )
+        raw, gridOptions=opts, height=auto_height, width="100%",
+        fit_columns_on_grid_load=True, allow_unsafe_jscode=True, custom_css=css,
+        theme="alpine", key=key or f"ag_{abs(hash(str(raw.columns.tolist())+str(len(raw))))}",
+    )
     if editable and result and "data" in result:
         return pd.DataFrame(result["data"])
     return df
@@ -8987,7 +8998,7 @@ def render_recovery_enterprise(co, key_prefix, title):
     with c1:
         years = sorted(detail_all["Año ISO"].dropna().astype(int).unique())
         selected_years = _compact_multiselect(
-            "Año ISO", years, default=years[-1:], key=f"{key_prefix}_years"
+            "Año ISO", years, default=years, key=f"{key_prefix}_years"
         )
     year_base = detail_all[
         detail_all["Año ISO"].isin(selected_years)
@@ -8996,7 +9007,7 @@ def render_recovery_enterprise(co, key_prefix, title):
     with c2:
         weeks = sorted(year_base["Semana ISO"].dropna().astype(int).unique())
         selected_weeks = _compact_multiselect(
-            "Semana ISO", weeks, default=weeks[-1:] if weeks else [],
+            "Semana ISO", weeks, default=weeks if weeks else [],
             key=f"{key_prefix}_weeks",
         )
     with c3:
@@ -10613,6 +10624,54 @@ def _v25_recovery_period(co, start, end, stores=None):
     return recovery_executive_summary(current)
 
 
+def _v43_clean_employee_name(value):
+    """Quita números de nómina/comillas y valores vacíos del nombre visible."""
+    text = str(value or "").strip().strip('"\'')
+    if norm_text(text) in {"", "NAN", "NONE", "NULL", "SIN NOMBRE"}:
+        return ""
+    # Ejemplos: '118015, Margarita...' / 998 Maria...
+    text = re.sub(r"^\s*[\"']?\d+\s*[,;:\-]?\s*", "", text).strip()
+    text = re.sub(r"\s+", " ", text).strip(" ,;:-\"'")
+    return text
+
+
+def _v43_canonicalize_employee_names(frame, name_col):
+    """Agrupa abreviaciones compatibles dentro de la misma tienda.
+
+    Si 'Ivon' e 'Ivonne Torres Garduño' aparecen en la misma tienda y no hay
+    ambigüedad, se usa el nombre completo. Nunca mezcla tiendas distintas.
+    """
+    if frame is None or frame.empty or name_col not in frame.columns:
+        return frame
+    out = frame.copy()
+    out[name_col] = out[name_col].map(_v43_clean_employee_name)
+    out = out[out[name_col].astype(str).str.strip().ne("")].copy()
+    if out.empty or "Tienda" not in out.columns:
+        return out
+    for store, idx in out.groupby("Tienda").groups.items():
+        names = sorted(set(out.loc[idx, name_col].astype(str)), key=lambda x: (-len(x.split()), -len(x), x))
+        full_candidates = [n for n in names if len(n.split()) >= 2]
+        mapping = {}
+        for n in names:
+            nn = norm_text(n)
+            first = nn.split()[0] if nn.split() else nn
+            matches = []
+            for cand in full_candidates:
+                cn = norm_text(cand); cfirst = cn.split()[0] if cn.split() else cn
+                # Prefijo de primer nombre (IVON/IVONNE) y, si ambos son completos,
+                # al menos un apellido en común para evitar unir personas distintas.
+                if len(first) >= 3 and (first.startswith(cfirst) or cfirst.startswith(first)):
+                    ntoks, ctoks = set(nn.split()[1:]), set(cn.split()[1:])
+                    if len(n.split()) == 1 or not ntoks or (ntoks & ctoks):
+                        matches.append(cand)
+            if len(set(matches)) == 1:
+                mapping[n] = matches[0]
+            else:
+                mapping[n] = n
+        out.loc[idx, name_col] = out.loc[idx, name_col].map(mapping)
+    return out
+
+
 def _v25_productivity_period(op, start, end, stores=None, meta=784):
     current = _v25_date_filter(normalize_operation_df(op), start, end)
     current = filter_stores(current, stores)
@@ -10620,6 +10679,9 @@ def _v25_productivity_period(op, start, end, stores=None, meta=784):
         return pd.DataFrame(), {"Piezas": 0.0, "Días": 0, "Productividad": 0.0, "% Productividad": 0.0}
     split = split_operation(current)
     name_col = "Nombre Real" if "Nombre Real" in split.columns else "Nombre"
+    split = _v43_canonicalize_employee_names(split, name_col)
+    if split.empty:
+        return pd.DataFrame(), {"Piezas": 0.0, "Días": 0, "Productividad": 0.0, "% Productividad": 0.0}
     productive_mask = split["Actividad"].map(norm_text).str.contains(
         r"ACONDICION|HABILIT|UBIC|RECOLECCION DE MUERTOS|RECOLECCIÓN DE MUERTOS|CAJA|PROBADOR",
         regex=True, na=False,
@@ -10834,126 +10896,128 @@ def _v39_recovery_chart(macro, title):
 
 
 def _v39_safe_combined_chart(table, title, income_column="Total"):
+    """Gráfica operativa legible: barras con valores internos y línea etiquetada arriba."""
     if table is None or table.empty:
         st.info("Sin información operativa para generar la gráfica.")
         return
     numeric_cols = [income_column, "Habilitadas", "Ubicadas"]
-    has_data = any(
-        pd.to_numeric(table.get(c, pd.Series(dtype=float)), errors="coerce").fillna(0).abs().sum() > 0
-        for c in numeric_cols
-    )
+    has_data = any(pd.to_numeric(table.get(c, pd.Series(dtype=float)), errors="coerce").fillna(0).abs().sum() > 0 for c in numeric_cols)
     if not has_data:
         st.info("El periodo seleccionado no contiene valores operativos graficables.")
         return
     chart_df = table.copy()
     for c in numeric_cols:
-        if c not in chart_df.columns:
-            chart_df[c] = 0
+        if c not in chart_df.columns: chart_df[c] = 0
         chart_df[c] = pd.to_numeric(chart_df[c], errors="coerce").fillna(0)
     fig = go.Figure()
-    fig.add_bar(
-        x=chart_df["Tienda"], y=chart_df["Habilitadas"], name="Acondicionado",
-        marker_color="#173B73", text=chart_df["Habilitadas"].map(lambda x: f"{x:,.0f}" if x else ""),
-        textposition="outside", cliponaxis=False,
-    )
-    fig.add_bar(
-        x=chart_df["Tienda"], y=chart_df["Ubicadas"], name="Ubicado",
-        marker_color="#E6007E", text=chart_df["Ubicadas"].map(lambda x: f"{x:,.0f}" if x else ""),
-        textposition="outside", cliponaxis=False,
-    )
-    fig.add_scatter(
-        x=chart_df["Tienda"], y=chart_df[income_column], name="Ingresos",
-        mode="lines+markers+text", line=dict(color="#3366CC", width=3), marker=dict(size=8),
-        text=chart_df[income_column].map(lambda x: f"{x:,.0f}" if x else ""),
-        textposition="top center", textfont=dict(size=11, color="#111827"),
-    )
+    fig.add_bar(x=chart_df["Tienda"], y=chart_df["Habilitadas"], name="Acondicionado", marker_color="#173B73",
+                text=chart_df["Habilitadas"].map(lambda x: f"{x:,.0f}" if x else ""), textposition="inside", insidetextfont=dict(color="white",size=11))
+    fig.add_bar(x=chart_df["Tienda"], y=chart_df["Ubicadas"], name="Ubicado", marker_color="#E6007E",
+                text=chart_df["Ubicadas"].map(lambda x: f"{x:,.0f}" if x else ""), textposition="inside", insidetextfont=dict(color="white",size=11))
+    fig.add_scatter(x=chart_df["Tienda"], y=chart_df[income_column], name="Ingresos", mode="lines+markers",
+                    line=dict(color="#3366CC", width=3), marker=dict(size=8),
+                    hovertemplate="<b>%{x}</b><br>Ingresos: %{y:,.0f}<extra></extra>")
     raw_max = max(float(chart_df[c].max()) for c in numeric_cols)
-    ymax = max(raw_max * 1.30, 10)
-    fig.update_layout(
-        title=title, barmode="group", height=440, hovermode="x unified",
-        plot_bgcolor="white", paper_bgcolor="white",
-        margin=dict(l=20, r=20, t=75, b=90),
-        legend=dict(orientation="h", y=1.10, x=0),
-        yaxis=dict(range=[0, ymax], gridcolor="#E5E7EB", fixedrange=True),
-        xaxis=dict(tickangle=-35, fixedrange=True, automargin=True),
-        uniformtext_minsize=9, uniformtext_mode="hide",
-    )
-    st.plotly_chart(fig, width="stretch", config={"displayModeBar": False, "responsive": True})
+    gap = max(raw_max * .07, 20)
+    for _, row in chart_df.iterrows():
+        y_top = max(float(row[income_column]), float(row["Habilitadas"]), float(row["Ubicadas"])) + gap
+        fig.add_annotation(x=row["Tienda"], y=y_top, text=f"Ing. {float(row[income_column]):,.0f}", showarrow=False,
+                           font=dict(size=10,color="#173B73"), bgcolor="rgba(255,255,255,.90)", bordercolor="#D9E2F1", borderwidth=1, borderpad=2)
+    ymax = max(raw_max + gap*2.4, 10)
+    fig.update_layout(title=title,barmode="group",height=440,hovermode="x unified",plot_bgcolor="white",paper_bgcolor="white",
+                      margin=dict(l=20,r=20,t=78,b=90),legend=dict(orientation="h",y=1.10,x=0),
+                      yaxis=dict(range=[0,ymax],gridcolor="#E5E7EB",fixedrange=True),
+                      xaxis=dict(tickangle=-30,fixedrange=True,automargin=True),uniformtext_minsize=9,uniformtext_mode="hide")
+    st.plotly_chart(fig,width="stretch",config={"displayModeBar":False,"responsive":True})
 
 
-def page_resumen(op, co):
+def _v43_pending_chart(table, title="Pendientes operativos por tienda"):
+    if table is None or table.empty: return
+    cols=["Tienda","Ingresos periodo","Pend. Hab.","Pend. Ub."]
+    p=table[[c for c in cols if c in table.columns]].copy()
+    if "Ingresos periodo" not in p.columns: p["Ingresos periodo"]=pd.to_numeric(table.get("Total",0),errors="coerce").fillna(0)
+    for c in ["Ingresos periodo","Pend. Hab.","Pend. Ub."]:
+        if c not in p: p[c]=0
+        p[c]=pd.to_numeric(p[c],errors="coerce").fillna(0)
+    fig=go.Figure()
+    fig.add_bar(x=p["Tienda"],y=p["Pend. Hab."],name="Pendiente acondicionar",marker_color="#173B73",
+                text=p["Pend. Hab."].map(lambda x:f"{x:,.0f}" if x else ""),textposition="inside",insidetextfont=dict(color="white"))
+    fig.add_bar(x=p["Tienda"],y=p["Pend. Ub."],name="Pendiente ubicar",marker_color="#E6007E",
+                text=p["Pend. Ub."].map(lambda x:f"{x:,.0f}" if x else ""),textposition="inside",insidetextfont=dict(color="white"))
+    fig.add_scatter(x=p["Tienda"],y=p["Ingresos periodo"],name="Ingresos periodo",mode="lines+markers",line=dict(color="#3366CC",width=3),marker=dict(size=8))
+    raw=max(float(p[c].max()) for c in ["Ingresos periodo","Pend. Hab.","Pend. Ub."]); gap=max(raw*.07,15)
+    for _,r in p.iterrows():
+        fig.add_annotation(x=r["Tienda"],y=max(r["Ingresos periodo"],r["Pend. Hab."],r["Pend. Ub."])+gap,
+                           text=f"Ing. {r['Ingresos periodo']:,.0f}",showarrow=False,font=dict(size=10,color="#173B73"),
+                           bgcolor="rgba(255,255,255,.9)",bordercolor="#D9E2F1",borderwidth=1,borderpad=2)
+    fig.update_layout(title=title,height=400,barmode="group",plot_bgcolor="white",paper_bgcolor="white",
+                      margin=dict(l=15,r=15,t=75,b=70),legend=dict(orientation="h",y=1.10,x=0),
+                      yaxis=dict(range=[0,max(raw+gap*2.4,10)],gridcolor="#E5E7EB"),xaxis=dict(tickangle=-25))
+    st.plotly_chart(fig,width="stretch",config={"displayModeBar":False,"responsive":True})
+
+
+def page_resumen(op, co, company_co=None):
     op = reliable_operation(op, co)
     co = normalize_commercial_df(co)
+    company_co = normalize_commercial_df(company_co if company_co is not None else co)
     user = st.session_state.get("user", {})
     render_personalized_executive_header(user, op, co)
-    if (op is None or op.empty) and (co is None or co.empty):
-        st.info("Sin información disponible dentro del alcance asignado.")
-        return
+    if (op is None or op.empty) and (company_co is None or company_co.empty):
+        st.info("Sin información disponible dentro del alcance asignado."); return
 
-    stores = authorized_stores(op, co, user)
-    months = _v39_month_options(op, co)
-    if not months:
-        st.info("No se detectaron meses válidos en la fuente.")
-        return
-
+    project_stores = authorized_stores(op, co, user)
+    company_stores = authorized_stores(None, company_co, user)
+    months = _v39_month_options(op, company_co)
+    if not months: st.info("No se detectaron meses válidos en la fuente."); return
     selected_month = st.selectbox("Mes del Centro Ejecutivo", months, index=len(months)-1, key="v39_center_month")
-    period = pd.Period(selected_month, freq="M")
-    start, end = period.start_time.normalize(), period.end_time.normalize()
+    period = pd.Period(selected_month, freq="M"); start,end=period.start_time.normalize(),period.end_time.normalize()
 
-    op_table, opm = _v25_operational_period(op, co, start, end, stores, carryover="none")
-    recm, rec_detail = _v25_recovery_period(co, start, end, stores)
-    prod_table, prodm = _v25_productivity_period(op, start, end, stores)
-    route_table, routem = _v25_recorridos_period(op, start, end, stores)
-    score, _ = _v25_score(opm, recm, prodm, routem)
+    # Operación y productividad: únicamente tiendas configuradas en el proyecto.
+    op_table, opm = _v25_operational_period(op, co, start, end, project_stores, carryover="none")
+    prod_table, prodm = _v25_productivity_period(op, start, end, project_stores)
+    route_table, routem = _v25_recorridos_period(op, start, end, project_stores)
+    # Recuperación/ranking ejecutivo: todas las tiendas autorizadas de la compañía.
+    recm_company, rec_detail_company = _v25_recovery_period(company_co, start, end, company_stores)
+    recm_project, _ = _v25_recovery_period(co, start, end, project_stores)
+    score,_ = _v25_score(opm,recm_project,prodm,routem)
 
-    real_dates = []
-    for frame in (op, co):
+    real_dates=[]
+    for frame in (op,company_co):
         if frame is not None and not frame.empty and "Fecha" in frame.columns:
-            real_dates.extend(pd.to_datetime(frame["Fecha"], errors="coerce").dropna().tolist())
-    last_real = pd.Timestamp(max(real_dates)).normalize() if real_dates else end
-    st.caption(
-        f"Mes consultado: {period.strftime('%B %Y').capitalize()} · "
-        f"Periodo: {start.strftime('%d/%m/%Y')} al {end.strftime('%d/%m/%Y')} · "
-        f"Última actualización real: {last_real.strftime('%d/%m/%Y')}"
-    )
+            real_dates.extend(pd.to_datetime(frame["Fecha"],errors="coerce").dropna().tolist())
+    last_real=pd.Timestamp(max(real_dates)).normalize() if real_dates else end
+    st.caption(f"Mes consultado: {period.strftime('%B %Y').capitalize()} · Periodo: {start.strftime('%d/%m/%Y')} al {end.strftime('%d/%m/%Y')} · Última actualización real: {last_real.strftime('%d/%m/%Y')}")
 
-    week_summary = _v39_week_cards_for_month(op, co, stores, period)
+    week_summary=_v39_week_cards_for_month(op,co,project_stores,period)
 
-    st.markdown("### Acumulado del mes por tienda")
-    macro = _v25_macro(rec_detail)
+    st.markdown("### Ranking ejecutivo · todas las tiendas")
+    macro=_v25_macro(rec_detail_company)
     if not macro.empty:
-        ranked = macro.sort_values(["% Recuperación económica", "% Conversión"], ascending=False).copy()
-        ranked_display = ranked.rename(columns={
-            "Piezas Recuperadas": "Recup. Pzs",
-            "Valor de la Devolución a Precio Neto": "Valor Dev. $",
-            "Recuperación $": "Recup. $",
-            "% Conversión": "Conv. %",
-            "% Recuperación económica": "Recup. %",
-            "Pendiente Pzs": "Pend. Pzs",
-            "Pendiente $": "Pend. $",
-        })
-        preferred = ["Tienda", "Dev Pzs", "Recup. Pzs", "Conv. %", "Valor Dev. $", "Recup. $", "Recup. %", "Pend. Pzs", "Pend. $"]
-        panel(f"Ranking ejecutivo · {selected_month}", ranked_display[[c for c in preferred if c in ranked_display.columns]], height=430)
-        _v39_recovery_chart(ranked, f"Devolución y recuperación por tienda · {selected_month}")
-    else:
-        st.info("Sin información comercial para el mes seleccionado.")
+        ranked=macro.sort_values(["% Recuperación económica","% Conversión"],ascending=False).copy()
+        rd=ranked.rename(columns={"Piezas Recuperadas":"Recup. Pzs","Valor de la Devolución a Precio Neto":"Valor Dev. $","Recuperación $":"Recup. $","% Conversión":"Conv. %","% Recuperación económica":"Recup. %","Pendiente Pzs":"Pend. Pzs","Pendiente $":"Pend. $"})
+        preferred=["Tienda","Dev Pzs","Recup. Pzs","Conv. %","Valor Dev. $","Recup. $","Recup. %","Pend. Pzs","Pend. $"]
+        panel(f"Ranking ejecutivo · {selected_month}",rd[[c for c in preferred if c in rd.columns]],height=500)
+        _v39_recovery_chart(ranked,f"Devolución y recuperación · todas las tiendas · {selected_month}")
+    else: st.info("Sin información comercial para el mes seleccionado.")
 
-    st.markdown("### Indicadores acumulados del mes")
-    _v25_kpi_cards([
-        ("Piezas ingresadas", fmt_num(opm["Piezas ingresadas"]), f"Acondicionado {opm['% Acondicionado']:.1f}%", "#3366CC"),
-        ("Conversión", fmt_pct(recm["% Recuperación Piezas"]), f"{recm['Piezas Recuperadas']:,.0f} piezas recuperadas", "#7C3AED"),
-        ("Recuperación económica", fmt_pct(recm["% Recuperación $"]), fmt_money(recm["Recuperación $"]), "#E6007E"),
-        ("Productividad", fmt_pct(prodm["% Productividad"]), f"{prodm['Productividad']:,.0f} pzs/día", "#10B981"),
-        ("Recorridos", fmt_pct(routem["% Recorridos"]), f"{routem['Realizados']:,.0f} de {routem['Meta']:,.0f}", "#F59E0B"),
-        ("PS Score", f"{score:.1f}", "Excelente" if score >= 90 else "Estable" if score >= 80 else "Atención" if score >= 70 else "Crítico", "#173B73"),
-    ])
-
+    st.markdown("### Operación del mes · tiendas del proyecto")
     if not op_table.empty:
-        _v39_safe_combined_chart(op_table, f"Ingreso vs Acondicionado vs Ubicado · {selected_month}", income_column="Total")
+        op_display=op_table.drop(columns=["Pend. Ant."],errors="ignore")
+        panel(f"Detalle operativo · {selected_month}",op_display,height=430)
+        _v39_safe_combined_chart(op_display,f"Ingreso vs Acondicionado vs Ubicado · {selected_month}",income_column="Ingresos periodo")
 
-    summary = {**opm, **recm, **prodm, **routem, "PS Score": score, "Mes": selected_month}
-    extras = {"Semanas del mes": week_summary, "Operación": op_table, "Productividad": prod_table, "Recorridos": route_table}
-    _v25_downloads("Centro Ejecutivo", f"Mes {selected_month}", macro if not macro.empty else op_table, summary, "v39_center", extras)
+    st.markdown("### Indicadores acumulados del mes · proyecto")
+    _v25_kpi_cards([
+        ("Piezas ingresadas",fmt_num(opm["Piezas ingresadas"]),f"Acondicionado {opm['% Acondicionado']:.1f}%","#3366CC"),
+        ("Conversión",fmt_pct(recm_project["% Recuperación Piezas"]),f"{recm_project['Piezas Recuperadas']:,.0f} piezas recuperadas","#7C3AED"),
+        ("Recuperación económica",fmt_pct(recm_project["% Recuperación $"]),fmt_money(recm_project["Recuperación $"]),"#E6007E"),
+        ("Productividad",fmt_pct(prodm["% Productividad"]),f"{prodm['Productividad']:,.0f} pzs/día","#10B981"),
+        ("Recorridos",fmt_pct(routem["% Recorridos"]),f"{routem['Realizados']:,.0f} de {routem['Meta']:,.0f}","#F59E0B"),
+        ("PS Score",f"{score:.1f}","Excelente" if score>=90 else "Estable" if score>=80 else "Atención" if score>=70 else "Crítico","#173B73")])
+
+    summary={**opm,**recm_project,**prodm,**routem,"PS Score":score,"Mes":selected_month}
+    extras={"Semanas del mes":week_summary,"Operación proyecto":op_table.drop(columns=["Pend. Ant."],errors="ignore"),"Ranking compañía":macro,"Productividad":prod_table,"Recorridos":route_table}
+    _v25_downloads("Centro Ejecutivo",f"Mes {selected_month}",macro if not macro.empty else op_table,summary,"v43_center",extras)
 
 def page_por_dia(op, co):
     op = reliable_operation(op, co); co = normalize_commercial_df(co)
@@ -10978,118 +11042,68 @@ def page_por_dia(op, co):
     if not table.empty:
         panel("Detalle diario por tienda", table, height=390)
         combined_chart(table,"Ingreso vs Acondicionado vs Ubicado", income_column="Total")
-        pending = table[[c for c in ["Tienda","Total","Pend. Hab.","Pend. Ub."] if c in table.columns]].copy()
-        if not pending.empty:
-            fig=go.Figure(); fig.add_scatter(x=pending["Tienda"],y=pending.get("Total",0),name="Ingresos",mode="lines+markers",line=dict(color="#3366CC",width=3),marker=dict(color="#3366CC",size=7));
-            if "Pend. Hab." in pending: fig.add_bar(x=pending["Tienda"],y=pending["Pend. Hab."],name="Pendiente acondicionar",marker_color="#173B73")
-            if "Pend. Ub." in pending: fig.add_bar(x=pending["Tienda"],y=pending["Pend. Ub."],name="Pendiente ubicar",marker_color="#E6007E")
-            fig.update_layout(title="Pendientes operativos por tienda",height=390,barmode="group",plot_bgcolor="white",paper_bgcolor="white",margin=dict(l=8,r=8,t=60,b=58),legend=dict(orientation="h",y=1.10,x=1,xanchor="right")); fig.update_xaxes(fixedrange=True); fig.update_yaxes(fixedrange=True,gridcolor="#E5E7EB"); st.plotly_chart(fig,width="stretch",config={"displayModeBar":False,"responsive":True})
+        _v43_pending_chart(table)
     summary={**metrics,**recm,"Fecha":str(selected)}
     _v25_downloads("Operación Diaria",f"Fecha: {pd.Timestamp(selected).strftime('%d/%m/%Y')}",table,summary,"v25_daily",{"Recuperación":detail})
 
 
-def page_semanal(op, co):
-    op = reliable_operation(op, co)
-    co = normalize_commercial_df(co)
-    _v17_title("Reporte Semanal", "Consulta exclusiva de una semana ISO seleccionada.")
-    stores = authorized_stores(op, co)
-    pairs = available_iso_weeks(op, co)
-    if not pairs:
-        st.info("Sin semanas válidas detectadas.")
-        return
-    labels = [f"{y}-Semana {w:02d}" for y, w in pairs]
-    label = st.selectbox("Semana ISO", labels, index=len(labels)-1, key="v39_week")
-    year, week = pairs[labels.index(label)]
-    start, end = _v25_week_bounds(year, week)
+def page_semanal(op, co, company_co=None):
+    op=reliable_operation(op,co); co=normalize_commercial_df(co); company_co=normalize_commercial_df(company_co if company_co is not None else co)
+    _v17_title("Reporte Semanal","Consulta exclusiva de una semana ISO seleccionada. El pendiente se reinicia cada lunes.")
+    project_stores=authorized_stores(op,co); company_stores=authorized_stores(None,company_co)
+    pairs=available_iso_weeks(op,company_co)
+    if not pairs: st.info("Sin semanas válidas detectadas."); return
+    labels=[f"{y}-Semana {w:02d}" for y,w in pairs]; label=st.selectbox("Semana ISO",labels,index=len(labels)-1,key="v39_week")
+    year,week=pairs[labels.index(label)]; start,end=_v25_week_bounds(year,week)
 
-    table, opm = _v25_operational_period(op, co, start, end, stores, carryover="previous_sunday")
-    recm, detail = _v25_recovery_period(co, start, end, stores)
-    prod_table, prodm = _v25_productivity_period(op, start, end, stores)
-    route_table, routem = _v25_recorridos_period(op, start, end, stores)
+    # Reinicio semanal: no arrastra el pendiente del domingo anterior y no lo suma al ingreso.
+    table,opm=_v25_operational_period(op,co,start,end,project_stores,carryover="none")
+    recm_project,_=_v25_recovery_period(co,start,end,project_stores)
+    recm_company,detail_company=_v25_recovery_period(company_co,start,end,company_stores)
+    prod_table,prodm=_v25_productivity_period(op,start,end,project_stores); route_table,routem=_v25_recorridos_period(op,start,end,project_stores)
+    pstart,pend=start-pd.Timedelta(days=7),end-pd.Timedelta(days=7)
+    _,prev_op=_v25_operational_period(op,co,pstart,pend,project_stores,carryover="none"); prev_rec,_=_v25_recovery_period(co,pstart,pend,project_stores)
+    delta_ing=opm["Piezas ingresadas"]-prev_op["Piezas ingresadas"]; delta_conv=recm_project["% Recuperación Piezas"]-prev_rec["% Recuperación Piezas"]
 
-    pstart, pend = start - pd.Timedelta(days=7), end - pd.Timedelta(days=7)
-    _, prev_op = _v25_operational_period(op, co, pstart, pend, stores, carryover="previous_sunday")
-    prev_rec, _ = _v25_recovery_period(co, pstart, pend, stores)
-    delta_ing = opm["Piezas ingresadas"] - prev_op["Piezas ingresadas"]
-    delta_conv = recm["% Recuperación Piezas"] - prev_rec["% Recuperación Piezas"]
+    _v25_kpi_cards([("Piezas ingresadas",fmt_num(opm["Piezas ingresadas"]),f"Δ {delta_ing:+,.0f}","#3366CC"),("Acondicionado",fmt_pct(opm["% Acondicionado"]),fmt_num(opm["Acondicionado"]),"#7C3AED"),("Ubicado",fmt_pct(opm["% Ubicado / Ingresos"]),fmt_num(opm["Ubicado"]),"#E6007E"),("Conversión",fmt_pct(recm_project["% Recuperación Piezas"]),f"Δ {delta_conv:+.1f} pp","#10B981"),("Recuperación económica",fmt_pct(recm_project["% Recuperación $"]),fmt_money(recm_project["Recuperación $"]),"#173B73"),("Productividad",fmt_pct(prodm["% Productividad"]),f"{prodm['Productividad']:,.0f} pzs/día","#F59E0B"),("Recorridos",fmt_pct(routem["% Recorridos"]),f"{routem['Realizados']:,.0f}/{routem['Meta']:,.0f}","#EF4444")])
 
-    _v25_kpi_cards([
-        ("Piezas ingresadas", fmt_num(opm["Piezas ingresadas"]), f"Δ {delta_ing:+,.0f}", "#3366CC"),
-        ("Acondicionado", fmt_pct(opm["% Acondicionado"]), fmt_num(opm["Acondicionado"]), "#7C3AED"),
-        ("Ubicado", fmt_pct(opm["% Ubicado / Ingresos"]), fmt_num(opm["Ubicado"]), "#E6007E"),
-        ("Conversión", fmt_pct(recm["% Recuperación Piezas"]), f"Δ {delta_conv:+.1f} pp", "#10B981"),
-        ("Recuperación económica", fmt_pct(recm["% Recuperación $"]), fmt_money(recm["Recuperación $"]), "#173B73"),
-        ("Productividad", fmt_pct(prodm["% Productividad"]), f"{prodm['Productividad']:,.0f} pzs/día", "#F59E0B"),
-        ("Recorridos", fmt_pct(routem["% Recorridos"]), f"{routem['Realizados']:,.0f}/{routem['Meta']:,.0f}", "#EF4444"),
-    ])
-
-    panel(f"Detalle operativo · Semana {week:02d}", table, height=390)
-    _v39_safe_combined_chart(table, f"Ingreso vs Acondicionado vs Ubicado · Semana {week:02d}", income_column="Total")
-
-    macro = _v25_macro(detail)
+    # Pend. Ant. se conserva como 0 para evidenciar el reinicio semanal; Total = Ingresos periodo.
+    panel(f"Detalle operativo · Semana {week:02d}",table,height=410)
+    _v39_safe_combined_chart(table,f"Ingreso vs Acondicionado vs Ubicado · Semana {week:02d}",income_column="Ingresos periodo")
+    macro=_v25_macro(detail_company)
     if not macro.empty:
-        panel("Recuperación por tienda · semana seleccionada", macro.sort_values("% Recuperación económica", ascending=False), height=360)
+        panel("Recuperación por tienda · todas las tiendas · semana seleccionada",macro.sort_values("% Recuperación económica",ascending=False),height=440)
+        _v39_recovery_chart(macro,f"Recuperación · todas las tiendas · Semana {week:02d}")
+    summary={**opm,**recm_project,**prodm,**routem,"Año ISO":year,"Semana ISO":week,"Variación ingresos":delta_ing,"Variación conversión pp":delta_conv}
+    _v25_downloads("Reporte Semanal",f"Semana ISO {week:02d}/{year} · {start.strftime('%d/%m')} al {end.strftime('%d/%m/%Y')}",table,summary,"v43_weekly",{"Recuperación todas las tiendas":macro,"Productividad":prod_table,"Recorridos":route_table})
 
-    summary = {**opm, **recm, **prodm, **routem, "Año ISO": year, "Semana ISO": week, "Variación ingresos": delta_ing, "Variación conversión pp": delta_conv}
-    _v25_downloads(
-        "Reporte Semanal",
-        f"Semana ISO {week:02d}/{year} · {start.strftime('%d/%m')} al {end.strftime('%d/%m/%Y')}",
-        table,
-        summary,
-        "v39_weekly",
-        {"Recuperación": macro, "Productividad": prod_table, "Recorridos": route_table},
-    )
-
-def page_mensual(op, co):
-    op = reliable_operation(op, co)
-    co = normalize_commercial_df(co)
-    _v17_title("Reporte Mensual", "Consulta exclusiva del mes seleccionado, sin comparativos de otros meses.")
-    stores = authorized_stores(op, co)
-    months = _v39_month_options(op, co)
-    if not months:
-        st.info("Sin meses detectados.")
-        return
-    month = st.selectbox("Mes", months, index=len(months)-1, key="v39_month")
-    period = pd.Period(month, freq="M")
-    start, end = period.start_time.normalize(), period.end_time.normalize()
-
-    table, opm = _v25_operational_period(op, co, start, end, stores, "none")
-    recm, detail = _v25_recovery_period(co, start, end, stores)
-    prod_table, prodm = _v25_productivity_period(op, start, end, stores)
-    route_table, routem = _v25_recorridos_period(op, start, end, stores, 47)
-
-    _v25_kpi_cards([
-        ("Ingresos mes", fmt_num(opm["Piezas ingresadas"]), month, "#3366CC"),
-        ("Acondicionado", fmt_pct(opm["% Acondicionado"]), fmt_num(opm["Acondicionado"]), "#7C3AED"),
-        ("Ubicado", fmt_pct(opm["% Ubicado / Ingresos"]), fmt_num(opm["Ubicado"]), "#E6007E"),
-        ("Conversión mensual", fmt_pct(recm["% Recuperación Piezas"]), f"{recm['Piezas Recuperadas']:,.0f} piezas", "#10B981"),
-        ("Recuperación económica", fmt_pct(recm["% Recuperación $"]), fmt_money(recm["Recuperación $"]), "#173B73"),
-        ("Productividad", fmt_pct(prodm["% Productividad"]), f"{prodm['Productividad']:,.0f} pzs/día", "#F59E0B"),
-        ("Recorridos", fmt_pct(routem["% Recorridos"]), f"{routem['Realizados']:,.0f} realizados", "#EF4444"),
-    ])
-
-    panel(f"Detalle mensual · {month}", table, height=390)
-    _v39_safe_combined_chart(table, f"Ingreso vs Acondicionado vs Ubicado · {month}", income_column="Total")
-
-    macro = _v25_macro(detail)
+def page_mensual(op, co, company_co=None):
+    op=reliable_operation(op,co); co=normalize_commercial_df(co); company_co=normalize_commercial_df(company_co if company_co is not None else co)
+    _v17_title("Reporte Mensual","Consulta exclusiva del mes seleccionado.")
+    project_stores=authorized_stores(op,co); company_stores=authorized_stores(None,company_co)
+    months=_v39_month_options(op,company_co)
+    if not months: st.info("Sin meses detectados."); return
+    month=st.selectbox("Mes",months,index=len(months)-1,key="v39_month"); period=pd.Period(month,freq="M"); start,end=period.start_time.normalize(),period.end_time.normalize()
+    table,opm=_v25_operational_period(op,co,start,end,project_stores,"none")
+    # Pendiente anterior no aplica al acumulado mensual.
+    table_display=table.drop(columns=["Pend. Ant."],errors="ignore")
+    recm_project,_=_v25_recovery_period(co,start,end,project_stores)
+    recm_company,detail_company=_v25_recovery_period(company_co,start,end,company_stores)
+    prod_table,prodm=_v25_productivity_period(op,start,end,project_stores); route_table,routem=_v25_recorridos_period(op,start,end,project_stores,47)
+    _v25_kpi_cards([("Ingresos mes",fmt_num(opm["Piezas ingresadas"]),month,"#3366CC"),("Acondicionado",fmt_pct(opm["% Acondicionado"]),fmt_num(opm["Acondicionado"]),"#7C3AED"),("Ubicado",fmt_pct(opm["% Ubicado / Ingresos"]),fmt_num(opm["Ubicado"]),"#E6007E"),("Conversión mensual",fmt_pct(recm_project["% Recuperación Piezas"]),f"{recm_project['Piezas Recuperadas']:,.0f} piezas","#10B981"),("Recuperación económica",fmt_pct(recm_project["% Recuperación $"]),fmt_money(recm_project["Recuperación $"]),"#173B73"),("Productividad",fmt_pct(prodm["% Productividad"]),f"{prodm['Productividad']:,.0f} pzs/día","#F59E0B"),("Recorridos",fmt_pct(routem["% Recorridos"]),f"{routem['Realizados']:,.0f} realizados","#EF4444")])
+    panel(f"Detalle mensual · {month}",table_display,height=410)
+    _v39_safe_combined_chart(table_display,f"Ingreso vs Acondicionado vs Ubicado · {month}",income_column="Ingresos periodo")
+    macro=_v25_macro(detail_company)
     if not macro.empty:
-        panel("Recuperación por tienda · mes seleccionado", macro.sort_values("% Recuperación económica", ascending=False), height=380)
-        _v39_recovery_chart(macro, f"Devolución y recuperación · {month}")
-
-    summary = {**opm, **recm, **prodm, **routem, "Mes": month}
-    _v25_downloads(
-        "Reporte Mensual",
-        f"Periodo {month}",
-        table,
-        summary,
-        "v39_monthly",
-        {"Recuperación": macro, "Productividad": prod_table, "Recorridos": route_table},
-    )
+        panel("Recuperación por tienda · todas las tiendas · mes seleccionado",macro.sort_values("% Recuperación económica",ascending=False),height=460)
+        _v39_recovery_chart(macro,f"Devolución y recuperación · todas las tiendas · {month}")
+    summary={**opm,**recm_project,**prodm,**routem,"Mes":month}
+    _v25_downloads("Reporte Mensual",f"Periodo {month}",table_display,summary,"v43_monthly",{"Recuperación todas las tiendas":macro,"Productividad":prod_table,"Recorridos":route_table})
 
 def page_productividad(op, co):
     _v17_title("Productividad", "Ranking real por colaborador, metas acumuladas, top y oportunidades.")
     if op is None or op.empty: st.info("Sin información operativa."); return
-    dates=pd.to_datetime(op["Fecha"],errors="coerce").dropna(); end=dates.max().normalize(); start=max(dates.min().normalize(),end-pd.Timedelta(days=29)); stores=authorized_stores(op,co)
+    dates=pd.to_datetime(op["Fecha"],errors="coerce").dropna(); end=dates.max().normalize(); start=dates.min().normalize(); stores=authorized_stores(op,co)
     period=st.date_input("Periodo",value=(start.date(),end.date()),key="v25_prod_dates")
     if isinstance(period,(tuple,list)) and len(period)==2: start,end=map(pd.Timestamp,period)
     selected_stores=stores
@@ -11204,10 +11218,10 @@ all_selected_co = filter_stores(co_all, selected_module_stores) if co_all is not
 
 ROUTES = {
     "Inicio": page_inicio,
-    "Centro Ejecutivo": lambda: page_resumen(project_op, project_co),
+    "Centro Ejecutivo": lambda: page_resumen(project_op, project_co, co_all),
     "Operación Diaria": lambda: page_por_dia(project_op, project_co),
-    "Reporte Semanal": lambda: page_semanal(project_op, project_co),
-    "Reporte Mensual": lambda: page_mensual(project_op, project_co),
+    "Reporte Semanal": lambda: page_semanal(project_op, project_co, co_all),
+    "Reporte Mensual": lambda: page_mensual(project_op, project_co, co_all),
     "Productividad": lambda: page_productividad(project_op, project_co),
     "Recuperación": lambda: page_recuperacion(all_selected_op, all_selected_co),
     "Recorridos": lambda: page_recorridos(project_op, project_co),
@@ -11293,7 +11307,7 @@ st.markdown(
 
 # Marcador de despliegue para confirmar que GitHub/Streamlit usa esta versión.
 st.markdown('\n<style>\n.v37-week-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px;margin:10px 0 22px}.v37-week-card{background:#fff;border:1px solid #dbe3ef;border-radius:16px;padding:16px;box-shadow:0 8px 24px rgba(23,59,115,.07)}.v37-week-title{font-weight:800;color:#173B73;font-size:16px;margin-bottom:10px;border-bottom:2px solid #3366CC;padding-bottom:8px}.v37-week-row{display:flex;justify-content:space-between;gap:10px;padding:5px 0;font-size:13px;color:#667085}.v37-week-row b{color:#173B73;text-align:right}.v25-kpi-grid{align-items:stretch}.v25-kpi-card{min-height:150px}.js-plotly-plot,.plot-container{max-width:100%!important}@media(max-width:1100px){.v37-week-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}@media(max-width:650px){.v37-week-grid{grid-template-columns:1fr}}\n</style>\n', unsafe_allow_html=True)
-st.caption("PS Operaciones Ropa · V41")
+st.caption("PS Operaciones Ropa · V43")
 
 try:
     route_handler = ROUTES.get(page)

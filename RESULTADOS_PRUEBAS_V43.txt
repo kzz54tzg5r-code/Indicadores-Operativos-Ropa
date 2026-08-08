@@ -1,0 +1,19 @@
+PS Operaciones Ropa V43
+
+Validaciones ejecutadas:
+- Compilación app.py: OK
+- Compilación legacy_app.py: OK
+- Compilación core/settings.py: OK
+- Suite pytest: 15 aprobadas / 0 fallidas
+
+Validaciones de código incorporadas:
+- Ordenamiento AgGrid conserva tipos numéricos para porcentajes, moneda y cantidades.
+- Reporte semanal usa carryover='none': reinicio de pendiente cada lunes.
+- Reporte mensual oculta Pend. Ant.
+- Rankings comerciales de Centro Ejecutivo, Semanal y Mensual reciben fuente comercial completa autorizada.
+- Productividad carga histórico completo y normaliza nombres por tienda.
+- Recuperación abre por defecto con todos los años/semanas disponibles.
+- Gráficas operativas usan etiquetas separadas para evitar encimamientos.
+
+Nota del entorno de construcción:
+- La suite automatizada compila y pasa. El binario `streamlit` no está instalado en el contenedor de empaquetado, por lo que no se realizó prueba HTTP local del servidor Streamlit.
