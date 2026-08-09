@@ -4648,7 +4648,6 @@ def _month_start(value):
     return pd.Timestamp(value).to_period("M").start_time
 
 
-@st.cache_data(show_spinner=False, ttl=300)
 def load_data_for_page(page, mtime):
     """Carga la ventana requerida usando horizontes independientes.
 
@@ -4669,11 +4668,36 @@ def load_data_for_page(page, mtime):
         latest_value = pd.Timestamp(latest_value).normalize()
         if page_name == "Operación Diaria":
             return latest_value, latest_value
-        # V41: los reportes con selector de periodo deben conocer TODO el histórico
-        # procesado. De lo contrario, el selector solo veía las últimas semanas/meses
-        # y ocultaba abril/mayo aunque sí existieran en el caché.
-        if page_name in {"Centro Ejecutivo", "Reporte Semanal", "Reporte Mensual"}:
-            return None, None
+        # V44: no cargar el histórico comercial completo en memoria. Centro,
+        # semanal y mensual leen únicamente el periodo visible. Las opciones
+        # históricas se obtienen de la columna Fecha (ligera) mediante helpers.
+        if page_name == "Centro Ejecutivo":
+            raw = st.session_state.get("v39_center_month")
+            try:
+                period = pd.Period(str(raw), freq="M") if raw else latest_value.to_period("M")
+            except Exception:
+                period = latest_value.to_period("M")
+            return period.start_time.normalize(), period.end_time.normalize()
+        if page_name == "Reporte Mensual":
+            raw = st.session_state.get("v39_month")
+            try:
+                period = pd.Period(str(raw), freq="M") if raw else latest_value.to_period("M")
+            except Exception:
+                period = latest_value.to_period("M")
+            return period.start_time.normalize(), period.end_time.normalize()
+        if page_name == "Reporte Semanal":
+            raw = str(st.session_state.get("v39_week") or "")
+            import re as _re
+            m = _re.search(r"(\d{4}).*?(\d{1,2})$", raw)
+            if m:
+                try:
+                    y, w = int(m.group(1)), int(m.group(2))
+                    start_value = pd.Timestamp.fromisocalendar(y, w, 1).normalize()
+                    return start_value, start_value + pd.Timedelta(days=6)
+                except Exception:
+                    pass
+            start_value = _monday(latest_value)
+            return start_value, start_value + pd.Timedelta(days=6)
         if page_name == "Productividad" and source == "op":
             # V43: productividad debe permitir consultar todo el histórico cargado.
             return None, None
@@ -10800,6 +10824,38 @@ def _v25_macro(recovery_detail):
     return macro
 
 
+def _v44_history_month_options():
+    """Meses disponibles sin cargar los DataFrames completos."""
+    try:
+        mtime = ACTIVE_FILE.stat().st_mtime if ACTIVE_FILE.exists() else 0
+        mins=[]; maxs=[]
+        for key in ("op","co"):
+            mn,mx=_cache_date_bounds(key,mtime)
+            if mn is not None: mins.append(pd.Timestamp(mn))
+            if mx is not None: maxs.append(pd.Timestamp(mx))
+        if not mins or not maxs: return []
+        start=min(mins).to_period("M"); end=max(maxs).to_period("M")
+        return [str(x) for x in pd.period_range(start,end,freq="M")]
+    except Exception:
+        return []
+
+def _v44_history_iso_weeks():
+    """Semanas ISO disponibles a partir del horizonte del caché, sin cargarlo completo."""
+    try:
+        mtime = ACTIVE_FILE.stat().st_mtime if ACTIVE_FILE.exists() else 0
+        mins=[]; maxs=[]
+        for key in ("op","co"):
+            mn,mx=_cache_date_bounds(key,mtime)
+            if mn is not None: mins.append(pd.Timestamp(mn))
+            if mx is not None: maxs.append(pd.Timestamp(mx))
+        if not mins or not maxs: return []
+        cur=_monday(min(mins)); end=_monday(max(maxs)); out=[]
+        while cur<=end:
+            iso=cur.isocalendar(); out.append((int(iso.year),int(iso.week))); cur += pd.Timedelta(days=7)
+        return out
+    except Exception:
+        return []
+
 def _v39_month_options(op, co):
     months = set()
     for frame in (op, co):
@@ -10967,7 +11023,7 @@ def page_resumen(op, co, company_co=None):
 
     project_stores = authorized_stores(op, co, user)
     company_stores = authorized_stores(None, company_co, user)
-    months = _v39_month_options(op, company_co)
+    months = _v44_history_month_options() or _v39_month_options(op, company_co)
     if not months: st.info("No se detectaron meses válidos en la fuente."); return
     selected_month = st.selectbox("Mes del Centro Ejecutivo", months, index=len(months)-1, key="v39_center_month")
     period = pd.Period(selected_month, freq="M"); start,end=period.start_time.normalize(),period.end_time.normalize()
@@ -11051,7 +11107,7 @@ def page_semanal(op, co, company_co=None):
     op=reliable_operation(op,co); co=normalize_commercial_df(co); company_co=normalize_commercial_df(company_co if company_co is not None else co)
     _v17_title("Reporte Semanal","Consulta exclusiva de una semana ISO seleccionada. El pendiente se reinicia cada lunes.")
     project_stores=authorized_stores(op,co); company_stores=authorized_stores(None,company_co)
-    pairs=available_iso_weeks(op,company_co)
+    pairs=_v44_history_iso_weeks() or available_iso_weeks(op,company_co)
     if not pairs: st.info("Sin semanas válidas detectadas."); return
     labels=[f"{y}-Semana {w:02d}" for y,w in pairs]; label=st.selectbox("Semana ISO",labels,index=len(labels)-1,key="v39_week")
     year,week=pairs[labels.index(label)]; start,end=_v25_week_bounds(year,week)
@@ -11081,7 +11137,7 @@ def page_mensual(op, co, company_co=None):
     op=reliable_operation(op,co); co=normalize_commercial_df(co); company_co=normalize_commercial_df(company_co if company_co is not None else co)
     _v17_title("Reporte Mensual","Consulta exclusiva del mes seleccionado.")
     project_stores=authorized_stores(op,co); company_stores=authorized_stores(None,company_co)
-    months=_v39_month_options(op,company_co)
+    months=_v44_history_month_options() or _v39_month_options(op,company_co)
     if not months: st.info("Sin meses detectados."); return
     month=st.selectbox("Mes",months,index=len(months)-1,key="v39_month"); period=pd.Period(month,freq="M"); start,end=period.start_time.normalize(),period.end_time.normalize()
     table,opm=_v25_operational_period(op,co,start,end,project_stores,"none")
@@ -11307,7 +11363,7 @@ st.markdown(
 
 # Marcador de despliegue para confirmar que GitHub/Streamlit usa esta versión.
 st.markdown('\n<style>\n.v37-week-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px;margin:10px 0 22px}.v37-week-card{background:#fff;border:1px solid #dbe3ef;border-radius:16px;padding:16px;box-shadow:0 8px 24px rgba(23,59,115,.07)}.v37-week-title{font-weight:800;color:#173B73;font-size:16px;margin-bottom:10px;border-bottom:2px solid #3366CC;padding-bottom:8px}.v37-week-row{display:flex;justify-content:space-between;gap:10px;padding:5px 0;font-size:13px;color:#667085}.v37-week-row b{color:#173B73;text-align:right}.v25-kpi-grid{align-items:stretch}.v25-kpi-card{min-height:150px}.js-plotly-plot,.plot-container{max-width:100%!important}@media(max-width:1100px){.v37-week-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}@media(max-width:650px){.v37-week-grid{grid-template-columns:1fr}}\n</style>\n', unsafe_allow_html=True)
-st.caption("PS Operaciones Ropa · V43")
+st.caption("PS Operaciones Ropa · V44")
 
 try:
     route_handler = ROUTES.get(page)

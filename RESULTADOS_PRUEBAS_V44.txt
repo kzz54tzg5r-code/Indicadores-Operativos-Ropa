@@ -1,0 +1,5 @@
+15 pruebas aprobadas.
+0 pruebas fallidas.
+app.py compila.
+legacy_app.py compila.
+core/settings.py compila.
