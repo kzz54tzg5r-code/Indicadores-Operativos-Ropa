@@ -1,0 +1,9 @@
+PS Operaciones Ropa · V46
+
+Validación:
+- python -m py_compile app.py: OK
+- python -m py_compile legacy_app.py: OK
+- python -m py_compile core/settings.py: OK
+- pytest: 15 passed, 0 failed
+
+Nota: pytest reporta 6 FutureWarning de pandas en services/conversion.py; no son fallos funcionales.
