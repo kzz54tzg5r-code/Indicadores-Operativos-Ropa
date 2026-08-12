@@ -3,6 +3,7 @@
 import base64
 import json
 import hashlib
+import html
 import gc
 import os
 import traceback
@@ -6555,103 +6556,192 @@ def _configured_project_stores():
     return {canon_store(x) for x in stores if str(x).strip()}
 
 
-def aggrid_table(df, height=360, editable=False, key=None):
-    """Tabla corporativa manteniendo tipos numéricos para ordenamiento correcto.
 
-    V43: antes se enviaban porcentajes/monedas ya convertidos a texto, por lo
-    que 100% podía ordenarse junto a 15% antes que 60%. Ahora AgGrid recibe
-    números reales y solo formatea visualmente con valueFormatter.
-    """
+def _mobile_value(col, value):
+    """Formato corto para tarjetas móviles sin perder el dato real."""
+    if value is None or (isinstance(value, float) and pd.isna(value)):
+        return "—"
+    name = str(col)
+    try:
+        num = float(value)
+        if "%" in name:
+            return f"{num:,.1f}%"
+        if "$" in name or "IMPORTE" in norm_text(name) or "VALOR" in norm_text(name) or "VENTA" in norm_text(name):
+            return f"${num:,.0f}"
+        if abs(num) >= 1000:
+            return f"{num:,.0f}"
+        if num.is_integer():
+            return f"{int(num):,}"
+        return f"{num:,.1f}"
+    except Exception:
+        text = str(value).strip()
+        return text if text else "—"
+
+
+def _mobile_metric_priority(columns):
+    """Escoge los KPI que más valor aportan en una tarjeta de operación/venta."""
+    cols = [str(c) for c in columns]
+    priority_terms = [
+        "% RECUPER", "% CONVERS", "RECUPERACION $", "RECUP. $", "RECUP. PZS",
+        "DEV PZS", "PIEZAS RECUPERADAS", "INGRESOS", "TOTAL", "HABILITADAS",
+        "UBICADAS", "% ACOND", "% UBIC", "PEND. UB", "PENDIENTE PZS",
+        "PRODUCTIVIDAD DIARIA", "% CUMPLIMIENTO", "PIEZAS PROCESADAS", "RECORRIDOS",
+        "FALTANTE", "DIAS TRABAJADOS"
+    ]
+    picked=[]
+    for term in priority_terms:
+        for c in cols:
+            if c in picked or c in ("Tienda","Nombre","Nombre Real","Colaborador","Actividad","Estado"):
+                continue
+            if term in norm_text(c):
+                picked.append(c)
+                if len(picked)>=4:
+                    return picked
+    for c in cols:
+        if c not in picked and c not in ("Tienda","Nombre","Nombre Real","Colaborador","Actividad","Estado"):
+            picked.append(c)
+            if len(picked)>=4:
+                break
+    return picked
+
+
+def _mobile_table_html(df):
+    """Vista móvil tipo app ejecutiva: lista de tarjetas, no una tabla comprimida."""
+    if df is None or df.empty:
+        return ''
+    raw=df.copy()
+    project_stores=_configured_project_stores()
+    title_col = next((c for c in ["Tienda","Nombre Real","Nombre","Colaborador","Actividad"] if c in raw.columns), raw.columns[0])
+    primary_cols=_mobile_metric_priority(raw.columns)
+    secondary_cols=[c for c in raw.columns if c not in [title_col,*primary_cols]]
+    cards=[]
+    for i,(_,row) in enumerate(raw.iterrows(), start=1):
+        title=html.escape(str(row.get(title_col,'')).strip() or f'Registro {i}')
+        is_project = title_col=="Tienda" and canon_store(title) in project_stores
+        badge = '<span class="ps-mob-badge">Proyecto</span>' if is_project else ''
+        rank = f'<span class="ps-mob-rank">#{i}</span>' if title_col=="Tienda" else ''
+        metrics=[]
+        for c in primary_cols:
+            metrics.append(
+                '<div class="ps-mob-metric">'
+                f'<span>{html.escape(str(c))}</span><strong>{html.escape(_mobile_value(c,row.get(c)))}</strong>'
+                '</div>'
+            )
+        extra=[]
+        for c in secondary_cols:
+            val=_mobile_value(c,row.get(c))
+            if val in ('—',''):
+                continue
+            extra.append(f'<div><span>{html.escape(str(c))}</span><b>{html.escape(val)}</b></div>')
+        detail = ''
+        if extra:
+            detail = '<details class="ps-mob-details"><summary>Ver detalle</summary><div class="ps-mob-extra">'+''.join(extra)+'</div></details>'
+        cls='ps-mob-row ps-mob-project' if is_project else 'ps-mob-row'
+        cards.append(
+            f'<article class="{cls}"><header><div class="ps-mob-title">{rank}<b>{title}</b>{badge}</div></header>'
+            f'<div class="ps-mob-metrics">{"".join(metrics)}</div>{detail}</article>'
+        )
+    return '<div class="ps-mobile-table">'+''.join(cards)+'</div>'
+
+def aggrid_table(df, height=360, editable=False, key=None):
+    """Tabla corporativa: grid completo en escritorio y tarjetas ejecutivas en móvil."""
     if df is None or df.empty:
         st.info("Sin información para mostrar.")
         return df
     raw = df.copy()
     auto_height = min(max(118 + len(raw) * 34, 170), height)
+    base_key = key or f"ag_{abs(hash(str(raw.columns.tolist())+str(len(raw))))}"
+    wrap_key = re.sub(r'[^a-zA-Z0-9_]+','_',f"mobilewrap_{base_key}")[:120]
 
-    if not AGGRID_OK:
-        st.dataframe(format_display(raw), hide_index=True, width="stretch", height=auto_height)
-        return df
+    # Vista móvil pensada como dashboard operativo: ranking/listado escaneable y detalle bajo demanda.
+    mobile_html = _mobile_table_html(raw)
+    with st.container(key=wrap_key):
+        if mobile_html:
+            st.markdown(mobile_html, unsafe_allow_html=True)
 
-    gb = GridOptionsBuilder.from_dataframe(raw)
-    column_count = max(len(raw.columns), 1)
-    adaptive_min = 42 if column_count >= 8 else 72
-    gb.configure_default_column(
-        filter=True, sortable=True, resizable=True, editable=editable,
-        minWidth=adaptive_min, wrapHeaderText=True, autoHeaderHeight=True
-    )
-    if "Tienda" in raw.columns:
-        gb.configure_column("Tienda", pinned="left", minWidth=82, maxWidth=150)
+        if not AGGRID_OK:
+            st.dataframe(format_display(raw), hide_index=True, width="stretch", height=auto_height)
+            return df
 
-    pct_formatter = JsCode("""function(p){if(p.value===null||p.value===undefined||p.value==='')return ''; const v=Number(p.value); return isNaN(v)?p.value:v.toLocaleString('en-US',{minimumFractionDigits:1,maximumFractionDigits:1})+'%';}""")
-    money_formatter = JsCode("""function(p){if(p.value===null||p.value===undefined||p.value==='')return ''; const v=Number(p.value); return isNaN(v)?p.value:'$'+v.toLocaleString('en-US',{maximumFractionDigits:0});}""")
-    num_formatter = JsCode("""function(p){if(p.value===null||p.value===undefined||p.value==='')return ''; const v=Number(p.value); return isNaN(v)?p.value:v.toLocaleString('en-US',{maximumFractionDigits:0});}""")
+        gb = GridOptionsBuilder.from_dataframe(raw)
+        column_count = max(len(raw.columns), 1)
+        adaptive_min = 42 if column_count >= 8 else 72
+        gb.configure_default_column(
+            filter=True, sortable=True, resizable=True, editable=editable,
+            minWidth=adaptive_min, wrapHeaderText=True, autoHeaderHeight=True
+        )
+        if "Tienda" in raw.columns:
+            gb.configure_column("Tienda", pinned="left", minWidth=82, maxWidth=150)
 
-    for col in raw.columns:
-        if col == "Tienda" or col in ["Nombre", "Nombre Real", "Colaborador", "Actividad", "Estado"]:
-            continue
-        ser = pd.to_numeric(raw[col], errors="coerce")
-        is_numeric = ser.notna().mean() > 0.70
-        kwargs = {"type": ["rightAligned"], "minWidth": 42}
-        if is_numeric:
-            # Fuerza comparación numérica aun cuando una fila venga como string.
-            kwargs["comparator"] = JsCode("""function(a,b){const x=parseFloat(String(a).replace(/[$,%]/g,'')); const y=parseFloat(String(b).replace(/[$,%]/g,'')); if(isNaN(x)&&isNaN(y))return 0; if(isNaN(x))return -1; if(isNaN(y))return 1; return x-y;}""")
-            cname = str(col)
-            if "%" in cname:
-                kwargs["valueFormatter"] = pct_formatter
-            elif "$" in cname or "IMPORTE" in norm_text(cname) or "VALOR" in norm_text(cname) or "VENTA" in norm_text(cname):
-                kwargs["valueFormatter"] = money_formatter
-            else:
-                kwargs["valueFormatter"] = num_formatter
-        if col == "% Ubic.":
-            kwargs["cellStyle"] = JsCode("""
-                function(params) {
-                    const v = Number(params.value);
-                    if (isNaN(v)) return {};
-                    if (v < 75) return {'color':'#D71920','fontWeight':'900'};
-                    if (v >= 90) return {'color':'#008A3B','fontWeight':'900'};
-                    return {'color':'#111827','fontWeight':'700'};
-                }
-            """)
-        gb.configure_column(col, **kwargs)
+        pct_formatter = JsCode("""function(p){if(p.value===null||p.value===undefined||p.value==='')return ''; const v=Number(p.value); return isNaN(v)?p.value:v.toLocaleString('en-US',{minimumFractionDigits:1,maximumFractionDigits:1})+'%';}""")
+        money_formatter = JsCode("""function(p){if(p.value===null||p.value===undefined||p.value==='')return ''; const v=Number(p.value); return isNaN(v)?p.value:'$'+v.toLocaleString('en-US',{maximumFractionDigits:0});}""")
+        num_formatter = JsCode("""function(p){if(p.value===null||p.value===undefined||p.value==='')return ''; const v=Number(p.value); return isNaN(v)?p.value:v.toLocaleString('en-US',{maximumFractionDigits:0});}""")
 
-    opts = gb.build()
-    opts["rowHeight"] = 34
-    opts["headerHeight"] = 46
-    opts["suppressHorizontalScroll"] = (column_count <= 10)
-    opts["onGridReady"] = JsCode("function(params){setTimeout(function(){if(params.api.getDisplayedCenterColumns().length<=10){params.api.sizeColumnsToFit();}},80);}")
-    opts["onGridSizeChanged"] = JsCode("function(params){setTimeout(function(){if(params.api.getDisplayedCenterColumns().length<=10){params.api.sizeColumnsToFit();}},50);}")
-    opts["enableCellTextSelection"] = True
-    opts["suppressRowClickSelection"] = True
-    project_stores_js = sorted(_configured_project_stores())
-    opts["getRowStyle"] = JsCode(f"""
-        function(params) {{
-            const projectStores = {project_stores_js!r};
-            const tienda = String((params.data && params.data.Tienda) || '').trim();
-            if (projectStores.includes(tienda)) {{
-                return {{'backgroundColor':'#EAF2FF','borderLeft':'4px solid #3366CC','fontWeight':'650'}};
+        for col in raw.columns:
+            if col == "Tienda" or col in ["Nombre", "Nombre Real", "Colaborador", "Actividad", "Estado"]:
+                continue
+            ser = pd.to_numeric(raw[col], errors="coerce")
+            is_numeric = ser.notna().mean() > 0.70
+            kwargs = {"type": ["rightAligned"], "minWidth": 42}
+            if is_numeric:
+                kwargs["comparator"] = JsCode("""function(a,b){const x=parseFloat(String(a).replace(/[$,%]/g,'')); const y=parseFloat(String(b).replace(/[$,%]/g,'')); if(isNaN(x)&&isNaN(y))return 0; if(isNaN(x))return -1; if(isNaN(y))return 1; return x-y;}""")
+                cname = str(col)
+                if "%" in cname:
+                    kwargs["valueFormatter"] = pct_formatter
+                elif "$" in cname or "IMPORTE" in norm_text(cname) or "VALOR" in norm_text(cname) or "VENTA" in norm_text(cname):
+                    kwargs["valueFormatter"] = money_formatter
+                else:
+                    kwargs["valueFormatter"] = num_formatter
+            if col == "% Ubic.":
+                kwargs["cellStyle"] = JsCode("""
+                    function(params) {
+                        const v = Number(params.value);
+                        if (isNaN(v)) return {};
+                        if (v < 75) return {'color':'#D71920','fontWeight':'900'};
+                        if (v >= 90) return {'color':'#008A3B','fontWeight':'900'};
+                        return {'color':'#111827','fontWeight':'700'};
+                    }
+                """)
+            gb.configure_column(col, **kwargs)
+
+        opts = gb.build()
+        opts["rowHeight"] = 34
+        opts["headerHeight"] = 46
+        opts["suppressHorizontalScroll"] = (column_count <= 10)
+        opts["onGridReady"] = JsCode("function(params){setTimeout(function(){if(params.api.getDisplayedCenterColumns().length<=10){params.api.sizeColumnsToFit();}},80);}")
+        opts["onGridSizeChanged"] = JsCode("function(params){setTimeout(function(){if(params.api.getDisplayedCenterColumns().length<=10){params.api.sizeColumnsToFit();}},50);}")
+        opts["enableCellTextSelection"] = True
+        opts["suppressRowClickSelection"] = True
+        project_stores_js = sorted(_configured_project_stores())
+        opts["getRowStyle"] = JsCode(f"""
+            function(params) {{
+                const projectStores = {project_stores_js!r};
+                const tienda = String((params.data && params.data.Tienda) || '').trim();
+                if (projectStores.includes(tienda)) {{
+                    return {{'backgroundColor':'#EAF2FF','borderLeft':'4px solid #3366CC','fontWeight':'650'}};
+                }}
+                if (params.node.rowIndex % 2 === 0) return {{'backgroundColor':'#FFFFFF'}};
+                return {{'backgroundColor':'#F8FAFC'}};
             }}
-            if (params.node.rowIndex % 2 === 0) return {{'backgroundColor':'#FFFFFF'}};
-            return {{'backgroundColor':'#F8FAFC'}};
-        }}
-    """)
-    css = {
-        ".ag-header": {"background-color": "#173B73 !important"},
-        ".ag-header-row": {"background-color": "#173B73 !important"},
-        ".ag-header-cell": {"background-color": "#173B73 !important", "color": "#FFFFFF !important", "font-weight": "900 !important", "padding-left": "5px !important", "padding-right": "5px !important", "border-right": "1px solid rgba(255,255,255,.20) !important"},
-        ".ag-header-cell-label": {"color": "#FFFFFF !important", "font-weight": "900 !important"},
-        ".ag-header-cell-label *": {"color": "#FFFFFF !important", "fill": "#FFFFFF !important"},
-        ".ag-header-cell-text": {"color": "#FFFFFF !important", "font-weight": "900 !important", "font-size": "10px !important", "white-space": "normal !important", "line-height": "1.1 !important"},
-        ".ag-icon": {"color": "#FFFFFF !important", "fill": "#FFFFFF !important"},
-        ".ag-icon svg": {"color": "#FFFFFF !important", "fill": "#FFFFFF !important"},
-        ".ag-root-wrapper": {"border": "1px solid #E1E7F0 !important", "border-radius": "10px !important", "overflow": "hidden !important", "width": "100% !important"},
-        ".ag-root": {"width": "100% !important"},
-        ".ag-cell": {"font-size": "11px !important", "padding-left": "6px !important", "padding-right": "6px !important"},
-    }
-    result = AgGrid(
-        raw, gridOptions=opts, height=auto_height, width="100%",
-        fit_columns_on_grid_load=True, allow_unsafe_jscode=True, custom_css=css,
-        theme="alpine", key=key or f"ag_{abs(hash(str(raw.columns.tolist())+str(len(raw))))}",
-    )
+        """)
+        css = {
+            ".ag-header": {"background-color": "#173B73 !important"},
+            ".ag-header-row": {"background-color": "#173B73 !important"},
+            ".ag-header-cell": {"background-color": "#173B73 !important", "color": "#FFFFFF !important", "font-weight": "900 !important", "padding-left": "5px !important", "padding-right": "5px !important", "border-right": "1px solid rgba(255,255,255,.20) !important"},
+            ".ag-header-cell-label": {"color": "#FFFFFF !important", "font-weight": "900 !important"},
+            ".ag-header-cell-label *": {"color": "#FFFFFF !important", "fill": "#FFFFFF !important"},
+            ".ag-header-cell-text": {"color": "#FFFFFF !important", "font-weight": "900 !important", "font-size": "10px !important", "white-space": "normal !important", "line-height": "1.1 !important"},
+            ".ag-icon": {"color": "#FFFFFF !important", "fill": "#FFFFFF !important"},
+            ".ag-icon svg": {"color": "#FFFFFF !important", "fill": "#FFFFFF !important"},
+            ".ag-root-wrapper": {"border": "1px solid #E1E7F0 !important", "border-radius": "10px !important", "overflow": "hidden !important", "width": "100% !important"},
+            ".ag-root": {"width": "100% !important"},
+            ".ag-cell": {"font-size": "11px !important", "padding-left": "6px !important", "padding-right": "6px !important"},
+        }
+        result = AgGrid(
+            raw, gridOptions=opts, height=auto_height, width="100%",
+            fit_columns_on_grid_load=True, allow_unsafe_jscode=True, custom_css=css,
+            theme="alpine", key=base_key,
+        )
     if editable and result and "data" in result:
         return pd.DataFrame(result["data"])
     return df
@@ -11792,6 +11882,55 @@ html,body,[data-testid="stAppViewContainer"],.stApp{max-width:100vw!important;ov
   .v25-kpi-grid,.v27-kpi-grid,.ps-kpi-grid{grid-template-columns:1fr!important;}
   .v37-week-grid{grid-template-columns:1fr!important;}
 }
+</style>
+""", unsafe_allow_html=True)
+
+
+# V48: móvil ejecutivo nativo - tarjetas/listas, no tablas comprimidas.
+st.markdown("""
+<style>
+.ps-mobile-table{display:none;}
+@media(max-width:700px){
+  /* Patrón de app de ventas/operación: lista de entidades con 4 KPI y detalle bajo demanda. */
+  .ps-mobile-table{display:flex!important;flex-direction:column;gap:9px;margin:6px 0 14px!important;}
+  .ps-mob-row{background:#fff;border:1px solid #DDE5F0;border-radius:14px;padding:12px;box-shadow:0 3px 12px rgba(23,59,115,.055);overflow:hidden;}
+  .ps-mob-row.ps-mob-project{background:#F3F7FF;border-color:#C9D9F5;box-shadow:inset 3px 0 0 #3366CC,0 3px 12px rgba(23,59,115,.05);}
+  .ps-mob-row header{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;}
+  .ps-mob-title{display:flex;align-items:center;gap:7px;min-width:0;color:#173B73;font-size:16px;line-height:1.15;}
+  .ps-mob-title b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .ps-mob-rank{font-size:11px;font-weight:900;color:#667085;background:#EEF2F7;border-radius:7px;padding:4px 6px;flex:none;}
+  .ps-mob-badge{font-size:9px;font-weight:800;color:#2455A6;background:#E3ECFF;border-radius:999px;padding:3px 6px;flex:none;}
+  .ps-mob-metrics{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px;}
+  .ps-mob-metric{background:#F8FAFC;border:1px solid #EEF2F6;border-radius:10px;padding:8px;min-width:0;}
+  .ps-mob-metric span{display:block;color:#667085;font-size:9.5px;font-weight:700;line-height:1.15;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:4px;}
+  .ps-mob-metric strong{display:block;color:#102E67;font-size:16px;line-height:1.05;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .ps-mob-details{margin-top:8px;border-top:1px solid #EEF2F6;padding-top:7px;}
+  .ps-mob-details summary{cursor:pointer;list-style:none;color:#3366CC;font-size:12px;font-weight:800;padding:3px 0;}
+  .ps-mob-details summary::-webkit-details-marker{display:none;}
+  .ps-mob-extra{display:grid;grid-template-columns:1fr 1fr;gap:6px 12px;padding-top:8px;}
+  .ps-mob-extra>div{display:flex;justify-content:space-between;gap:8px;border-bottom:1px dashed #E5EAF1;padding:4px 0;font-size:10px;min-width:0;}
+  .ps-mob-extra span{color:#667085;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .ps-mob-extra b{color:#173B73;white-space:nowrap;}
+
+  /* Dentro del wrapper de tabla ocultamos el componente AgGrid en móvil. */
+  [class*="st-key-mobilewrap_"] iframe,[class*="st-key-mobilewrap_"] [data-testid="stCustomComponentV1"]{display:none!important;height:0!important;min-height:0!important;margin:0!important;padding:0!important;}
+  [class*="st-key-mobilewrap_"]{margin:0!important;padding:0!important;}
+
+  /* Jerarquía compacta similar a apps financieras/retail. */
+  .panel-title{font-size:15px!important;font-weight:850!important;padding:9px 10px!important;}
+  h1{font-size:1.38rem!important;margin:.35rem 0 .55rem!important;}
+  h2{font-size:1.18rem!important;margin:.55rem 0 .45rem!important;}
+  h3{font-size:1.02rem!important;}
+  .v37-week-grid{grid-template-columns:1fr!important;}
+
+  /* Filtros visibles, compactos, con área táctil de 44px. */
+  div[data-testid="stPopover"]>button,[data-baseweb="select"]>div{min-height:44px!important;border:1px solid #D6DEEA!important;background:#fff!important;box-shadow:none!important;}
+  div[data-testid="stPopover"]>button{justify-content:space-between!important;padding:0 12px!important;}
+
+  /* Gráficas: menos aire y leyendas más compactas. */
+  [data-testid="stPlotlyChart"]{margin:2px 0 10px!important;border:1px solid #E5EAF1!important;background:#fff!important;}
+}
+@media(min-width:701px){.ps-mobile-table{display:none!important;}}
 </style>
 """, unsafe_allow_html=True)
 
