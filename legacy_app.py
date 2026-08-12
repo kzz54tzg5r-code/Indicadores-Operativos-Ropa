@@ -6574,13 +6574,13 @@ def aggrid_table(df, height=360, editable=False, key=None):
 
     gb = GridOptionsBuilder.from_dataframe(raw)
     column_count = max(len(raw.columns), 1)
-    adaptive_min = 62 if column_count >= 8 else 82
+    adaptive_min = 42 if column_count >= 8 else 72
     gb.configure_default_column(
         filter=True, sortable=True, resizable=True, editable=editable,
         minWidth=adaptive_min, wrapHeaderText=True, autoHeaderHeight=True
     )
     if "Tienda" in raw.columns:
-        gb.configure_column("Tienda", pinned="left", minWidth=105, maxWidth=155)
+        gb.configure_column("Tienda", pinned="left", minWidth=82, maxWidth=150)
 
     pct_formatter = JsCode("""function(p){if(p.value===null||p.value===undefined||p.value==='')return ''; const v=Number(p.value); return isNaN(v)?p.value:v.toLocaleString('en-US',{minimumFractionDigits:1,maximumFractionDigits:1})+'%';}""")
     money_formatter = JsCode("""function(p){if(p.value===null||p.value===undefined||p.value==='')return ''; const v=Number(p.value); return isNaN(v)?p.value:'$'+v.toLocaleString('en-US',{maximumFractionDigits:0});}""")
@@ -6591,7 +6591,7 @@ def aggrid_table(df, height=360, editable=False, key=None):
             continue
         ser = pd.to_numeric(raw[col], errors="coerce")
         is_numeric = ser.notna().mean() > 0.70
-        kwargs = {"type": ["rightAligned"], "minWidth": 62}
+        kwargs = {"type": ["rightAligned"], "minWidth": 42}
         if is_numeric:
             # Fuerza comparación numérica aun cuando una fila venga como string.
             kwargs["comparator"] = JsCode("""function(a,b){const x=parseFloat(String(a).replace(/[$,%]/g,'')); const y=parseFloat(String(b).replace(/[$,%]/g,'')); if(isNaN(x)&&isNaN(y))return 0; if(isNaN(x))return -1; if(isNaN(y))return 1; return x-y;}""")
@@ -6617,9 +6617,9 @@ def aggrid_table(df, height=360, editable=False, key=None):
     opts = gb.build()
     opts["rowHeight"] = 34
     opts["headerHeight"] = 46
-    opts["suppressHorizontalScroll"] = True
-    opts["onGridReady"] = JsCode("function(params){setTimeout(function(){params.api.sizeColumnsToFit();},80);}")
-    opts["onGridSizeChanged"] = JsCode("function(params){setTimeout(function(){params.api.sizeColumnsToFit();},50);}")
+    opts["suppressHorizontalScroll"] = (column_count <= 10)
+    opts["onGridReady"] = JsCode("function(params){setTimeout(function(){if(params.api.getDisplayedCenterColumns().length<=10){params.api.sizeColumnsToFit();}},80);}")
+    opts["onGridSizeChanged"] = JsCode("function(params){setTimeout(function(){if(params.api.getDisplayedCenterColumns().length<=10){params.api.sizeColumnsToFit();}},50);}")
     opts["enableCellTextSelection"] = True
     opts["suppressRowClickSelection"] = True
     project_stores_js = sorted(_configured_project_stores())
@@ -11702,6 +11702,98 @@ st.markdown(
     """,
     unsafe_allow_html=True,
 )
+
+
+
+# V47: experiencia móvil iOS / Android.
+st.markdown("""
+<style>
+:root{--ps-mobile-gap:8px;}
+html,body,[data-testid="stAppViewContainer"],.stApp{max-width:100vw!important;overflow-x:hidden!important;}
+[data-testid="stMain"], [data-testid="stMainBlockContainer"], .block-container{
+  width:100%!important;max-width:100%!important;box-sizing:border-box!important;
+}
+@media(max-width:700px){
+  [data-testid="stMainBlockContainer"],.block-container{
+    padding-top:.35rem!important;
+    padding-left:max(10px,env(safe-area-inset-left))!important;
+    padding-right:max(10px,env(safe-area-inset-right))!important;
+    padding-bottom:calc(78px + env(safe-area-inset-bottom))!important;
+  }
+  h1{font-size:1.55rem!important;line-height:1.12!important;margin:.45rem 0 .65rem!important;}
+  h2{font-size:1.35rem!important;line-height:1.15!important;margin:.65rem 0 .55rem!important;}
+  h3,.panel-title{font-size:1rem!important;line-height:1.2!important;}
+  p,.stCaption{font-size:.86rem!important;}
+
+  /* Encabezado compacto, sin cortar logo/usuario. */
+  .v27-app-header,.v21-header,.v20-header,.v29-app-header{
+    border-radius:12px!important;padding:8px 10px!important;margin-bottom:8px!important;
+  }
+  .v21-header-brand,.v27-brand{gap:8px!important;min-width:0!important;}
+  .v21-header-brand img,.v27-brand img{width:74px!important;height:42px!important;max-width:74px!important;object-fit:contain!important;}
+  .v21-header-brand span,.v27-brand-title{font-size:16px!important;line-height:1.1!important;white-space:normal!important;}
+  .v27-brand-sub,.v21-header-sub,.v26-user-text,.v27-user-text{display:none!important;}
+
+  /* KPIs: dos tarjetas por fila en teléfono; compactas y legibles. */
+  .v25-kpi-grid,.v27-kpi-grid,.ps-kpi-grid{
+    grid-template-columns:repeat(2,minmax(0,1fr))!important;
+    gap:8px!important;margin:8px 0 14px!important;
+  }
+  .v25-kpi-card,.v27-kpi-card,.ps-kpi-card{
+    min-height:104px!important;height:auto!important;border-radius:13px!important;
+    padding:11px 11px 10px!important;box-shadow:0 4px 14px rgba(23,59,115,.06)!important;
+  }
+  .v25-kpi-label,.v27-kpi-label,.ps-kpi-title{font-size:10px!important;line-height:1.15!important;letter-spacing:.25px!important;}
+  .v25-kpi-value,.v27-kpi-value,.ps-kpi-value{font-size:22px!important;line-height:1!important;margin-top:6px!important;}
+  .v25-kpi-sub,.v27-kpi-sub,.ps-kpi-sub{font-size:10.5px!important;line-height:1.2!important;margin-top:7px!important;}
+  .ps-kpi-icon{width:34px!important;height:34px!important;font-size:16px!important;}
+
+  /* Tarjetas de semanas en 2 columnas. */
+  .v37-week-grid{grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:8px!important;}
+  .v37-week-card{padding:11px!important;border-radius:12px!important;}
+  .v37-week-title{font-size:13px!important;}
+  .v37-week-row{font-size:11px!important;gap:4px!important;}
+
+  /* Navegación/filtros: una sola fila usable y tamaño táctil. */
+  [data-testid="stSelectbox"],[data-testid="stMultiSelect"],div[data-testid="stPopover"]{min-width:0!important;width:100%!important;max-width:100%!important;}
+  [data-baseweb="select"]>div,div[data-testid="stPopover"]>button{min-height:46px!important;border-radius:11px!important;font-size:15px!important;}
+  [class*="st-key-filter_wrap_"]{margin:.15rem 0 .55rem!important;}
+  div[data-baseweb="popover"] [data-testid="stPopoverBody"]{
+    width:calc(100vw - 20px)!important;min-width:0!important;max-width:calc(100vw - 20px)!important;
+    max-height:62dvh!important;padding:10px!important;
+  }
+
+  /* Tablas cortas (ranking, recuperación): caben en pantalla. */
+  .ag-root-wrapper{border-radius:10px!important;max-width:100%!important;}
+  .ag-header-cell{padding-left:3px!important;padding-right:3px!important;}
+  .ag-header-cell-text{font-size:9px!important;line-height:1.05!important;}
+  .ag-cell{font-size:10px!important;padding-left:4px!important;padding-right:4px!important;}
+  .ag-row{font-size:10px!important;}
+  /* Tablas operativas muy anchas: permitir desplazamiento controlado, conservando Tienda fijada. */
+  .ag-body-horizontal-scroll{min-height:10px!important;height:10px!important;display:block!important;}
+  .ag-center-cols-viewport,.ag-body-viewport{overscroll-behavior-x:contain!important;-webkit-overflow-scrolling:touch!important;}
+
+  /* Gráficas realmente ajustadas al viewport. */
+  [data-testid="stPlotlyChart"],.stPlotlyChart,.js-plotly-plot,.plot-container,.svg-container{
+    width:100%!important;max-width:100%!important;min-width:0!important;box-sizing:border-box!important;
+  }
+  [data-testid="stPlotlyChart"]{padding:3px!important;border-radius:12px!important;overflow:hidden!important;}
+
+  /* Botones de descarga y columnas: apilados en móvil. */
+  [data-testid="stHorizontalBlock"]{gap:8px!important;flex-wrap:wrap!important;}
+  [data-testid="stColumn"]{min-width:0!important;}
+  .stDownloadButton,.stButton{width:100%!important;}
+  .stDownloadButton>button,.stButton>button{width:100%!important;min-height:44px!important;}
+
+  .panel-title{padding:11px 12px!important;border-radius:12px 12px 0 0!important;}
+  .v30-home-hero,.v29-home-hero{padding:18px 15px!important;border-radius:14px!important;}
+}
+@media(max-width:360px){
+  .v25-kpi-grid,.v27-kpi-grid,.ps-kpi-grid{grid-template-columns:1fr!important;}
+  .v37-week-grid{grid-template-columns:1fr!important;}
+}
+</style>
+""", unsafe_allow_html=True)
 
 st.markdown(
     '<div class="footer">CONFIDENCIAL | Price Shoes | Operaciones Ropa</div>',
