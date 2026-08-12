@@ -42,6 +42,16 @@ from core.settings import (
     PROCESS_STATUS_FILE, PROCESS_LOCK_FILE, PROCESS_LOG_FILE,
 )
 from core.security import hash_password, verify_password
+from services.orion_assistant import (
+    infer_intent as orion_infer_intent,
+    infer_period as orion_infer_period,
+    detect_stores as orion_detect_stores,
+    compact_records as orion_compact_records,
+    deterministic_answer as orion_deterministic_answer,
+    ask_openai as orion_ask_openai,
+    load_feedback as orion_load_feedback,
+    save_feedback as orion_save_feedback,
+)
 
 try:
     from st_aggrid import AgGrid, GridOptionsBuilder, JsCode
@@ -8174,7 +8184,7 @@ def _project_pages() -> list[str]:
         "Reporte Mensual", "Productividad", "Recuperación", "Recorridos",
         "Reportes", "Detalle por Tienda", "Detalle por Colaborador",
         "Histórico de Descargas", "Alertas Inteligentes", "Perfil de Usuario",
-        "Inteligencia Operativa",
+        "Inteligencia Operativa", "ORION · Asistente",
     ]
     if role_level() >= ROLE_LEVEL["ADMIN"]:
         pages += [
@@ -10481,6 +10491,233 @@ def page_inteligencia_operativa_v17(op, co):
     c1,c2,c3=st.columns(3); c1.metric("Promedio móvil 4 semanas",f"{info['Promedio móvil 4 semanas']:,.0f}"); c2.metric("Resultado actual",f"{info['Actual']:,.0f}"); c3.metric("Tendencia",info["Tendencia"],f"{info['Desviación %']:.1f}%")
     fig=go.Figure(); fig.add_scatter(x=weekly.index,y=weekly.values,mode="lines+markers",name="Piezas",line=dict(color="#3366CC")); fig.update_layout(title="Tendencia semanal real",height=420); st.plotly_chart(fig,width="stretch")
 
+
+# ============================================================
+# V49 — ORION · ASISTENTE VIRTUAL BASADO EN DATOS REALES
+# ============================================================
+def _orion_api_config():
+    """Lee configuración sin exponer la API key en pantalla ni en logs."""
+    try:
+        api_key = str(st.secrets.get("OPENAI_API_KEY", "") or "").strip()
+        model = str(st.secrets.get("ORION_MODEL", "gpt-5-mini") or "gpt-5-mini").strip()
+    except Exception:
+        api_key = str(os.getenv("OPENAI_API_KEY", "") or "").strip()
+        model = str(os.getenv("ORION_MODEL", "gpt-5-mini") or "gpt-5-mini").strip()
+    return api_key, model
+
+
+def _orion_build_evidence(question: str):
+    """Genera evidencia agregada usando las mismas ecuaciones del portal."""
+    if not ACTIVE_FILE.exists() or not cache_valid():
+        return None, "La fuente activa no está procesada."
+    mtime = ACTIVE_FILE.stat().st_mtime
+    op_min, op_max = _cache_date_bounds("op", mtime)
+    co_min, co_max = _cache_date_bounds("co", mtime)
+    latest_candidates = [x for x in (op_max, co_max) if x is not None]
+    if not latest_candidates:
+        return None, "No se detectó una fecha válida en la fuente procesada."
+    latest = max(pd.Timestamp(x).normalize() for x in latest_candidates)
+    intent = orion_infer_intent(question)
+    start, end, period_label = orion_infer_period(question, latest, pd)
+
+    # Carga únicamente el periodo solicitado para proteger memoria.
+    op = _read_cache_slice("op", mtime, start.isoformat(), end.isoformat())
+    co = _read_cache_slice("co", mtime, start.isoformat(), end.isoformat())
+    op = apply_user_scope(normalize_operation_df(op)) if op is not None else pd.DataFrame()
+    co = apply_user_scope(normalize_commercial_df(co)) if co is not None else pd.DataFrame()
+
+    authorized_catalog = sorted(set(authorized_stores(op, co, st.session_state.get("user", {}))))
+    if not authorized_catalog:
+        authorized_catalog = _available_store_catalog()
+    explicit_stores = orion_detect_stores(question, authorized_catalog)
+    project_stores = [x for x in _load_configured_project_stores() if x in authorized_catalog]
+
+    # Recuperación se consulta en todas las tiendas autorizadas; operación en el proyecto.
+    default_stores = authorized_catalog if intent == "recuperacion" else (project_stores or authorized_catalog)
+    selected_stores = explicit_stores or default_stores
+    op = filter_stores(op, selected_stores) if op is not None else op
+    co = filter_stores(co, selected_stores) if co is not None else co
+
+    op_table, opm = _v25_operational_period(op, co, start, end, selected_stores, carryover="none")
+    recm, rec_detail = _v25_recovery_period(co, start, end, selected_stores)
+    prod_table, prodm = _v25_productivity_period(op, start, end, selected_stores)
+    route_table, routem = _v25_recorridos_period(op, start, end, selected_stores)
+    score, _ = _v25_score(opm, recm, prodm, routem)
+    macro = _v25_macro(rec_detail)
+    if macro is not None and not macro.empty:
+        macro = macro.sort_values(["% Recuperación económica", "% Conversión"], ascending=False).copy()
+        macro = macro.rename(columns={
+            "Piezas Recuperadas": "Recup. Pzs",
+            "Valor de la Devolución a Precio Neto": "Valor Dev. $",
+            "Recuperación $": "Recup. $",
+            "% Conversión": "Conv. %",
+            "% Recuperación económica": "Recup. %",
+            "Pendiente Pzs": "Pend. Pzs",
+            "Pendiente $": "Pend. $",
+        })
+
+    # Ranking de productividad con nombres visibles ya unificados por el motor existente.
+    prod_sort = prod_table.copy() if prod_table is not None else pd.DataFrame()
+    prod_metric = next((c for c in ["Productividad diaria", "Productividad", "Promedio pzs/día", "% Cumplimiento"] if c in prod_sort.columns), None)
+    if prod_metric:
+        prod_sort[prod_metric] = pd.to_numeric(prod_sort[prod_metric], errors="coerce")
+        prod_sort = prod_sort.sort_values(prod_metric, ascending=False)
+
+    has_data = any(frame is not None and not frame.empty for frame in (op, co, op_table, macro, prod_table, route_table))
+    evidence = {
+        "source": "PS Operaciones Ropa - datos procesados",
+        "intent": intent,
+        "period_start": str(pd.Timestamp(start).date()),
+        "period_end": str(pd.Timestamp(end).date()),
+        "period_label": period_label,
+        "stores": selected_stores,
+        "stores_label": ", ".join(selected_stores) if len(selected_stores) <= 5 else f"{len(selected_stores)} tiendas autorizadas",
+        "has_data": bool(has_data),
+        "kpis": {
+            "piezas_ingresadas": float(opm.get("Piezas ingresadas", 0) or 0),
+            "acondicionadas": float(opm.get("Acondicionado", opm.get("Piezas acondicionadas", 0)) or 0),
+            "ubicadas": float(opm.get("Ubicado", opm.get("Piezas ubicadas", 0)) or 0),
+            "pendiente_acondicionar": float(opm.get("Pendiente acondicionar", 0) or 0),
+            "pendiente_ubicar": float(opm.get("Pendiente ubicar", 0) or 0),
+            "acondicionado_pct": float(opm.get("% Acondicionado", 0) or 0),
+            "ubicado_pct": float(opm.get("% Ubicado", opm.get("% Ubicado / Ingresos", 0)) or 0),
+            "conversion": float(recm.get("% Recuperación Piezas", 0) or 0),
+            "recuperacion_economica": float(recm.get("% Recuperación $", 0) or 0),
+            "recuperacion_pesos": float(recm.get("Recuperación $", 0) or 0),
+            "dev_pzs": float(recm.get("Dev Pzs", 0) or 0),
+            "piezas_recuperadas": float(recm.get("Piezas Recuperadas", 0) or 0),
+            "productividad": float(prodm.get("Productividad", 0) or 0),
+            "productividad_pct": float(prodm.get("% Productividad", 0) or 0),
+            "recorridos_realizados": float(routem.get("Realizados", 0) or 0),
+            "recorridos_meta": float(routem.get("Meta", 0) or 0),
+            "recorridos_pct": float(routem.get("% Recorridos", 0) or 0),
+            "ps_score": float(score or 0),
+        },
+        "ranking": orion_compact_records(macro, ["Tienda", "Dev Pzs", "Recup. Pzs", "Conv. %", "Valor Dev. $", "Recup. $", "Recup. %", "Pend. Pzs", "Pend. $"], 20),
+        "operation": orion_compact_records(
+            (op_table.sort_values("Pend. Ub.", ascending=False) if op_table is not None and not op_table.empty and "Pend. Ub." in op_table.columns else op_table),
+            ["Tienda", "Ingresos periodo", "Total", "Recolectadas", "Habilitadas", "Pend. Hab.", "% Acond.", "Ubicadas", "Pend. Ub.", "% Ubic."], 20),
+        "productivity": orion_compact_records(prod_sort, ["Tienda", "Nombre Real", "Nombre", "Colaborador", "Piezas procesadas", "Días trabajados", "Productividad diaria", "% Cumplimiento", "Ranking"], 15),
+        "routes": orion_compact_records(route_table, ["Tienda", "Recorridos", "Meta", "Faltante", "% Cumplimiento"], 20),
+    }
+    return evidence, None
+
+
+def _orion_answer(question: str, evidence: dict):
+    api_key, model = _orion_api_config()
+    feedback_file = CONFIG_DIR / "orion_feedback.jsonl"
+    feedback = [x for x in orion_load_feedback(feedback_file) if x.get("intent") == evidence.get("intent")]
+    if api_key:
+        try:
+            answer = orion_ask_openai(question, evidence, api_key, model=model, feedback_context=feedback)
+            return answer, f"IA conectada · {model}"
+        except Exception as exc:
+            print(f"[ORION] API fallback: {type(exc).__name__}: {exc}", flush=True)
+            return orion_deterministic_answer(question, evidence), "Motor verificado · IA temporalmente no disponible"
+    return orion_deterministic_answer(question, evidence), "Motor verificado · configura OPENAI_API_KEY para lenguaje natural avanzado"
+
+
+def page_orion_asistente_v49():
+    _v17_title("ORION · Asistente Operativo", "Pregunta en lenguaje natural y recibe respuestas sustentadas exclusivamente en los datos procesados del sistema.")
+    st.markdown("""
+    <style>
+    .orion-hero{background:linear-gradient(135deg,#173B73,#2857A4);color:#fff;border-radius:22px;padding:22px 24px;margin:6px 0 18px;box-shadow:0 12px 30px rgba(23,59,115,.16)}
+    .orion-hero h3{color:#fff!important;margin:0 0 6px!important}.orion-hero p{margin:0;opacity:.9}
+    .orion-proof{font-size:.84rem;color:#667085;margin-top:5px}
+    @media(max-width:700px){.orion-hero{padding:18px 16px;border-radius:18px}.orion-hero h3{font-size:1.22rem!important}}
+    </style>
+    <div class="orion-hero"><h3>✦ ORION</h3><p>Información real. Cálculos del portal. Respuestas sin inventar datos.</p></div>
+    """, unsafe_allow_html=True)
+
+    if not ACTIVE_FILE.exists():
+        restore_active_file_from_remote()
+    if not ACTIVE_FILE.exists() or not cache_valid():
+        st.warning("ORION necesita una fuente procesada. Carga y procesa el Excel desde **Carga de Excel**.")
+        return
+
+    # Accesos rápidos sirven también para enseñar el alcance del asistente.
+    st.caption("Ejemplos de preguntas")
+    examples = [
+        "¿Qué tiendas tienen mayor pendiente por ubicar este mes?",
+        "¿Cuál es la recuperación económica de la semana 28?",
+        "¿Quién tiene mayor productividad este mes?",
+        "Dame un resumen ejecutivo y las prioridades de esta semana.",
+    ]
+    cols = st.columns(2)
+    for i, example in enumerate(examples):
+        with cols[i % 2]:
+            if st.button(example, key=f"orion_example_{i}", width="stretch"):
+                st.session_state["orion_prefill"] = example
+
+    history = st.session_state.setdefault("orion_history", [])
+    for msg in history[-8:]:
+        with st.chat_message(msg["role"], avatar="✦" if msg["role"] == "assistant" else None):
+            st.markdown(msg["content"])
+            if msg.get("meta"):
+                st.caption(msg["meta"])
+
+    prefill = st.session_state.pop("orion_prefill", "")
+    question = st.chat_input("Pregúntale a ORION sobre operación, recuperación, productividad, recorridos o prioridades…")
+    if prefill and not question:
+        question = prefill
+
+    if question:
+        history.append({"role": "user", "content": question})
+        with st.chat_message("user"):
+            st.markdown(question)
+        with st.chat_message("assistant", avatar="✦"):
+            with st.spinner("ORION está consultando los datos calculados…"):
+                evidence, err = _orion_build_evidence(question)
+                if err:
+                    answer, mode = err, "Sin evidencia"
+                else:
+                    answer, mode = _orion_answer(question, evidence)
+            st.markdown(answer)
+            if evidence:
+                st.caption(f"Fuente: datos procesados · {evidence['period_label']} · {evidence['stores_label']} · {mode}")
+        history.append({"role": "assistant", "content": answer, "meta": mode, "evidence": evidence or {}})
+        st.session_state["orion_last_question"] = question
+        st.session_state["orion_last_answer"] = answer
+        st.session_state["orion_last_evidence"] = evidence or {}
+        st.rerun()
+
+    if st.session_state.get("orion_last_answer"):
+        st.divider()
+        st.caption("¿La respuesta te sirvió? Tu retroalimentación ayuda a ORION a ajustar futuras recomendaciones.")
+        f1, f2 = st.columns(2)
+        if f1.button("👍 Sí, útil", key="orion_feedback_up", width="stretch"):
+            ev = st.session_state.get("orion_last_evidence", {})
+            orion_save_feedback(CONFIG_DIR / "orion_feedback.jsonl", {
+                "rating": "up", "intent": ev.get("intent"),
+                "question": st.session_state.get("orion_last_question", ""),
+                "answer": st.session_state.get("orion_last_answer", ""),
+            })
+            st.success("Retroalimentación guardada.")
+        if f2.button("👎 No me sirvió", key="orion_feedback_down", width="stretch"):
+            st.session_state["orion_show_feedback_form"] = True
+        if st.session_state.get("orion_show_feedback_form"):
+            reason = st.selectbox("¿Qué debería mejorar?", ["La recomendación no aplica", "Faltó detalle", "El enfoque no fue útil", "Quiero otra alternativa"], key="orion_feedback_reason")
+            preferred = st.text_area("¿Qué opción o enfoque prefieres? (opcional)", key="orion_feedback_preferred")
+            if st.button("Guardar y usar como referencia", key="orion_feedback_save", type="primary"):
+                ev = st.session_state.get("orion_last_evidence", {})
+                orion_save_feedback(CONFIG_DIR / "orion_feedback.jsonl", {
+                    "rating": "down", "intent": ev.get("intent"), "reason": reason,
+                    "preferred": preferred,
+                    "question": st.session_state.get("orion_last_question", ""),
+                    "answer": st.session_state.get("orion_last_answer", ""),
+                })
+                st.session_state["orion_show_feedback_form"] = False
+                st.success("Guardado. ORION lo usará como contexto en respuestas futuras del mismo tipo.")
+
+    with st.expander("Cómo protege la precisión de los datos"):
+        st.markdown("""
+        - Los KPI se calculan **antes** de consultar a la IA, usando el mismo motor de PS Operaciones Ropa.
+        - ORION recibe tablas resumidas y métricas calculadas; **no inventa números ni recalcula con supuestos**.
+        - Si no existe evidencia suficiente, responde que no dispone del dato.
+        - Respeta el alcance y las tiendas autorizadas del usuario.
+        - La llamada a OpenAI usa `store=false`; la clave se configura en Secrets y nunca se muestra en pantalla.
+        """)
+
 # ============================================================
 # V25 — REPORTES EJECUTIVOS, DISEÑO Y ECUACIONES ESTANDARIZADAS
 # ============================================================
@@ -11474,6 +11711,7 @@ ROUTES = {
     "Alertas Inteligentes": lambda: page_alertas_inteligentes_v17(project_op, project_co),
     "Perfil de Usuario": page_perfil_usuario_v17,
     "Inteligencia Operativa": lambda: page_inteligencia_operativa_v17(project_op, project_co),
+    "ORION · Asistente": page_orion_asistente_v49,
     "Centro de Control": page_centro_control,
     "Administración": page_administracion_v17,
     "Configuración de Metas": page_configuracion_metas_v17,
