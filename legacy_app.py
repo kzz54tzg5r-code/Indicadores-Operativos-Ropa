@@ -11549,7 +11549,7 @@ st.markdown(
 
 # Marcador de despliegue para confirmar que GitHub/Streamlit usa esta versión.
 st.markdown('\n<style>\n.v37-week-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px;margin:10px 0 22px}.v37-week-card{background:#fff;border:1px solid #dbe3ef;border-radius:16px;padding:16px;box-shadow:0 8px 24px rgba(23,59,115,.07)}.v37-week-title{font-weight:800;color:#173B73;font-size:16px;margin-bottom:10px;border-bottom:2px solid #3366CC;padding-bottom:8px}.v37-week-row{display:flex;justify-content:space-between;gap:10px;padding:5px 0;font-size:13px;color:#667085}.v37-week-row b{color:#173B73;text-align:right}.v25-kpi-grid{align-items:stretch}.v25-kpi-card{min-height:150px}.js-plotly-plot,.plot-container{max-width:100%!important}@media(max-width:1100px){.v37-week-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}@media(max-width:650px){.v37-week-grid{grid-template-columns:1fr}}\n</style>\n', unsafe_allow_html=True)
-st.caption("PS Operaciones Ropa · V45")
+st.caption("PS Operaciones Ropa · V51")
 
 try:
     route_handler = ROUTES.get(page)
@@ -12007,3 +12007,47 @@ st.markdown("""
 @media(max-width:800px){[data-testid="stMultiSelect"],[data-testid="stSelectbox"],[data-testid="stTabs"] [data-testid="stMultiSelect"]{min-width:0!important;width:100%!important;max-width:100%!important;}}
 </style>
 """,unsafe_allow_html=True)
+
+# V51: rediseño ejecutivo inspirado en dashboards retail/operación.
+# Capa visual únicamente: conserva cálculos, permisos, exportaciones y navegación V50.
+st.markdown(r'''
+<style>
+:root{
+ --v51-navy:#0E2F63;--v51-blue:#1D4F91;--v51-pink:#E6007E;
+ --v51-bg:#F3F6FA;--v51-card:#FFFFFF;--v51-line:#DDE5EF;--v51-muted:#667085;
+}
+html,body,.stApp,[data-testid="stAppViewContainer"]{background:var(--v51-bg)!important;}
+[data-testid="stMainBlockContainer"],.block-container{padding-top:.55rem!important;}
+/* cabecera corporativa más compacta */
+.v27-app-header{border-radius:10px!important;border:0!important;border-bottom:4px solid var(--v51-pink)!important;box-shadow:0 3px 12px rgba(14,47,99,.08)!important;min-height:68px!important;padding:8px 15px!important;}
+.v27-brand-title{font-size:21px!important}.v27-brand-sub{font-size:11px!important}
+/* controles con apariencia de dashboard BI */
+[data-testid="stSelectbox"] label,[data-testid="stMultiSelect"] label,[data-testid="stDateInput"] label{font-size:10px!important;font-weight:850!important;letter-spacing:.55px!important;text-transform:uppercase!important;color:#526173!important;}
+[data-baseweb="select"]>div,[data-testid="stDateInput"]>div>div{border-radius:8px!important;border:1px solid #C9D4E2!important;background:#fff!important;box-shadow:none!important;}
+/* KPIs más bajos, densos y ejecutivos */
+.v25-kpi-grid{grid-template-columns:repeat(4,minmax(0,1fr))!important;gap:10px!important;margin:10px 0 16px!important;}
+.v25-kpi-card{min-height:108px!important;padding:13px 14px 11px 16px!important;border-radius:11px!important;border:1px solid var(--v51-line)!important;box-shadow:0 3px 10px rgba(14,47,99,.045)!important;}
+.v25-kpi-label{font-size:10px!important;letter-spacing:.5px!important}.v25-kpi-value{font-size:25px!important;margin-top:7px!important}.v25-kpi-sub{font-size:10.5px!important;margin-top:7px!important}
+/* paneles/tablas */
+.panel-title{border-radius:10px 10px 0 0!important;padding:11px 14px!important;font-size:15px!important;color:var(--v51-navy)!important;}
+.ag-root-wrapper{border-radius:0 0 10px 10px!important;border-color:var(--v51-line)!important;}
+.ag-header{background:var(--v51-navy)!important}.ag-header-cell{background:var(--v51-navy)!important}.ag-header-cell-text{color:#fff!important;font-weight:800!important;}
+[data-testid="stPlotlyChart"]{border-radius:11px!important;border:1px solid var(--v51-line)!important;box-shadow:none!important;padding:5px!important;}
+h1,h2,h3{color:#172B4D!important}.footer{opacity:.72!important}
+/* móvil: interfaz tipo app; sin comprimir tablas */
+@media(max-width:700px){
+ [data-testid="stMainBlockContainer"],.block-container{padding:.35rem 10px calc(72px + env(safe-area-inset-bottom))!important;}
+ .v27-app-header{min-height:56px!important;padding:6px 9px!important;border-bottom-width:3px!important;margin-bottom:8px!important}.v27-brand img{width:64px!important;height:38px!important}.v27-brand-title{font-size:15px!important}.v27-avatar{width:34px!important;height:34px!important;font-size:12px!important}
+ h1{font-size:1.28rem!important}h2{font-size:1.12rem!important}h3{font-size:1rem!important}
+ .v25-kpi-grid{grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:7px!important;margin:7px 0 12px!important;}
+ .v25-kpi-card{min-height:92px!important;padding:10px 10px 9px 13px!important;border-radius:10px!important}.v25-kpi-value{font-size:20px!important}.v25-kpi-label{font-size:8.5px!important}.v25-kpi-sub{font-size:9px!important;margin-top:5px!important}
+ .ps-mob-row{border-radius:11px!important;padding:10px!important;box-shadow:none!important}.ps-mob-title{font-size:14px!important}.ps-mob-metrics{gap:5px!important}.ps-mob-metric{padding:7px!important;border-radius:8px!important}.ps-mob-metric strong{font-size:14px!important}.ps-mob-metric span{font-size:8.5px!important}
+ /* AgGrid queda como respaldo de escritorio; tarjetas son la vista principal en teléfono */
+ [class*="st-key-mobilewrap_"] iframe,[class*="st-key-mobilewrap_"] [data-testid="stCustomComponentV1"]{display:none!important;height:0!important;min-height:0!important;}
+ [data-testid="stPlotlyChart"]{padding:2px!important;margin:4px 0 9px!important}
+ div[data-baseweb="popover"] [data-testid="stPopoverBody"]{width:calc(100vw - 20px)!important;max-width:calc(100vw - 20px)!important;}
+}
+@media(max-width:360px){.v25-kpi-grid{grid-template-columns:1fr!important}}
+</style>
+''', unsafe_allow_html=True)
+st.caption("PS Operaciones Ropa · V51 · Diseño Ejecutivo Responsive")
