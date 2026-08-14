@@ -4703,13 +4703,7 @@ def load_data_for_page(page, mtime):
                 selected = pd.Timestamp(raw).normalize() if raw else latest_value
             except Exception:
                 selected = latest_value
-            # V52: cargar el mes completo de la fecha elegida. El widget de fecha
-            # se ejecuta después de esta fase de carga y, en históricos (abril en
-            # particular), una ventana de un solo día podía dejar el DataFrame
-            # vacío por diferencias de tipo/hora en el parquet. La página filtra
-            # finalmente el día exacto, pero mantiene disponible todo el mes.
-            period = selected.to_period("M")
-            return period.start_time.normalize(), period.end_time.normalize()
+            return selected, selected
         # V44: no cargar el histórico comercial completo en memoria. Centro,
         # semanal y mensual leen únicamente el periodo visible. Las opciones
         # históricas se obtienen de la columna Fecha (ligera) mediante helpers.
@@ -6186,19 +6180,11 @@ def split_operation(op):
         df["Piezas"],
         0,
     )
-    # Ubicado: las fuentes históricas no siempre guardan la palabra en
-    # "Actividad"; algunas la registran en Motivo o Tabla. Considerar las tres
-    # evita perder el avance ubicado de meses antiguos como abril.
-    tabla_txt = (
-        df.get("Tabla", pd.Series("", index=df.index)).astype(str).map(norm_text)
-        if len(df.index) else pd.Series(dtype=str)
+    df["Ubicadas"] = np.where(
+        act.str.contains(r"UBIC", regex=True, na=False),
+        df["Piezas"],
+        0,
     )
-    es_ubicado = (
-        act.str.contains(r"UBIC", regex=True, na=False)
-        | mot.str.contains(r"UBIC", regex=True, na=False)
-        | tabla_txt.str.contains(r"UBIC", regex=True, na=False)
-    )
-    df["Ubicadas"] = np.where(es_ubicado, df["Piezas"], 0)
 
     # Recorridos: aceptar tanto una columna numérica específica como registros
     # cuya actividad o motivo identifique un recorrido. En fuentes donde cada
@@ -11264,34 +11250,8 @@ def page_por_dia(op, co):
         if frame is not None and not frame.empty and "Fecha" in frame: dates += pd.to_datetime(frame["Fecha"],errors="coerce").dropna().tolist()
     default = pd.Timestamp(max(dates)).date() if dates else date.today()
     selected = st.date_input("Fecha", value=default, key="v25_daily_date")
-    start=end=pd.Timestamp(selected).normalize()
-
-    # V52: garantizar que el día solicitado se consulte directamente desde los
-    # cachés. Esto corrige históricos que podían aparecer en cero después de
-    # navegar desde otro mes, aun cuando el Excel sí contenía información.
-    try:
-        mtime = ACTIVE_FILE.stat().st_mtime if ACTIVE_FILE.exists() else 0
-        op_day = _read_cache_slice("op", mtime, str(start.date()), str(end.date()))
-        co_day = _read_cache_slice("co", mtime, str(start.date()), str(end.date()))
-        if op_day is not None and not op_day.empty:
-            op = reliable_operation(op_day, co_day)
-        if co_day is not None and not co_day.empty:
-            co = normalize_commercial_df(co_day)
-        # Respaldo para parquet históricos con Fecha object/text: leer el mes y
-        # filtrar después de normalizar, sin cargar todo el histórico.
-        if (op is None or op.empty) and (co is None or co.empty):
-            period = start.to_period("M")
-            ms, me = period.start_time.normalize(), period.end_time.normalize()
-            op_month = _read_cache_slice("op", mtime, str(ms.date()), str(me.date()))
-            co_month = _read_cache_slice("co", mtime, str(ms.date()), str(me.date()))
-            if op_month is not None and not op_month.empty:
-                op = reliable_operation(op_month, co_month)
-            if co_month is not None and not co_month.empty:
-                co = normalize_commercial_df(co_month)
-    except Exception:
-        pass
-
     selected_stores = authorized_stores(op, co)
+    start=end=pd.Timestamp(selected)
     table, metrics = _v25_operational_period(op, co, start, end, selected_stores, carryover="previous_day")
     recm, detail = _v25_recovery_period(co, start, end, selected_stores)
     _v25_kpi_cards([
@@ -11589,7 +11549,7 @@ st.markdown(
 
 # Marcador de despliegue para confirmar que GitHub/Streamlit usa esta versión.
 st.markdown('\n<style>\n.v37-week-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px;margin:10px 0 22px}.v37-week-card{background:#fff;border:1px solid #dbe3ef;border-radius:16px;padding:16px;box-shadow:0 8px 24px rgba(23,59,115,.07)}.v37-week-title{font-weight:800;color:#173B73;font-size:16px;margin-bottom:10px;border-bottom:2px solid #3366CC;padding-bottom:8px}.v37-week-row{display:flex;justify-content:space-between;gap:10px;padding:5px 0;font-size:13px;color:#667085}.v37-week-row b{color:#173B73;text-align:right}.v25-kpi-grid{align-items:stretch}.v25-kpi-card{min-height:150px}.js-plotly-plot,.plot-container{max-width:100%!important}@media(max-width:1100px){.v37-week-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}@media(max-width:650px){.v37-week-grid{grid-template-columns:1fr}}\n</style>\n', unsafe_allow_html=True)
-st.caption("PS Operaciones Ropa · V52")
+st.caption("PS Operaciones Ropa · V51")
 
 try:
     route_handler = ROUTES.get(page)
@@ -12090,4 +12050,4 @@ h1,h2,h3{color:#172B4D!important}.footer{opacity:.72!important}
 @media(max-width:360px){.v25-kpi-grid{grid-template-columns:1fr!important}}
 </style>
 ''', unsafe_allow_html=True)
-st.caption("PS Operaciones Ropa · V52 · Diseño Ejecutivo Responsive")
+st.caption("PS Operaciones Ropa · V51 · Diseño Ejecutivo Responsive")
