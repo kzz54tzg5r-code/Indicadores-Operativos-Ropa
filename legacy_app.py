@@ -8218,17 +8218,16 @@ def nav_bar():
 
     pages = _project_pages()
     requested = st.session_state.pop("nav_request", None)
-    if requested in pages:
-        st.session_state["nav_page"] = requested
-
     default_page = "Resumen Comercial" if active_app == "Ventas y Análisis Comercial" else "Centro Ejecutivo"
-    current = st.session_state.get("nav_page", default_page)
+    current = requested if requested in pages else st.session_state.get("nav_page", default_page)
     if current not in pages:
         current = default_page
-        st.session_state["nav_page"] = current
+    st.session_state["nav_page"] = current
 
-    # Sincroniza el selector antes de crearlo; evita que Streamlit vuelva al Centro Ejecutivo.
-    if st.session_state.get("project_nav_selector") not in pages:
+    # Sincroniza el selector exclusivamente antes de crearlo. Las vistas que se
+    # ejecutan después de este bloque escriben en nav_request, nunca directamente
+    # en la llave del widget ya instanciado.
+    if requested in pages or st.session_state.get("project_nav_selector") not in pages:
         st.session_state["project_nav_selector"] = current
 
     spacer, back_col, menu_col = st.columns([4.5, 1.7, 3.1], gap="small")
@@ -12121,7 +12120,7 @@ h1,h2,h3{color:#172B4D!important}.footer{opacity:.72!important}
 @media(max-width:360px){.v25-kpi-grid{grid-template-columns:1fr!important}}
 </style>
 ''', unsafe_allow_html=True)
-st.caption("PS Operaciones Ropa · V53 · Ventas y Análisis Comercial")
+st.caption("PS Operaciones Ropa · V53.1 · Ventas y Análisis Comercial")
 
 # V53: shell visual del proyecto comercial. Esta regla es la última capa CSS
 # para neutralizar los estilos heredados que ocultaban el sidebar en V52.
