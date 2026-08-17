@@ -1,0 +1,36 @@
+{
+  "version": 1,
+  "sales": [],
+  "capacities": [
+    {
+      "id": "e2e6343f55b5d541",
+      "name": "capacidades_24.04.26.xls",
+      "path": "capacidades/capacidades_24.04.26.xls",
+      "sha256": "e2e6343f55b5d541eb5fdf971c6b3db07eb4e23b095486b78d8c11b3302b7ea4",
+      "size": 8138240,
+      "uploaded_at": "2026-08-16T20:13:29-07:00",
+      "status": "Procesado",
+      "rows": 6761,
+      "stores": [
+        "Olivar"
+      ]
+    }
+  ],
+  "pdfs": [
+    {
+      "id": "7db089133a8ef740",
+      "name": "AC_IZT.pdf",
+      "path": "pdfs/2024-W14/AC_IZT.pdf",
+      "sha256": "7db089133a8ef740374dc3f71bf7be6d69284a53cc9f75cb11c9613b44883983",
+      "size": 601217,
+      "uploaded_at": "2026-08-16T20:13:29-07:00",
+      "status": "Procesado",
+      "store": "Iztapalapa",
+      "week": "2024-W14",
+      "report_date": "2024-04-01",
+      "pages": 23,
+      "records": 7615
+    }
+  ],
+  "updated_at": "2026-08-16T20:34:13-07:00"
+}
