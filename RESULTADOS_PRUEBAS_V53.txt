@@ -12,6 +12,8 @@ Fecha: 2026-08-16
 - Prueba de humo de las nueve pantallas comerciales con Streamlit 1.59.1: OK
 - Navegación lateral y superior con `project_nav_selector` ya creado: OK
 - Acceso a Carga comercial sin modificar la llave del widget instanciado: OK
+- Regla CSS comercial con prioridad sobre capas V30/V31/V33: OK
+- Menú lateral con nueve accesos e iconos: OK
 - Pantalla inicial completa de app.py: sin excepciones
 
 Resultado: APROBADO PARA ENTREGA.
