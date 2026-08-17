@@ -10067,7 +10067,10 @@ if needs_data:
         print(f"[DATA] {page} listo: op={len(op_all):,}, co={len(co_all):,} en {time.perf_counter()-_data_started:.2f}s", flush=True)
     else:
         if not ACTIVE_FILE.exists():
-            st.info("La fuente de datos no está disponible. Utiliza el módulo **Carga de Excel** del menú del proyecto.")
+            if page in {"Resumen Comercial", "Ubicaciones y Secciones", "Top 20 Modelos"}:
+                st.info("El Excel mensual de ventas todavía no está disponible; el módulo utilizará los indicadores extraídos de los PDF comerciales.")
+            else:
+                st.info("La fuente de datos no está disponible. Utiliza el módulo **Carga de Excel** del menú del proyecto.")
         else:
             st.warning(
                 "El archivo está guardado, pero todavía no está procesado. "
@@ -11628,7 +11631,7 @@ st.markdown(
 
 # Marcador de despliegue para confirmar que GitHub/Streamlit usa esta versión.
 st.markdown('\n<style>\n.v37-week-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px;margin:10px 0 22px}.v37-week-card{background:#fff;border:1px solid #dbe3ef;border-radius:16px;padding:16px;box-shadow:0 8px 24px rgba(23,59,115,.07)}.v37-week-title{font-weight:800;color:#173B73;font-size:16px;margin-bottom:10px;border-bottom:2px solid #3366CC;padding-bottom:8px}.v37-week-row{display:flex;justify-content:space-between;gap:10px;padding:5px 0;font-size:13px;color:#667085}.v37-week-row b{color:#173B73;text-align:right}.v25-kpi-grid{align-items:stretch}.v25-kpi-card{min-height:150px}.js-plotly-plot,.plot-container{max-width:100%!important}@media(max-width:1100px){.v37-week-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}@media(max-width:650px){.v37-week-grid{grid-template-columns:1fr}}\n</style>\n', unsafe_allow_html=True)
-st.caption("PS Operaciones Ropa · V52")
+st.caption("PS Operaciones Ropa · V54")
 
 try:
     route_handler = ROUTES.get(page)
@@ -12129,4 +12132,4 @@ h1,h2,h3{color:#172B4D!important}.footer{opacity:.72!important}
 @media(max-width:360px){.v25-kpi-grid{grid-template-columns:1fr!important}}
 </style>
 ''', unsafe_allow_html=True)
-st.caption("PS Operaciones Ropa · V52 · Diseño Ejecutivo Responsive")
+st.caption("PS Operaciones Ropa · V54 · Diseño Ejecutivo Responsive")
