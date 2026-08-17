@@ -4727,6 +4727,13 @@ def load_data_for_page(page, mtime):
             except Exception:
                 period = latest_value.to_period("M")
             return period.start_time.normalize(), period.end_time.normalize()
+        if page_name in {"Resumen Comercial", "Ubicaciones y Secciones", "Top 20 Modelos"} and source == "co":
+            raw = st.session_state.get("commercial_month")
+            try:
+                period = pd.Period(str(raw), freq="M") if raw else latest_value.to_period("M")
+            except Exception:
+                period = latest_value.to_period("M")
+            return period.start_time.normalize(), period.end_time.normalize()
         if page_name == "Reporte Semanal":
             raw = str(st.session_state.get("v39_week") or "")
             import re as _re
@@ -4781,7 +4788,8 @@ def load_data_for_page(page, mtime):
     }
     pages_with_co = {
         "Centro Ejecutivo", "Operación Diaria", "Reporte Semanal",
-        "Reporte Mensual", "Recuperación",
+        "Reporte Mensual", "Recuperación", "Resumen Comercial",
+        "Ubicaciones y Secciones", "Top 20 Modelos",
     }
 
     if page in pages_with_op:
@@ -8168,21 +8176,30 @@ def page_inicio():
     with col_future:
         st.markdown(
             """
-            <div class="v30-project-card v30-project-future">
-              <div class="v30-project-icon">＋</div>
+            <div class="v30-project-card v30-project-live">
+              <div class="v30-project-icon">$</div>
               <div class="v30-project-copy">
-                <div class="v30-project-name">Próximo proyecto</div>
-                <div class="v30-project-desc">Este espacio permitirá integrar nuevos reportes sin mezclar sus indicadores con Muertos y Cambios.</div>
-                <div class="v30-project-status v30-status-muted">Disponible próximamente</div>
+                <div class="v30-project-name">Ventas y Análisis Comercial</div>
+                <div class="v30-project-desc">Ventas, utilidad, inversión, existencias, ubicaciones, modelos campeones y lentos.</div>
+                <div class="v30-project-status">Proyecto activo</div>
               </div>
             </div>
             """,
             unsafe_allow_html=True,
         )
-        st.button("Próximamente", key="v30_future_project", disabled=True, width="stretch")
+        if st.button("Abrir Ventas y Análisis Comercial", key="v53_open_commercial", type="primary", width="stretch"):
+            st.session_state["active_app"] = "Ventas y Análisis Comercial"
+            st.session_state["nav_page"] = "Resumen Comercial"
+            st.session_state["project_nav_selector"] = "Resumen Comercial"
+            st.rerun()
 
 
 def _project_pages() -> list[str]:
+    if st.session_state.get("active_app") == "Ventas y Análisis Comercial":
+        pages = ["Resumen Comercial", "Ubicaciones y Secciones", "Top 20 Modelos", "Histórico PDF"]
+        if role_level() >= ROLE_LEVEL["ADMIN"]:
+            pages.append("Carga Comercial")
+        return pages
     pages = [
         "Centro Ejecutivo", "Operación Diaria", "Reporte Semanal",
         "Reporte Mensual", "Productividad", "Recuperación", "Recorridos",
@@ -8201,7 +8218,7 @@ def _project_pages() -> list[str]:
 def nav_bar():
     """Navegación de dos niveles: portafolio y menú interno permanente."""
     active_app = st.session_state.get("active_app")
-    if active_app != "Muertos y Cambios":
+    if active_app not in {"Muertos y Cambios", "Ventas y Análisis Comercial"}:
         st.session_state["nav_page"] = "Inicio"
         return "Inicio"
 
@@ -8210,9 +8227,10 @@ def nav_bar():
     if requested in pages:
         st.session_state["nav_page"] = requested
 
-    current = st.session_state.get("nav_page", "Centro Ejecutivo")
+    default_page = "Resumen Comercial" if active_app == "Ventas y Análisis Comercial" else "Centro Ejecutivo"
+    current = st.session_state.get("nav_page", default_page)
     if current not in pages:
-        current = "Centro Ejecutivo"
+        current = default_page
         st.session_state["nav_page"] = current
 
     # Sincroniza el selector antes de crearlo; evita que Streamlit vuelva al Centro Ejecutivo.
@@ -8228,7 +8246,7 @@ def nav_bar():
             st.rerun()
     with menu_col:
         selected = st.selectbox(
-            "Menú de Muertos y Cambios",
+            f"Menú de {active_app}",
             pages,
             key="project_nav_selector",
             label_visibility="collapsed",
@@ -8239,7 +8257,7 @@ def nav_bar():
         st.rerun()
 
     st.markdown(
-        f'<div class="v30-project-context"><span>Proyecto</span><b>Muertos y Cambios</b><em>{current}</em></div>',
+        f'<div class="v30-project-context"><span>Proyecto</span><b>{active_app}</b><em>{current}</em></div>',
         unsafe_allow_html=True,
     )
     return current
@@ -9993,6 +10011,20 @@ render_header()
 page = nav_bar()
 print(f"[PAGE] {page}", flush=True)
 
+# V53: selector ligero del mes comercial antes de leer el caché. Solo consulta
+# la columna Fecha y permite cambiar abril/mayo/junio sin cargar todo el histórico.
+if page in {"Resumen Comercial", "Ubicaciones y Secciones", "Top 20 Modelos"} and ACTIVE_FILE.exists():
+    try:
+        _commercial_min, _commercial_max = _cache_date_bounds("co", ACTIVE_FILE.stat().st_mtime)
+        if _commercial_min is not None and _commercial_max is not None:
+            _commercial_months = [str(p) for p in pd.period_range(pd.Timestamp(_commercial_min).to_period("M"), pd.Timestamp(_commercial_max).to_period("M"), freq="M")]
+            _commercial_default = st.session_state.get("commercial_month", _commercial_months[-1])
+            if _commercial_default not in _commercial_months:
+                _commercial_default = _commercial_months[-1]
+            st.selectbox("Mes de ventas", _commercial_months, index=_commercial_months.index(_commercial_default), key="commercial_month")
+    except Exception:
+        pass
+
 DATA_PAGES = {
     "Centro Ejecutivo",
     "Operación Diaria",
@@ -10006,6 +10038,7 @@ DATA_PAGES = {
     "Detalle por Colaborador",
     "Alertas Inteligentes",
     "Inteligencia Operativa",
+    "Resumen Comercial", "Ubicaciones y Secciones", "Top 20 Modelos",
 }
 
 op_all = pd.DataFrame()
@@ -11471,6 +11504,7 @@ PROJECT_SCOPE_PAGES = {
     "Centro Ejecutivo", "Operación Diaria", "Reporte Semanal", "Reporte Mensual",
     "Productividad", "Recorridos", "Reportes", "Detalle por Colaborador",
     "Alertas Inteligentes", "Inteligencia Operativa",
+    "Resumen Comercial", "Ubicaciones y Secciones", "Top 20 Modelos",
 }
 ALL_STORE_FILTER_PAGES = {"Recuperación", "Detalle por Tienda"}
 
@@ -11519,6 +11553,11 @@ ROUTES = {
     "Configuración de Metas": page_configuracion_metas_v17,
     "Carga de Excel": page_carga_excel_v17,
     "Diagnóstico del Archivo": lambda: page_diagnostico_archivo_v17(op_all, co_all, diag_df),
+    "Resumen Comercial": lambda: __import__("commercial_analysis").render("Resumen Comercial", co_all, is_admin()),
+    "Ubicaciones y Secciones": lambda: __import__("commercial_analysis").render("Ubicaciones y Secciones", co_all, is_admin()),
+    "Top 20 Modelos": lambda: __import__("commercial_analysis").render("Top 20 Modelos", co_all, is_admin()),
+    "Histórico PDF": lambda: __import__("commercial_analysis").render("Histórico PDF", pd.DataFrame(), is_admin()),
+    "Carga Comercial": lambda: __import__("commercial_analysis").render("Carga Comercial", pd.DataFrame(), is_admin()),
 }
 
 

@@ -10,3 +10,4 @@ argon2-cffi==25.1.0
 python-calamine==0.8.2
 pytest==8.4.1
 Pillow==12.3.0
+pypdf==6.4.0
