@@ -147,6 +147,9 @@ def _load_bundle(existing_sales=None) -> dict:
 
 
 def _inject_styles() -> None:
+    # Marcador del módulo: permite que el CSS comercial gane por especificidad
+    # a las capas heredadas V30/V31/V33 que ocultaban el sidebar global.
+    st.markdown('<span class="ac-shell-marker" aria-hidden="true"></span>', unsafe_allow_html=True)
     st.markdown(
         f"""
         <style>
@@ -159,7 +162,58 @@ def _inject_styles() -> None:
         .ac-source-note{{background:#EAF2FF;border:1px solid #CADBFA;border-radius:10px;padding:10px 13px;color:{NAVY};font-size:11px;margin:8px 0 12px}}
         div[data-testid="stRadio"] [role="radiogroup"]{{gap:6px!important;flex-wrap:wrap!important}}div[data-testid="stRadio"] [role="radiogroup"] label{{background:#fff;border:1px solid #D9E2EF;border-radius:999px;padding:7px 14px!important}}div[data-testid="stRadio"] [role="radiogroup"] label:has(input:checked){{background:{BLUE}!important;color:#fff!important;border-color:{BLUE}!important}}
         [data-testid="stDataFrame"]{{border:1px solid #E1E7F0;border-radius:12px;overflow:hidden}}.stPlotlyChart{{border:1px solid #E1E7F0!important;border-radius:13px!important;background:#fff!important;box-shadow:none!important}}
+        /* Shell lateral comercial. Los selectores deliberadamente incluyen el
+           marcador para superar las reglas globales que usan !important. */
+        body [data-testid="stAppViewContainer"]:has(.ac-shell-marker) section[data-testid="stSidebar"]{{
+          display:flex!important;visibility:visible!important;opacity:1!important;
+          position:fixed!important;inset:0 auto 0 0!important;
+          width:224px!important;min-width:224px!important;max-width:224px!important;
+          height:100vh!important;flex:0 0 224px!important;transform:translateX(0)!important;
+          background:linear-gradient(180deg,#0B326D 0%,#102E67 100%)!important;
+          z-index:1500!important;overflow-y:auto!important;overflow-x:hidden!important;
+          pointer-events:auto!important;
+        }}
+        body [data-testid="stAppViewContainer"]:has(.ac-shell-marker) section[data-testid="stSidebar"] > div:first-child{{
+          display:block!important;visibility:visible!important;opacity:1!important;
+          position:relative!important;width:224px!important;min-width:224px!important;
+          height:auto!important;min-height:100vh!important;padding:14px 10px!important;
+          overflow:visible!important;box-sizing:border-box!important;
+        }}
+        body [data-testid="stAppViewContainer"]:has(.ac-shell-marker) [data-testid="stMain"]{{
+          margin-left:224px!important;width:calc(100% - 224px)!important;
+          max-width:calc(100% - 224px)!important;padding-top:0!important;
+        }}
+        body [data-testid="stAppViewContainer"]:has(.ac-shell-marker) [data-testid="stMainBlockContainer"],
+        body [data-testid="stAppViewContainer"]:has(.ac-shell-marker) .block-container{{
+          width:100%!important;max-width:none!important;margin:0!important;
+          padding:.7rem 1.2rem 2.5rem!important;box-sizing:border-box!important;
+        }}
+        body [data-testid="stAppViewContainer"]:has(.ac-shell-marker) .v27-app-header,
+        body [data-testid="stAppViewContainer"]:has(.ac-shell-marker) .v30-project-context,
+        body [data-testid="stAppViewContainer"]:has(.ac-shell-marker) [data-testid="stHorizontalBlock"]:has([aria-label="Menú de Ventas y Análisis Comercial"]){{display:none!important;}}
+        body [data-testid="stAppViewContainer"]:has(.ac-shell-marker) section[data-testid="stSidebar"] h3,
+        body [data-testid="stAppViewContainer"]:has(.ac-shell-marker) section[data-testid="stSidebar"] p,
+        body [data-testid="stAppViewContainer"]:has(.ac-shell-marker) section[data-testid="stSidebar"] span{{color:#fff!important;}}
+        body [data-testid="stAppViewContainer"]:has(.ac-shell-marker) section[data-testid="stSidebar"] img{{background:#fff!important;border-radius:10px!important;padding:6px!important;margin:0 auto 8px!important;}}
+        body [data-testid="stAppViewContainer"]:has(.ac-shell-marker) section[data-testid="stSidebar"] .stButton>button{{
+          display:flex!important;visibility:visible!important;opacity:1!important;width:100%!important;
+          color:#fff!important;background:transparent!important;border:0!important;border-radius:10px!important;
+          justify-content:flex-start!important;text-align:left!important;min-height:40px!important;padding:8px 11px!important;
+        }}
+        body [data-testid="stAppViewContainer"]:has(.ac-shell-marker) section[data-testid="stSidebar"] .stButton>button[kind="primary"]{{background:{BLUE}!important;box-shadow:0 5px 14px rgba(0,0,0,.15)!important;}}
+        body [data-testid="stAppViewContainer"]:has(.ac-shell-marker) section[data-testid="stSidebar"] .stButton>button:hover{{background:rgba(255,255,255,.12)!important;}}
         @media(max-width:1250px){{.ac-kpis{{grid-template-columns:repeat(3,minmax(0,1fr))}}}}@media(max-width:700px){{.ac-header{{align-items:flex-start;flex-direction:column}}.ac-title{{font-size:22px}}.ac-status{{justify-content:flex-start}}.ac-kpis{{grid-template-columns:repeat(2,minmax(0,1fr))}}}}@media(max-width:390px){{.ac-kpis{{grid-template-columns:1fr}}}}
+        @media(max-width:900px){{
+          body [data-testid="stAppViewContainer"]:has(.ac-shell-marker) section[data-testid="stSidebar"]{{
+            width:286px!important;min-width:286px!important;max-width:82vw!important;
+            flex-basis:286px!important;transform:translateX(-100%)!important;z-index:1800!important;
+          }}
+          body [data-testid="stAppViewContainer"]:has(.ac-shell-marker) section[data-testid="stSidebar"][aria-expanded="true"],
+          body [data-testid="stAppViewContainer"]:has(.ac-shell-marker) section[data-testid="stSidebar"][data-state="expanded"]{{transform:translateX(0)!important;}}
+          body [data-testid="stAppViewContainer"]:has(.ac-shell-marker) [data-testid="stMain"]{{margin-left:0!important;width:100%!important;max-width:100%!important;}}
+          body [data-testid="stAppViewContainer"]:has(.ac-shell-marker) [data-testid="stSidebarCollapsedControl"],
+          body [data-testid="stAppViewContainer"]:has(.ac-shell-marker) [data-testid="collapsedControl"]{{display:flex!important;visibility:visible!important;opacity:1!important;z-index:1900!important;}}
+        }}
         </style>
         """,
         unsafe_allow_html=True,
@@ -167,6 +221,16 @@ def _inject_styles() -> None:
 
 
 def render_commercial_sidebar(active_page: str, is_admin: bool = False) -> None:
+    sidebar_labels = {
+        "Resumen Comercial": "▦  Resumen",
+        "Tiendas Comerciales": "▤  Tiendas",
+        "Ubicaciones y Secciones": "⌖  Ubicaciones",
+        "Modelos": "♛  Modelos",
+        "Inventario y Cobertura": "◇  Inventario",
+        "Oportunidades y Acciones": "⚡  Oportunidades",
+        "Pronóstico Comercial": "↗  Pronóstico",
+        "Histórico Comercial": "↶  Histórico",
+    }
     with st.sidebar:
         logo = Path(__file__).resolve().parents[1] / "assets" / "price_shoes_logo.png"
         if logo.exists():
@@ -175,7 +239,7 @@ def render_commercial_sidebar(active_page: str, is_admin: bool = False) -> None:
         st.caption("Módulo comercial")
         for page_name in COMMERCIAL_PAGES:
             if st.button(
-                PAGE_LABELS[page_name], key=f"commercial_side_{page_name}",
+                sidebar_labels.get(page_name, PAGE_LABELS[page_name]), key=f"commercial_side_{page_name}",
                 type="primary" if active_page == page_name else "secondary", width="stretch",
             ):
                 st.session_state["nav_page"] = page_name
@@ -186,7 +250,7 @@ def render_commercial_sidebar(active_page: str, is_admin: bool = False) -> None:
                 st.rerun()
         if is_admin:
             st.divider()
-            if st.button("Carga comercial", key="commercial_side_upload", type="primary" if active_page == ADMIN_PAGE else "secondary", width="stretch"):
+            if st.button("⇧  Carga comercial", key="commercial_side_upload", type="primary" if active_page == ADMIN_PAGE else "secondary", width="stretch"):
                 st.session_state["nav_page"] = ADMIN_PAGE
                 st.session_state["nav_request"] = ADMIN_PAGE
                 st.rerun()
