@@ -4727,13 +4727,6 @@ def load_data_for_page(page, mtime):
             except Exception:
                 period = latest_value.to_period("M")
             return period.start_time.normalize(), period.end_time.normalize()
-        if page_name in {"Resumen Comercial", "Ubicaciones y Secciones", "Top 20 Modelos"} and source == "co":
-            raw = st.session_state.get("commercial_month")
-            try:
-                period = pd.Period(str(raw), freq="M") if raw else latest_value.to_period("M")
-            except Exception:
-                period = latest_value.to_period("M")
-            return period.start_time.normalize(), period.end_time.normalize()
         if page_name == "Reporte Semanal":
             raw = str(st.session_state.get("v39_week") or "")
             import re as _re
@@ -4788,8 +4781,7 @@ def load_data_for_page(page, mtime):
     }
     pages_with_co = {
         "Centro Ejecutivo", "Operación Diaria", "Reporte Semanal",
-        "Reporte Mensual", "Recuperación", "Resumen Comercial",
-        "Ubicaciones y Secciones", "Top 20 Modelos",
+        "Reporte Mensual", "Recuperación",
     }
 
     if page in pages_with_op:
@@ -8176,18 +8168,18 @@ def page_inicio():
     with col_future:
         st.markdown(
             """
-            <div class="v30-project-card v30-project-live">
+            <div class="v30-project-card v30-project-live v53-commercial-card">
               <div class="v30-project-icon">$</div>
               <div class="v30-project-copy">
                 <div class="v30-project-name">Ventas y Análisis Comercial</div>
-                <div class="v30-project-desc">Ventas, utilidad, inversión, existencias, ubicaciones, modelos campeones y lentos.</div>
+                <div class="v30-project-desc">Ventas, utilidad, modelos, inventario, ubicaciones, oportunidades, pronóstico e histórico semanal por tienda.</div>
                 <div class="v30-project-status">Proyecto activo</div>
               </div>
             </div>
             """,
             unsafe_allow_html=True,
         )
-        if st.button("Abrir Ventas y Análisis Comercial", key="v53_open_commercial", type="primary", width="stretch"):
+        if st.button("Abrir Ventas y Análisis", key="v53_open_commercial", type="primary", width="stretch"):
             st.session_state["active_app"] = "Ventas y Análisis Comercial"
             st.session_state["nav_page"] = "Resumen Comercial"
             st.session_state["project_nav_selector"] = "Resumen Comercial"
@@ -8196,9 +8188,10 @@ def page_inicio():
 
 def _project_pages() -> list[str]:
     if st.session_state.get("active_app") == "Ventas y Análisis Comercial":
-        pages = ["Resumen Comercial", "Ubicaciones y Secciones", "Top 20 Modelos", "Histórico PDF"]
+        from commercial.config import ADMIN_PAGE, COMMERCIAL_PAGES
+        pages = list(COMMERCIAL_PAGES)
         if role_level() >= ROLE_LEVEL["ADMIN"]:
-            pages.append("Carga Comercial")
+            pages.append(ADMIN_PAGE)
         return pages
     pages = [
         "Centro Ejecutivo", "Operación Diaria", "Reporte Semanal",
@@ -8218,7 +8211,8 @@ def _project_pages() -> list[str]:
 def nav_bar():
     """Navegación de dos niveles: portafolio y menú interno permanente."""
     active_app = st.session_state.get("active_app")
-    if active_app not in {"Muertos y Cambios", "Ventas y Análisis Comercial"}:
+    valid_apps = {"Muertos y Cambios", "Ventas y Análisis Comercial"}
+    if active_app not in valid_apps:
         st.session_state["nav_page"] = "Inicio"
         return "Inicio"
 
@@ -8257,7 +8251,7 @@ def nav_bar():
         st.rerun()
 
     st.markdown(
-        f'<div class="v30-project-context"><span>Proyecto</span><b>{active_app}</b><em>{current}</em></div>',
+        f'<div class="v30-project-context"><span>Proyecto</span><b>{html.escape(active_app)}</b><em>{html.escape(current)}</em></div>',
         unsafe_allow_html=True,
     )
     return current
@@ -10011,19 +10005,9 @@ render_header()
 page = nav_bar()
 print(f"[PAGE] {page}", flush=True)
 
-# V53: selector ligero del mes comercial antes de leer el caché. Solo consulta
-# la columna Fecha y permite cambiar abril/mayo/junio sin cargar todo el histórico.
-if page in {"Resumen Comercial", "Ubicaciones y Secciones", "Top 20 Modelos"} and ACTIVE_FILE.exists():
-    try:
-        _commercial_min, _commercial_max = _cache_date_bounds("co", ACTIVE_FILE.stat().st_mtime)
-        if _commercial_min is not None and _commercial_max is not None:
-            _commercial_months = [str(p) for p in pd.period_range(pd.Timestamp(_commercial_min).to_period("M"), pd.Timestamp(_commercial_max).to_period("M"), freq="M")]
-            _commercial_default = st.session_state.get("commercial_month", _commercial_months[-1])
-            if _commercial_default not in _commercial_months:
-                _commercial_default = _commercial_months[-1]
-            st.selectbox("Mes de ventas", _commercial_months, index=_commercial_months.index(_commercial_default), key="commercial_month")
-    except Exception:
-        pass
+from commercial.config import COMMERCIAL_PAGES as V53_COMMERCIAL_PAGES, ADMIN_PAGE as V53_COMMERCIAL_ADMIN_PAGE
+
+COMMERCIAL_DATA_PAGES = set(V53_COMMERCIAL_PAGES)
 
 DATA_PAGES = {
     "Centro Ejecutivo",
@@ -10038,8 +10022,7 @@ DATA_PAGES = {
     "Detalle por Colaborador",
     "Alertas Inteligentes",
     "Inteligencia Operativa",
-    "Resumen Comercial", "Ubicaciones y Secciones", "Top 20 Modelos",
-}
+} | COMMERCIAL_DATA_PAGES
 
 op_all = pd.DataFrame()
 co_all = pd.DataFrame()
@@ -10066,12 +10049,9 @@ if needs_data:
             co_all = apply_user_scope(co_all)
         print(f"[DATA] {page} listo: op={len(op_all):,}, co={len(co_all):,} en {time.perf_counter()-_data_started:.2f}s", flush=True)
     else:
-        if not ACTIVE_FILE.exists():
-            if page in {"Resumen Comercial", "Ubicaciones y Secciones", "Top 20 Modelos"}:
-                st.info("El Excel mensual de ventas todavía no está disponible; el módulo utilizará los indicadores extraídos de los PDF comerciales.")
-            else:
-                st.info("La fuente de datos no está disponible. Utiliza el módulo **Carga de Excel** del menú del proyecto.")
-        else:
+        if not ACTIVE_FILE.exists() and page not in COMMERCIAL_DATA_PAGES:
+            st.info("La fuente de datos no está disponible. Utiliza el módulo **Carga de Excel** del menú del proyecto.")
+        elif page not in COMMERCIAL_DATA_PAGES:
             st.warning(
                 "El archivo está guardado, pero todavía no está procesado. "
                 "Abre **Carga de Excel** y continúa con el procesamiento por etapas."
@@ -11507,7 +11487,6 @@ PROJECT_SCOPE_PAGES = {
     "Centro Ejecutivo", "Operación Diaria", "Reporte Semanal", "Reporte Mensual",
     "Productividad", "Recorridos", "Reportes", "Detalle por Colaborador",
     "Alertas Inteligentes", "Inteligencia Operativa",
-    "Resumen Comercial", "Ubicaciones y Secciones", "Top 20 Modelos",
 }
 ALL_STORE_FILTER_PAGES = {"Recuperación", "Detalle por Tienda"}
 
@@ -11556,12 +11535,22 @@ ROUTES = {
     "Configuración de Metas": page_configuracion_metas_v17,
     "Carga de Excel": page_carga_excel_v17,
     "Diagnóstico del Archivo": lambda: page_diagnostico_archivo_v17(op_all, co_all, diag_df),
-    "Resumen Comercial": lambda: __import__("commercial_analysis").render("Resumen Comercial", co_all, is_admin()),
-    "Ubicaciones y Secciones": lambda: __import__("commercial_analysis").render("Ubicaciones y Secciones", co_all, is_admin()),
-    "Top 20 Modelos": lambda: __import__("commercial_analysis").render("Top 20 Modelos", co_all, is_admin()),
-    "Histórico PDF": lambda: __import__("commercial_analysis").render("Histórico PDF", pd.DataFrame(), is_admin()),
-    "Carga Comercial": lambda: __import__("commercial_analysis").render("Carga Comercial", pd.DataFrame(), is_admin()),
 }
+
+from commercial.ui import render_commercial_page
+for _commercial_page in V53_COMMERCIAL_PAGES:
+    ROUTES[_commercial_page] = (
+        lambda page_name=_commercial_page: render_commercial_page(
+            page_name,
+            existing_sales=co_all,
+            is_admin=is_admin(),
+        )
+    )
+ROUTES[V53_COMMERCIAL_ADMIN_PAGE] = lambda: render_commercial_page(
+    V53_COMMERCIAL_ADMIN_PAGE,
+    existing_sales=co_all,
+    is_admin=is_admin(),
+)
 
 
 if page in DATA_PAGES and ACTIVE_FILE.exists() and cache_valid():
@@ -11631,7 +11620,7 @@ st.markdown(
 
 # Marcador de despliegue para confirmar que GitHub/Streamlit usa esta versión.
 st.markdown('\n<style>\n.v37-week-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px;margin:10px 0 22px}.v37-week-card{background:#fff;border:1px solid #dbe3ef;border-radius:16px;padding:16px;box-shadow:0 8px 24px rgba(23,59,115,.07)}.v37-week-title{font-weight:800;color:#173B73;font-size:16px;margin-bottom:10px;border-bottom:2px solid #3366CC;padding-bottom:8px}.v37-week-row{display:flex;justify-content:space-between;gap:10px;padding:5px 0;font-size:13px;color:#667085}.v37-week-row b{color:#173B73;text-align:right}.v25-kpi-grid{align-items:stretch}.v25-kpi-card{min-height:150px}.js-plotly-plot,.plot-container{max-width:100%!important}@media(max-width:1100px){.v37-week-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}@media(max-width:650px){.v37-week-grid{grid-template-columns:1fr}}\n</style>\n', unsafe_allow_html=True)
-st.caption("PS Operaciones Ropa · V54")
+st.caption("PS Operaciones Ropa · V52")
 
 try:
     route_handler = ROUTES.get(page)
@@ -12132,4 +12121,39 @@ h1,h2,h3{color:#172B4D!important}.footer{opacity:.72!important}
 @media(max-width:360px){.v25-kpi-grid{grid-template-columns:1fr!important}}
 </style>
 ''', unsafe_allow_html=True)
-st.caption("PS Operaciones Ropa · V54 · Diseño Ejecutivo Responsive")
+st.caption("PS Operaciones Ropa · V53 · Ventas y Análisis Comercial")
+
+# V53: shell visual del proyecto comercial. Esta regla es la última capa CSS
+# para neutralizar los estilos heredados que ocultaban el sidebar en V52.
+if st.session_state.get("active_app") == "Ventas y Análisis Comercial":
+    st.markdown(
+        """
+        <style>
+        @media(min-width:901px){
+          [data-testid="stSidebar"]{
+            display:block!important;visibility:visible!important;opacity:1!important;
+            position:fixed!important;left:0!important;top:0!important;bottom:0!important;
+            width:224px!important;min-width:224px!important;max-width:224px!important;
+            transform:none!important;background:linear-gradient(180deg,#0B326D,#102E67)!important;
+            z-index:1200!important;overflow-y:auto!important;
+          }
+          [data-testid="stSidebar"]>div{width:224px!important;padding:14px 10px!important;}
+          [data-testid="stMain"]{margin-left:224px!important;width:calc(100% - 224px)!important;max-width:calc(100% - 224px)!important;}
+          [data-testid="stSidebarCollapsedControl"],[data-testid="collapsedControl"]{display:none!important;}
+        }
+        [data-testid="stSidebar"] h3,[data-testid="stSidebar"] p,[data-testid="stSidebar"] span{color:#fff!important;}
+        [data-testid="stSidebar"] img{background:#fff!important;border-radius:10px!important;padding:6px!important;margin:0 auto 8px!important;}
+        [data-testid="stSidebar"] .stButton>button{color:#fff!important;background:transparent!important;border:0!important;border-radius:10px!important;justify-content:flex-start!important;text-align:left!important;min-height:40px!important;padding:8px 11px!important;}
+        [data-testid="stSidebar"] .stButton>button[kind="primary"]{background:#155BEF!important;box-shadow:0 5px 14px rgba(0,0,0,.15)!important;}
+        [data-testid="stSidebar"] .stButton>button:hover{background:rgba(255,255,255,.12)!important;}
+        .v27-app-header,[data-testid="stHorizontalBlock"]:has([aria-label="Menú de Ventas y Análisis Comercial"]),.v30-project-context{display:none!important;}
+        [data-testid="stMainBlockContainer"],.block-container{max-width:none!important;width:100%!important;padding:.7rem 1.2rem 2.5rem!important;}
+        @media(max-width:900px){
+          [data-testid="stSidebar"]{display:block!important;visibility:visible!important;width:286px!important;max-width:82vw!important;background:linear-gradient(180deg,#0B326D,#102E67)!important;z-index:1600!important;}
+          [data-testid="stMain"]{margin-left:0!important;width:100%!important;max-width:100%!important;}
+          [data-testid="stSidebarCollapsedControl"],[data-testid="collapsedControl"]{display:flex!important;visibility:visible!important;opacity:1!important;z-index:1700!important;}
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
