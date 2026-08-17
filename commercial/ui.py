@@ -179,19 +179,21 @@ def render_commercial_sidebar(active_page: str, is_admin: bool = False) -> None:
                 type="primary" if active_page == page_name else "secondary", width="stretch",
             ):
                 st.session_state["nav_page"] = page_name
-                st.session_state["project_nav_selector"] = page_name
+                # El selector principal ya fue creado por legacy_app.py en esta
+                # ejecución. La sincronización se solicita para el siguiente
+                # ciclo, antes de que Streamlit vuelva a crear el widget.
+                st.session_state["nav_request"] = page_name
                 st.rerun()
         if is_admin:
             st.divider()
             if st.button("Carga comercial", key="commercial_side_upload", type="primary" if active_page == ADMIN_PAGE else "secondary", width="stretch"):
                 st.session_state["nav_page"] = ADMIN_PAGE
-                st.session_state["project_nav_selector"] = ADMIN_PAGE
+                st.session_state["nav_request"] = ADMIN_PAGE
                 st.rerun()
         st.divider()
         if st.button("← Menú principal", key="commercial_back_home", width="stretch"):
             st.session_state["active_app"] = None
             st.session_state["nav_page"] = "Inicio"
-            st.session_state.pop("project_nav_selector", None)
             st.rerun()
 
 
@@ -217,7 +219,7 @@ def _top_navigation(active_page: str) -> None:
     selected_page = page_by_label[selected]
     if selected_page != active_page:
         st.session_state["nav_page"] = selected_page
-        st.session_state["project_nav_selector"] = selected_page
+        st.session_state["nav_request"] = selected_page
         st.rerun()
 
 
