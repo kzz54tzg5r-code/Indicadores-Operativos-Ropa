@@ -10,7 +10,7 @@ import unicodedata
 import numpy as np
 import pandas as pd
 
-from .config import STORE_ALIASES
+from .config import PROJECT_STORES, STORE_ALIASES, STORE_FILENAME_ALIASES
 
 
 def norm_text(value) -> str:
@@ -30,10 +30,38 @@ def canon_store(value) -> str:
         return ""
     if key in STORE_ALIASES:
         return STORE_ALIASES[key]
-    for alias, canonical in STORE_ALIASES.items():
+    for alias, canonical in sorted(STORE_ALIASES.items(), key=lambda item: len(item[0]), reverse=True):
         if alias in key or key in alias:
             return canonical
     return str(value).strip().title()
+
+
+def store_from_filename(path: str | Path) -> str:
+    """Obtiene la tienda desde códigos como AC_QRO, AC_TOL o AC_VALL."""
+    stem = norm_text(Path(path).stem).replace("-", "_").replace(" ", "_")
+    padded = f"_{re.sub(r'_+', '_', stem).strip('_')}_"
+    for code, canonical in sorted(
+        STORE_FILENAME_ALIASES.items(), key=lambda item: len(item[0]), reverse=True
+    ):
+        if f"_{code}_" in padded:
+            return canonical
+    return ""
+
+
+def _store_from_pdf_text(raw_text: str) -> str:
+    """Busca el nombre de tienda por línea sin capturar el resto del PDF."""
+    canonical_stores = set(PROJECT_STORES)
+    for raw_line in raw_text.splitlines():
+        line = re.sub(r"\s+", " ", raw_line).strip()
+        if "TIENDA" not in norm_text(line):
+            continue
+        match = re.search(r"\bTIENDA\s*:?-?\s*(.+)$", line, re.IGNORECASE)
+        if not match:
+            continue
+        candidate = canon_store(match.group(1))
+        if candidate in canonical_stores:
+            return candidate
+    return ""
 
 
 def to_number(series, default=0.0):
@@ -334,12 +362,19 @@ def extract_pdf_snapshot(path: str | Path) -> dict:
     path = Path(path)
     raw_text, pages = _first_page_text(path)
     text = re.sub(r"[ \t]+", " ", raw_text)
-    title_text = re.sub(r"\s+", " ", raw_text)
-    store_match = re.search(r"Tienda\s+([A-Za-zÁÉÍÓÚÜÑáéíóúüñ ]+?)(?:\s{2,}|\n|$)", title_text, re.IGNORECASE)
-    store = canon_store(store_match.group(1)) if store_match else ""
+    store = _store_from_pdf_text(raw_text)
+    if not store:
+        store = store_from_filename(path)
     if not store:
         name_key = norm_text(path.stem)
-        store = next((canonical for alias, canonical in STORE_ALIASES.items() if alias in name_key), "Tienda sin identificar")
+        store = next(
+            (
+                canonical
+                for alias, canonical in sorted(STORE_ALIASES.items(), key=lambda item: len(item[0]), reverse=True)
+                if alias in name_key
+            ),
+            "Tienda sin identificar",
+        )
 
     date_match = re.search(r"\b(\d{2}/\d{2}/\d{4})\b", raw_text)
     report_date = pd.to_datetime(date_match.group(1), dayfirst=True, errors="coerce") if date_match else pd.NaT
@@ -425,5 +460,5 @@ def extract_pdf_snapshot(path: str | Path) -> dict:
         "models_per_position": models_per_position,
         "sections": section_rows,
         "locations": location_rows,
-        "status": "Procesado" if total_line and store else "Revisar",
+        "status": "Procesado" if total_line and store != "Tienda sin identificar" else "Revisar",
     }

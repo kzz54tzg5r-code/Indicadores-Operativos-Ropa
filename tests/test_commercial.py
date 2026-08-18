@@ -6,8 +6,9 @@ from commercial.analytics import (
     opportunities,
     rank_models,
     snapshots_to_frames,
+    store_summary,
 )
-from commercial.parsers import extract_pdf_snapshot, read_capacity_file
+from commercial.parsers import extract_pdf_snapshot, read_capacity_file, store_from_filename
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -57,3 +58,34 @@ def test_model_rankings_and_inventory_views_are_available():
     assert len(coverage) == 4
     assert {"Doblado", "Colgado", "Jeans", "Lencería"} == set(location["Ubicación"])
     assert not actions.empty
+
+
+def test_store_codes_used_by_weekly_pdf_names_are_recognized():
+    expected = {
+        "AC_AGS_17.08.26.pdf": "Aguascalientes",
+        "AC_ARCO_17.08.26.pdf": "Arco Norte",
+        "AC_ATE_17.08.26.pdf": "Atemajac",
+        "AC_ECA_17.08.26.pdf": "Ecatepec",
+        "AC_MIR_17.08.26.pdf": "Miravalle",
+        "AC_QRO_17.08.26.pdf": "Querétaro",
+        "AC_TOL_17.08.26.pdf": "Toluca",
+        "AC_VALL_17.08.26.pdf": "Vallejo",
+        "AC_VER_17.08.26.pdf": "Veracruz",
+        "AC_PUE_SUR_17.08.26.pdf": "Puebla Sur",
+    }
+
+    assert {name: store_from_filename(name) for name in expected} == expected
+
+
+def test_pdf_snapshot_overlays_current_inventory_without_losing_sales():
+    models = read_capacity_file(CAPACITY)
+    snapshot = extract_pdf_snapshot(PDF)
+    stores, sections, locations = snapshots_to_frames([snapshot])
+
+    summary = store_summary(models, None, stores)
+    by_store = summary.set_index("Tienda")
+    section = location_summary(models, locations).set_index("Ubicación")
+
+    assert by_store.loc["Iztapalapa", "Existencia"] == snapshot["existence"]
+    assert by_store.loc["Olivar", "Venta $"] == models["Venta $"].sum()
+    assert section.loc["Doblado", "Existencia"] == 130854

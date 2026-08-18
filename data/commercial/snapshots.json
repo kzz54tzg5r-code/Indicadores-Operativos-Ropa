@@ -1,0 +1,152 @@
+{
+  "version": 1,
+  "updated_at": "2026-08-18T21:52:42+03:00",
+  "items": {
+    "7db089133a8ef740": {
+      "store": "Iztapalapa",
+      "report_date": "2024-04-01",
+      "week": "2024-W14",
+      "pages": 23,
+      "file": "AC_IZT.pdf",
+      "models": 7615,
+      "curve": 256581.0,
+      "floor": 268804.0,
+      "warehouse": 22503.0,
+      "existence": 291307.0,
+      "vpd": 3326.0,
+      "ddi": 88.0,
+      "ddc": 77.0,
+      "positions": 6967.0,
+      "models_per_position": 3.4,
+      "sections": [
+        {
+          "Tienda": "Iztapalapa",
+          "Sección detalle": "Dama",
+          "Sección": "Dama",
+          "Modelos": 4773.0,
+          "Curva": 181140.0,
+          "Piso": 179409.0,
+          "Bodega": 11844.0,
+          "VPD": 2346.0,
+          "DDI": 82.0,
+          "DDC": 77.0,
+          "Posiciones": 5085.0,
+          "Existencia": 191253.0
+        },
+        {
+          "Tienda": "Iztapalapa",
+          "Sección detalle": "Caballero",
+          "Sección": "Caballero",
+          "Modelos": 1613.0,
+          "Curva": 48502.0,
+          "Piso": 60256.0,
+          "Bodega": 7683.0,
+          "VPD": 651.0,
+          "DDI": 104.0,
+          "DDC": 75.0,
+          "Posiciones": 1316.0,
+          "Existencia": 67939.0
+        },
+        {
+          "Tienda": "Iztapalapa",
+          "Sección detalle": "Niña",
+          "Sección": "Infantil",
+          "Modelos": 555.0,
+          "Curva": 14890.0,
+          "Piso": 15329.0,
+          "Bodega": 942.0,
+          "VPD": 190.0,
+          "DDI": 85.0,
+          "DDC": 78.0,
+          "Posiciones": 351.0,
+          "Existencia": 16271.0
+        },
+        {
+          "Tienda": "Iztapalapa",
+          "Sección detalle": "Niño",
+          "Sección": "Infantil",
+          "Modelos": 381.0,
+          "Curva": 5416.0,
+          "Piso": 8294.0,
+          "Bodega": 2011.0,
+          "VPD": 80.0,
+          "DDI": 129.0,
+          "DDC": 68.0,
+          "Posiciones": 144.0,
+          "Existencia": 10305.0
+        },
+        {
+          "Tienda": "Iztapalapa",
+          "Sección detalle": "Beba",
+          "Sección": "Infantil",
+          "Modelos": 163.0,
+          "Curva": 4025.0,
+          "Piso": 3330.0,
+          "Bodega": 23.0,
+          "VPD": 31.0,
+          "DDI": 107.0,
+          "DDC": 128.0,
+          "Posiciones": 47.0,
+          "Existencia": 3353.0
+        },
+        {
+          "Tienda": "Iztapalapa",
+          "Sección detalle": "Bebe",
+          "Sección": "Infantil",
+          "Modelos": 105.0,
+          "Curva": 1772.0,
+          "Piso": 1283.0,
+          "Bodega": 0.0,
+          "VPD": 18.0,
+          "DDI": 72.0,
+          "DDC": 99.0,
+          "Posiciones": 19.0,
+          "Existencia": 1283.0
+        },
+        {
+          "Tienda": "Iztapalapa",
+          "Sección detalle": "Unisex",
+          "Sección": "Sin sección",
+          "Modelos": 25.0,
+          "Curva": 836.0,
+          "Piso": 903.0,
+          "Bodega": 0.0,
+          "VPD": 9.0,
+          "DDI": 97.0,
+          "DDC": 90.0,
+          "Posiciones": 5.0,
+          "Existencia": 903.0
+        }
+      ],
+      "locations": [
+        {
+          "Tienda": "Iztapalapa",
+          "Ubicación": "Doblado",
+          "Modelos": 3057.0,
+          "Curva": 126481.0,
+          "Piso": 116869.0,
+          "Bodega": 13985.0,
+          "VPD": 1719.0,
+          "DDI": 76.0,
+          "DDC": 74.0,
+          "Posiciones": 3520.0,
+          "Existencia": 130854.0
+        },
+        {
+          "Tienda": "Iztapalapa",
+          "Ubicación": "Colgado",
+          "Modelos": 3552.0,
+          "Curva": 101406.0,
+          "Piso": 105632.0,
+          "Bodega": 1881.0,
+          "VPD": 1151.0,
+          "DDI": 93.0,
+          "DDC": 88.0,
+          "Posiciones": 1617.0,
+          "Existencia": 107513.0
+        }
+      ],
+      "status": "Procesado"
+    }
+  }
+}

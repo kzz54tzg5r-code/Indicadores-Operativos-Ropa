@@ -5,6 +5,7 @@ from __future__ import annotations
 from datetime import date, datetime
 from pathlib import Path
 import html
+import re
 
 import numpy as np
 import pandas as pd
@@ -28,13 +29,18 @@ from .config import ADMIN_PAGE, COMMERCIAL_PAGES, PAGE_LABELS, PROJECT_STORES, e
 from .parsers import extract_pdf_snapshot, normalize_existing_sales, read_capacity_file, read_sales_file
 from .storage import (
     build_history_backup,
+    cloud_enabled,
     latest_entry,
     load_manifest,
+    load_snapshots,
     resolve_entry_path,
+    restore_history_from_cloud,
     restore_history_backup,
     save_capacity_upload,
     save_pdf_upload,
     save_sales_upload,
+    save_snapshot,
+    sync_history_to_cloud,
     update_entry,
 )
 
@@ -65,6 +71,15 @@ def _percent(value) -> str:
     return f"{float(value or 0):,.1f}%"
 
 
+def _latest_week(values) -> str:
+    """Prioriza semanas ISO reales sobre etiquetas como 'Sin semana'."""
+    clean = [str(value).strip() for value in values if str(value).strip()]
+    iso_weeks = [value for value in clean if re.fullmatch(r"\d{4}-W\d{2}", value)]
+    if iso_weeks:
+        return max(iso_weeks)
+    return max(clean) if clean else "Sin semana"
+
+
 @st.cache_data(show_spinner=False)
 def _cached_capacity(path_text: str, mtime: float) -> pd.DataFrame:
     return read_capacity_file(path_text)
@@ -83,6 +98,7 @@ def _cached_pdf(path_text: str, mtime: float) -> dict:
 def _load_bundle(existing_sales=None) -> dict:
     ensure_directories()
     manifest = load_manifest()
+    snapshot_cache = load_snapshots()
     capacity_frames = []
     for entry in manifest.get("capacities", []):
         path = resolve_entry_path(entry)
@@ -119,12 +135,25 @@ def _load_bundle(existing_sales=None) -> dict:
     snapshots = []
     for entry in manifest.get("pdfs", []):
         path = resolve_entry_path(entry)
-        if not path.exists():
-            continue
         try:
-            snapshot = _cached_pdf(str(path), path.stat().st_mtime)
+            # Después de un reinicio de Streamlit, los PDF históricos pueden
+            # permanecer sólo en el bucket privado. Su snapshot normalizado
+            # conserva todas las métricas sin volver a descargar cada PDF.
+            snapshot = snapshot_cache.get(str(entry.get("id")))
+            if path.exists():
+                snapshot = _cached_pdf(str(path), path.stat().st_mtime)
+                if snapshot_cache.get(str(entry.get("id"))) != snapshot:
+                    save_snapshot(entry["id"], snapshot)
+            if not snapshot:
+                continue
             snapshots.append(snapshot)
-            if entry.get("status") != snapshot.get("status") or not entry.get("store"):
+            if (
+                entry.get("status") != snapshot.get("status")
+                or entry.get("store") != snapshot.get("store")
+                or entry.get("week") != snapshot.get("week")
+                or entry.get("report_date") != snapshot.get("report_date")
+                or entry.get("records") != snapshot.get("models")
+            ):
                 update_entry(
                     "pdfs", entry["id"], status=snapshot.get("status"), store=snapshot.get("store"),
                     week=snapshot.get("week"), report_date=snapshot.get("report_date"), pages=snapshot.get("pages"),
@@ -154,39 +183,40 @@ def _inject_styles() -> None:
         f"""
         <style>
         :root{{--ac-navy:{NAVY};--ac-blue:{BLUE};--ac-pink:{PINK};--ac-green:{GREEN};--ac-bg:#F4F7FB;}}
-        .ac-header{{display:flex;align-items:center;justify-content:space-between;gap:16px;background:#fff;border:1px solid #E1E7F0;border-radius:16px;padding:17px 20px;margin:0 0 10px;box-shadow:0 5px 18px rgba(23,59,115,.055)}}
-        .ac-title{{font-size:28px;font-weight:900;color:{NAVY};line-height:1.08}}.ac-subtitle{{font-size:13px;color:{MUTED};margin-top:6px}}
-        .ac-status{{display:flex;gap:8px;align-items:center;flex-wrap:wrap;justify-content:flex-end}}.ac-pill{{border-radius:9px;padding:8px 11px;font-size:11px;font-weight:800;background:#E9F8F0;color:{GREEN}}}.ac-pill-blue{{background:#EAF2FF;color:{BLUE}}}
-        .ac-kpis{{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:10px;margin:12px 0 15px}}.ac-kpi{{background:#fff;border:1px solid #E1E7F0;border-radius:13px;padding:14px;min-height:105px;box-shadow:0 3px 11px rgba(23,59,115,.04);position:relative;overflow:hidden}}.ac-kpi:before{{content:"";position:absolute;left:0;top:0;bottom:0;width:4px;background:var(--accent)}}.ac-kpi-label{{font-size:10px;text-transform:uppercase;letter-spacing:.45px;color:{MUTED};font-weight:850}}.ac-kpi-value{{font-size:25px;font-weight:900;color:{NAVY};margin-top:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}}.ac-kpi-note{{font-size:10.5px;color:{MUTED};margin-top:8px}}
+        .ac-header{{display:flex;align-items:center;justify-content:space-between;gap:16px;background:#fff;border:1px solid #E1E7F0;border-radius:15px;padding:14px 17px;margin:0 0 8px;box-shadow:0 5px 18px rgba(23,59,115,.055)}}
+        .ac-title{{font-size:25px;font-weight:900;color:{NAVY};line-height:1.08}}.ac-subtitle{{font-size:12px;color:{MUTED};margin-top:5px}}
+        .ac-status{{display:flex;gap:7px;align-items:center;flex-wrap:wrap;justify-content:flex-end}}.ac-pill{{border-radius:9px;padding:7px 10px;font-size:10.5px;font-weight:800;background:#E9F8F0;color:{GREEN}}}.ac-pill-blue{{background:#EAF2FF;color:{BLUE}}}.ac-updated{{font-size:10px;color:{MUTED};white-space:nowrap}}
+        .ac-kpis{{display:grid;grid-template-columns:repeat(var(--columns,6),minmax(0,1fr));gap:8px;margin:10px 0 12px}}.ac-kpi{{background:#fff;border:1px solid #E1E7F0;border-radius:12px;padding:12px 11px;min-height:98px;box-shadow:0 3px 11px rgba(23,59,115,.04);position:relative;overflow:hidden}}.ac-kpi:before{{content:"";position:absolute;left:0;top:0;bottom:0;width:4px;background:var(--accent)}}.ac-kpi-label{{font-size:9px;text-transform:uppercase;letter-spacing:.35px;color:{MUTED};font-weight:850;white-space:nowrap}}.ac-kpi-value{{font-size:22px;font-weight:900;color:{NAVY};margin-top:9px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}}.ac-kpi-note{{font-size:9.5px;color:{MUTED};margin-top:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}}
         .ac-alert{{display:flex;align-items:center;gap:10px;border:1px solid #F8B8D2;background:#FFF4F8;color:{PINK};border-radius:11px;padding:11px 14px;margin:8px 0 14px;font-size:12px;font-weight:800}}.ac-section{{font-size:17px;font-weight:900;color:{NAVY};margin:8px 0 9px}}
         .ac-source-note{{background:#EAF2FF;border:1px solid #CADBFA;border-radius:10px;padding:10px 13px;color:{NAVY};font-size:11px;margin:8px 0 12px}}
-        div[data-testid="stRadio"] [role="radiogroup"]{{gap:6px!important;flex-wrap:wrap!important}}div[data-testid="stRadio"] [role="radiogroup"] label{{background:#fff;border:1px solid #D9E2EF;border-radius:999px;padding:7px 14px!important}}div[data-testid="stRadio"] [role="radiogroup"] label:has(input:checked){{background:{BLUE}!important;color:#fff!important;border-color:{BLUE}!important}}
+        .ac-filter-caption{{font-size:10px;color:{MUTED};margin:-2px 0 4px}}
+        div[data-testid="stRadio"] [role="radiogroup"]{{gap:6px!important;flex-wrap:wrap!important}}div[data-testid="stRadio"] [role="radiogroup"] label{{background:#fff;border:1px solid #D9E2EF;border-radius:999px;padding:7px 14px!important}}div[data-testid="stRadio"] [role="radiogroup"] label>div:first-child{{display:none!important}}div[data-testid="stRadio"] [role="radiogroup"] label:has(input:checked){{background:{BLUE}!important;color:#fff!important;border-color:{BLUE}!important}}
         [data-testid="stDataFrame"]{{border:1px solid #E1E7F0;border-radius:12px;overflow:hidden}}.stPlotlyChart{{border:1px solid #E1E7F0!important;border-radius:13px!important;background:#fff!important;box-shadow:none!important}}
         /* Shell lateral comercial. Los selectores deliberadamente incluyen el
            marcador para superar las reglas globales que usan !important. */
         body [data-testid="stAppViewContainer"]:has(.ac-shell-marker) section[data-testid="stSidebar"]{{
           display:flex!important;visibility:visible!important;opacity:1!important;
           position:fixed!important;inset:0 auto 0 0!important;
-          width:224px!important;min-width:224px!important;max-width:224px!important;
-          height:100vh!important;flex:0 0 224px!important;transform:translateX(0)!important;
+          width:184px!important;min-width:184px!important;max-width:184px!important;
+          height:100vh!important;flex:0 0 184px!important;transform:translateX(0)!important;
           background:linear-gradient(180deg,#0B326D 0%,#102E67 100%)!important;
           z-index:1500!important;overflow-y:auto!important;overflow-x:hidden!important;
           pointer-events:auto!important;
         }}
         body [data-testid="stAppViewContainer"]:has(.ac-shell-marker) section[data-testid="stSidebar"] > div:first-child{{
           display:block!important;visibility:visible!important;opacity:1!important;
-          position:relative!important;width:224px!important;min-width:224px!important;
+          position:relative!important;width:184px!important;min-width:184px!important;
           height:auto!important;min-height:100vh!important;padding:14px 10px!important;
           overflow:visible!important;box-sizing:border-box!important;
         }}
         body [data-testid="stAppViewContainer"]:has(.ac-shell-marker) [data-testid="stMain"]{{
-          margin-left:224px!important;width:calc(100% - 224px)!important;
-          max-width:calc(100% - 224px)!important;padding-top:0!important;
+          margin-left:184px!important;width:calc(100% - 184px)!important;
+          max-width:calc(100% - 184px)!important;padding-top:0!important;
         }}
         body [data-testid="stAppViewContainer"]:has(.ac-shell-marker) [data-testid="stMainBlockContainer"],
         body [data-testid="stAppViewContainer"]:has(.ac-shell-marker) .block-container{{
           width:100%!important;max-width:none!important;margin:0!important;
-          padding:.7rem 1.2rem 2.5rem!important;box-sizing:border-box!important;
+          padding:.55rem 1rem 2rem!important;box-sizing:border-box!important;
         }}
         body [data-testid="stAppViewContainer"]:has(.ac-shell-marker) .v27-app-header,
         body [data-testid="stAppViewContainer"]:has(.ac-shell-marker) .v30-project-context,
@@ -195,14 +225,15 @@ def _inject_styles() -> None:
         body [data-testid="stAppViewContainer"]:has(.ac-shell-marker) section[data-testid="stSidebar"] p,
         body [data-testid="stAppViewContainer"]:has(.ac-shell-marker) section[data-testid="stSidebar"] span{{color:#fff!important;}}
         body [data-testid="stAppViewContainer"]:has(.ac-shell-marker) section[data-testid="stSidebar"] img{{background:#fff!important;border-radius:10px!important;padding:6px!important;margin:0 auto 8px!important;}}
+        body [data-testid="stAppViewContainer"]:has(.ac-shell-marker) section[data-testid="stSidebar"] h3{{font-size:17px!important;line-height:1.2!important;margin-top:8px!important;}}
         body [data-testid="stAppViewContainer"]:has(.ac-shell-marker) section[data-testid="stSidebar"] .stButton>button{{
           display:flex!important;visibility:visible!important;opacity:1!important;width:100%!important;
           color:#fff!important;background:transparent!important;border:0!important;border-radius:10px!important;
-          justify-content:flex-start!important;text-align:left!important;min-height:40px!important;padding:8px 11px!important;
+          justify-content:flex-start!important;text-align:left!important;min-height:38px!important;padding:7px 9px!important;font-size:12px!important;
         }}
         body [data-testid="stAppViewContainer"]:has(.ac-shell-marker) section[data-testid="stSidebar"] .stButton>button[kind="primary"]{{background:{BLUE}!important;box-shadow:0 5px 14px rgba(0,0,0,.15)!important;}}
         body [data-testid="stAppViewContainer"]:has(.ac-shell-marker) section[data-testid="stSidebar"] .stButton>button:hover{{background:rgba(255,255,255,.12)!important;}}
-        @media(max-width:1250px){{.ac-kpis{{grid-template-columns:repeat(3,minmax(0,1fr))}}}}@media(max-width:700px){{.ac-header{{align-items:flex-start;flex-direction:column}}.ac-title{{font-size:22px}}.ac-status{{justify-content:flex-start}}.ac-kpis{{grid-template-columns:repeat(2,minmax(0,1fr))}}}}@media(max-width:390px){{.ac-kpis{{grid-template-columns:1fr}}}}
+        @media(max-width:1350px){{.ac-kpis{{grid-template-columns:repeat(4,minmax(0,1fr))!important}}}}@media(max-width:700px){{.ac-header{{align-items:flex-start;flex-direction:column}}.ac-title{{font-size:22px}}.ac-status{{justify-content:flex-start}}.ac-kpis{{grid-template-columns:repeat(2,minmax(0,1fr))!important}}}}@media(max-width:390px){{.ac-kpis{{grid-template-columns:1fr!important}}}}
         @media(max-width:900px){{
           body [data-testid="stAppViewContainer"]:has(.ac-shell-marker) section[data-testid="stSidebar"]{{
             width:286px!important;min-width:286px!important;max-width:82vw!important;
@@ -222,25 +253,36 @@ def _inject_styles() -> None:
 
 def render_commercial_sidebar(active_page: str, is_admin: bool = False) -> None:
     sidebar_labels = {
-        "Resumen Comercial": "▦  Resumen",
-        "Tiendas Comerciales": "▤  Tiendas",
-        "Ubicaciones y Secciones": "⌖  Ubicaciones",
-        "Modelos": "♛  Modelos",
-        "Inventario y Cobertura": "◇  Inventario",
-        "Oportunidades y Acciones": "⚡  Oportunidades",
-        "Pronóstico Comercial": "↗  Pronóstico",
-        "Histórico Comercial": "↶  Histórico",
+        "Resumen Comercial": "Resumen",
+        "Tiendas Comerciales": "Tiendas",
+        "Ubicaciones y Secciones": "Ubicaciones",
+        "Modelos": "Modelos",
+        "Inventario y Cobertura": "Inventario",
+        "Oportunidades y Acciones": "Oportunidades",
+        "Pronóstico Comercial": "Pronóstico",
+        "Histórico Comercial": "Histórico",
+    }
+    sidebar_icons = {
+        "Resumen Comercial": ":material/dashboard:",
+        "Tiendas Comerciales": ":material/storefront:",
+        "Ubicaciones y Secciones": ":material/location_on:",
+        "Modelos": ":material/emoji_events:",
+        "Inventario y Cobertura": ":material/inventory_2:",
+        "Oportunidades y Acciones": ":material/bolt:",
+        "Pronóstico Comercial": ":material/trending_up:",
+        "Histórico Comercial": ":material/history:",
     }
     with st.sidebar:
         logo = Path(__file__).resolve().parents[1] / "assets" / "price_shoes_logo.png"
         if logo.exists():
-            st.image(str(logo), width=125)
+            st.image(str(logo), width=105)
         st.markdown("### Ventas y Análisis")
         st.caption("Módulo comercial")
         for page_name in COMMERCIAL_PAGES:
             if st.button(
                 sidebar_labels.get(page_name, PAGE_LABELS[page_name]), key=f"commercial_side_{page_name}",
                 type="primary" if active_page == page_name else "secondary", width="stretch",
+                icon=sidebar_icons.get(page_name),
             ):
                 st.session_state["nav_page"] = page_name
                 # El selector principal ya fue creado por legacy_app.py en esta
@@ -250,12 +292,12 @@ def render_commercial_sidebar(active_page: str, is_admin: bool = False) -> None:
                 st.rerun()
         if is_admin:
             st.divider()
-            if st.button("⇧  Carga comercial", key="commercial_side_upload", type="primary" if active_page == ADMIN_PAGE else "secondary", width="stretch"):
+            if st.button("Carga comercial", key="commercial_side_upload", type="primary" if active_page == ADMIN_PAGE else "secondary", width="stretch", icon=":material/upload_file:"):
                 st.session_state["nav_page"] = ADMIN_PAGE
                 st.session_state["nav_request"] = ADMIN_PAGE
                 st.rerun()
         st.divider()
-        if st.button("← Menú principal", key="commercial_back_home", width="stretch"):
+        if st.button("Menú principal", key="commercial_back_home", width="stretch", icon=":material/arrow_back:"):
             st.session_state["active_app"] = None
             st.session_state["nav_page"] = "Inicio"
             st.rerun()
@@ -263,13 +305,16 @@ def render_commercial_sidebar(active_page: str, is_admin: bool = False) -> None:
 
 def _header(title: str, subtitle: str, bundle: dict) -> None:
     pdfs = bundle["manifest"].get("pdfs", [])
-    weeks = sorted({str(item.get("week", "")) for item in pdfs if item.get("week")})
-    current_week = weeks[-1] if weeks else "Sin semana"
-    processed = sum(str(item.get("status")) == "Procesado" for item in pdfs)
+    current_week = _latest_week(item.get("week", "") for item in pdfs)
+    current_pdfs = [item for item in pdfs if str(item.get("week", "")) == current_week]
+    processed = sum(str(item.get("status")) == "Procesado" for item in current_pdfs)
+    recognized = len({str(item.get("store", "")).strip() for item in current_pdfs if str(item.get("store", "")).strip()})
+    updated = str(bundle["manifest"].get("updated_at", ""))[:16].replace("T", " · ") or "Sin actualización"
+    coverage = f"{recognized} de 17" if current_week != "Sin semana" else str(processed)
     st.markdown(
         f"""
         <div class="ac-header"><div><div class="ac-title">{html.escape(title)}</div><div class="ac-subtitle">{html.escape(subtitle)}</div></div>
-        <div class="ac-status"><span class="ac-pill">✓ {processed} PDF procesados</span><span class="ac-pill ac-pill-blue">{html.escape(current_week)}</span></div></div>
+        <div class="ac-status"><span class="ac-pill">✓ {coverage} PDF procesados</span><span class="ac-pill ac-pill-blue">{html.escape(current_week)}</span><span class="ac-updated">Actualizado {html.escape(updated)}</span></div></div>
         """,
         unsafe_allow_html=True,
     )
@@ -287,14 +332,15 @@ def _top_navigation(active_page: str) -> None:
         st.rerun()
 
 
-def _kpis(items) -> None:
+def _kpis(items, columns: int | None = None) -> None:
     blocks = []
     for label, value, note, color in items:
         blocks.append(
             f'<div class="ac-kpi" style="--accent:{color}"><div class="ac-kpi-label">{html.escape(str(label))}</div>'
             f'<div class="ac-kpi-value">{html.escape(str(value))}</div><div class="ac-kpi-note">{html.escape(str(note))}</div></div>'
         )
-    st.markdown('<div class="ac-kpis">' + "".join(blocks) + "</div>", unsafe_allow_html=True)
+    column_count = columns or min(max(len(blocks), 1), 8)
+    st.markdown(f'<div class="ac-kpis" style="--columns:{column_count}">' + "".join(blocks) + "</div>", unsafe_allow_html=True)
 
 
 def _filters(bundle: dict, key: str):
@@ -322,7 +368,64 @@ def _filters(bundle: dict, key: str):
     return store, section, location, scenario, filtered_models
 
 
-def _filtered_auxiliary(bundle: dict, store: str, section: str, location: str):
+def _clear_summary_filters() -> None:
+    for state_key in ("summary_store", "summary_week", "summary_section", "summary_location", "summary_scenario"):
+        st.session_state.pop(state_key, None)
+
+
+def _summary_filters(bundle: dict):
+    models = bundle["models"]
+    data_stores = set(bundle["stores"].get("Tienda", pd.Series(dtype=str)).dropna().astype(str))
+    data_stores |= set(bundle["stores_pdf"].get("Tienda", pd.Series(dtype=str)).dropna().astype(str))
+    stores = sorted(data_stores)
+    section_values = set(models.get("Sección", pd.Series(dtype=str)).dropna().astype(str))
+    section_values |= set(bundle["sections_pdf"].get("Sección", pd.Series(dtype=str)).dropna().astype(str))
+    sections = sorted(section_values)
+    location_values = set(models.get("Ubicación", pd.Series(dtype=str)).dropna().astype(str))
+    location_values |= set(bundle["locations_pdf"].get("Ubicación", pd.Series(dtype=str)).dropna().astype(str))
+    locations = sorted(location_values)
+    weeks = sorted({
+        str(value).strip() for value in bundle["stores_pdf"].get("Semana", pd.Series(dtype=str))
+        if re.fullmatch(r"\d{4}-W\d{2}", str(value).strip())
+    }, reverse=True)
+    week_options = weeks or ["Sin semana"]
+
+    # Si el histórico cambió después de una carga, evita conservar una opción
+    # antigua que ya no pertenece al selector.
+    if st.session_state.get("summary_week") not in week_options:
+        st.session_state.pop("summary_week", None)
+
+    with st.container(border=True):
+        st.markdown('<div class="ac-filter-caption">FILTROS DEL ANÁLISIS</div>', unsafe_allow_html=True)
+        c1, c2, c3, c4, c5, c6 = st.columns([1.15, 1.2, 1, 1, .95, .58], vertical_alignment="bottom")
+        with c1:
+            store = st.selectbox("Alcance", ["Compañía"] + stores, key="summary_store")
+        with c2:
+            week = st.selectbox(
+                "Semana PDF", week_options, key="summary_week",
+                format_func=lambda value: value.replace("-W", " · Semana ") if "-W" in value else value,
+            )
+        with c3:
+            section = st.selectbox("Sección", ["Todas"] + (sections or ["Dama", "Caballero", "Infantil"]), key="summary_section")
+        with c4:
+            location = st.selectbox("Ubicación", ["Todas"] + (locations or ["Doblado", "Colgado", "Jeans", "Lencería"]), key="summary_location")
+        with c5:
+            scenario = st.selectbox("Escenario", ["Sugerido / VPD", "Utilidad"], key="summary_scenario")
+        with c6:
+            st.button("Limpiar", icon=":material/filter_alt_off:", on_click=_clear_summary_filters, width="stretch")
+
+    filtered_models = models.copy()
+    if not filtered_models.empty:
+        if store != "Compañía":
+            filtered_models = filtered_models[filtered_models["Tienda"].eq(store)]
+        if section != "Todas":
+            filtered_models = filtered_models[filtered_models["Sección"].eq(section)]
+        if location != "Todas":
+            filtered_models = filtered_models[filtered_models["Ubicación"].eq(location)]
+    return store, week, section, location, scenario, filtered_models
+
+
+def _filtered_auxiliary(bundle: dict, store: str, section: str, location: str, week: str | None = None):
     """Aplica el mismo alcance a ventas y agregados extraídos de los PDF."""
     sales = bundle["sales"].copy()
     stores_pdf = bundle["stores_pdf"].copy()
@@ -338,6 +441,10 @@ def _filtered_auxiliary(bundle: dict, store: str, section: str, location: str):
     stores_pdf = filter_value(stores_pdf, "Tienda", store, "Compañía")
     sections_pdf = filter_value(sections_pdf, "Tienda", store, "Compañía")
     locations_pdf = filter_value(locations_pdf, "Tienda", store, "Compañía")
+    if week and week != "Sin semana":
+        stores_pdf = filter_value(stores_pdf, "Semana", week, "Todas")
+        sections_pdf = filter_value(sections_pdf, "Semana", week, "Todas")
+        locations_pdf = filter_value(locations_pdf, "Semana", week, "Todas")
     sales = filter_value(sales, "Sección", section, "Todas")
     sales = filter_value(sales, "Ubicación", location, "Todas")
     sections_pdf = filter_value(sections_pdf, "Sección", section, "Todas")
@@ -365,8 +472,11 @@ def _empty_sources(bundle: dict) -> bool:
 def _page_summary(bundle: dict) -> None:
     _header("Ventas y Análisis Comercial", "Resumen global de compañía", bundle)
     _top_navigation("Resumen Comercial")
-    store, section_filter, location_filter, _, models = _filters(bundle, "summary")
+    store, week, section_filter, location_filter, scenario, models = _summary_filters(bundle)
     sales, stores_pdf, sections_pdf, locations_pdf = _filtered_auxiliary(
+        bundle, store, section_filter, location_filter, week=week
+    )
+    trend_sales, trend_stores_pdf, _, _ = _filtered_auxiliary(
         bundle, store, section_filter, location_filter
     )
     stores = store_summary(models, sales, stores_pdf)
@@ -376,49 +486,83 @@ def _page_summary(bundle: dict) -> None:
     total_investment = float(stores["Inversión"].sum()) if not stores.empty else 0
     utility = float(stores["Utilidad $"].sum() / max(total_sales, 1) * 100) if not stores.empty else 0
     vpd = float(stores["VPD"].sum()) if not stores.empty else 0
+    ddi = total_inventory / max(vpd, 1)
     _kpis([
-        ("Venta $", _money(total_sales), "Periodo disponible", BLUE),
+        ("Venta $", _money(total_sales), "Venta disponible", BLUE),
         ("Venta pzas", _number(total_pieces), "Piezas vendidas", PINK),
-        ("Utilidad estimada", _percent(utility), "Precio vs. costo", GREEN),
+        ("Utilidad", _percent(utility), "Precio vs. costo", GREEN),
         ("Inversión", _money(total_investment), "Existencia a costo", BLUE),
         ("Existencia", _number(total_inventory), "Piso + bodega", "#7C3AED"),
-        ("VPD", _number(vpd), "Sugerido diario", CYAN),
-    ])
+        ("Sugerido 7", _number(vpd * 7), "Piezas / 7 días", PINK),
+        ("VPD", _number(vpd), "Promedio diario", CYAN),
+        ("DDI", _number(ddi), "Días de inventario", ORANGE),
+    ], columns=8)
     risks = opportunities(models)
     if not risks.empty:
-        st.markdown(f'<div class="ac-alert">⚠ {len(risks):,} oportunidades detectadas · impacto potencial {_money(risks["Impacto $"].sum())}</div>', unsafe_allow_html=True)
-    weekly = weekly_sales(sales)
+        stopped = int((models.get("DDI", pd.Series(dtype=float)) > 90).sum()) if not models.empty else 0
+        st.markdown(f'<div class="ac-alert">⚠ {len(risks):,} oportunidades detectadas · impacto potencial {_money(risks["Impacto $"].sum())} · {stopped:,} modelos con inversión detenida</div>', unsafe_allow_html=True)
+    weekly = weekly_sales(trend_sales)
     section = section_summary(models, sections_pdf)
     location = location_summary(models, locations_pdf)
-    left, right = st.columns([1.7, 1])
+    left, right = st.columns([1.62, .88], gap="medium")
     with left:
         if not weekly.empty:
+            weekly = weekly.copy()
+            weekly["Venta M"] = weekly["Venta $"] / 1_000_000
+            weekly["Utilidad estimada"] = utility
             fig = go.Figure()
-            fig.add_scatter(x=weekly["Periodo"], y=weekly["Venta $"], mode="lines+markers", name="Venta $", line=dict(color=BLUE, width=3), fill="tozeroy", fillcolor="rgba(21,91,239,.08)")
-            fig.update_layout(title="Evolución semanal de venta")
-            _plot(fig)
+            fig.add_scatter(x=weekly["Periodo"], y=weekly["Venta M"], mode="lines+markers+text", name="Venta $ (M)", text=weekly["Venta M"].map(lambda value: f"{value:.1f} M"), textposition="top center", line=dict(color=BLUE, width=3), fill="tozeroy", fillcolor="rgba(21,91,239,.08)")
+            fig.add_scatter(x=weekly["Periodo"], y=weekly["Utilidad estimada"], mode="lines+markers", name="Utilidad estimada (%)", yaxis="y2", line=dict(color=PINK, width=3))
+            fig.update_layout(title="Evolución semanal de venta y utilidad", yaxis=dict(title="Venta $ (M)"), yaxis2=dict(title="Utilidad %", overlaying="y", side="right", range=[0, max(50, utility * 1.35)]))
+            _plot(fig, 315)
+        elif not trend_stores_pdf.empty:
+            pdf_trend = trend_stores_pdf.groupby("Semana", as_index=False)[["Existencia", "VPD"]].sum().sort_values("Semana")
+            fig = go.Figure()
+            fig.add_scatter(x=pdf_trend["Semana"], y=pdf_trend["VPD"], mode="lines+markers+text", name="VPD", text=pdf_trend["VPD"].map(_number), textposition="top center", line=dict(color=BLUE, width=3), fill="tozeroy", fillcolor="rgba(21,91,239,.08)")
+            fig.add_scatter(x=pdf_trend["Semana"], y=pdf_trend["Existencia"], mode="lines+markers", name="Existencia", yaxis="y2", line=dict(color=PINK, width=3))
+            fig.update_layout(title="Evolución semanal de VPD y existencia", yaxis=dict(title="VPD"), yaxis2=dict(title="Existencia", overlaying="y", side="right"))
+            _plot(fig, 315)
         else:
-            st.info("La evolución semanal aparecerá cuando se cargue el Excel de ventas con fechas.")
+            st.info("Carga los PDF semanales para iniciar la evolución histórica.")
     with right:
         if not section.empty:
-            value_col = "Venta $" if section["Venta $"].sum() > 0 else "Existencia"
-            fig = px.pie(section, names="Sección", values=value_col, hole=.62, color_discrete_sequence=[BLUE, "#17479E", PINK, CYAN])
-            fig.update_layout(title="Participación por sección")
-            _plot(fig)
-    left, right = st.columns([1, 1.35])
+            pdf_store_set = set(stores_pdf.get("Tienda", pd.Series(dtype=str)).dropna().astype(str))
+            model_store_set = set(models.get("Tienda", pd.Series(dtype=str)).dropna().astype(str))
+            sale_is_representative = section["Venta $"].sum() > 0 and (not pdf_store_set or pdf_store_set.issubset(model_store_set))
+            value_col = "Venta $" if sale_is_representative else "Existencia"
+            chart = section[pd.to_numeric(section[value_col], errors="coerce").fillna(0).gt(0)].copy()
+            fig = go.Figure(go.Pie(labels=chart["Sección"], values=chart[value_col], hole=.64, sort=False, textinfo="percent", marker=dict(colors=[BLUE, "#17479E", PINK, CYAN])))
+            total_label = _money(chart[value_col].sum()) if value_col == "Venta $" else _number(chart[value_col].sum())
+            fig.add_annotation(text=f"<b>{total_label}</b><br><span style='font-size:10px'>{value_col}</span>", x=.5, y=.5, showarrow=False, font=dict(color=NAVY, size=13))
+            fig.update_layout(title="Participación por sección", legend=dict(orientation="v", x=1.0, y=.85))
+            _plot(fig, 315)
+        else:
+            st.info("Sin desglose de sección para el corte seleccionado.")
+    left, right = st.columns([.98, 1.42], gap="medium")
     with left:
         if not location.empty:
-            value_col = "Venta $" if location["Venta $"].sum() > 0 else "Existencia"
-            fig = px.bar(location.sort_values(value_col), y="Ubicación", x=value_col, orientation="h", color_discrete_sequence=[BLUE], text_auto=".2s")
-            fig.update_layout(title="Desempeño por ubicación")
-            _plot(fig, 340)
+            pdf_store_set = set(stores_pdf.get("Tienda", pd.Series(dtype=str)).dropna().astype(str))
+            model_store_set = set(models.get("Tienda", pd.Series(dtype=str)).dropna().astype(str))
+            sale_is_representative = location["Venta $"].sum() > 0 and (not pdf_store_set or pdf_store_set.issubset(model_store_set))
+            value_col = "Venta $" if sale_is_representative else "Existencia"
+            chart = location.sort_values(value_col)
+            labels = chart[value_col].map(_money if value_col == "Venta $" else _number)
+            fig = go.Figure(go.Bar(y=chart["Ubicación"], x=chart[value_col], orientation="h", marker_color=BLUE, text=labels, textposition="inside", insidetextanchor="end"))
+            fig.update_layout(title=f"Desempeño por ubicación · {value_col}", xaxis_title=value_col, yaxis_title="")
+            _plot(fig, 300)
     with right:
         if not stores.empty:
-            display = stores[["Tienda", "Venta $", "Utilidad %", "VPD", "DDI", "Existencia", "Score", "Estatus"]].copy()
+            order_col = "Venta $" if stores["Venta $"].sum() > 0 else "VPD"
+            display = stores.sort_values(order_col, ascending=False).head(8)[["Tienda", "Venta $", "Utilidad %", "VPD", "DDI", "Existencia", "Score", "Estatus"]].copy()
+            display.insert(0, "#", range(1, len(display) + 1))
             display["Venta $"] = display["Venta $"].map(_money)
             display["Utilidad %"] = display["Utilidad %"].map(_percent)
+            display["VPD"] = display["VPD"].map(_number)
+            display["DDI"] = display["DDI"].map(lambda value: f"{value:,.0f}")
+            display["Existencia"] = display["Existencia"].map(_number)
             st.markdown('<div class="ac-section">Desempeño por tienda</div>', unsafe_allow_html=True)
-            st.dataframe(display, width="stretch", height=330, hide_index=True)
+            table_height = min(324, 39 + len(display) * 35)
+            st.dataframe(display, width="stretch", height=table_height, hide_index=True)
 
 
 def _page_stores(bundle: dict) -> None:
@@ -658,8 +802,7 @@ def _page_history(bundle: dict) -> None:
     if history.empty:
         st.info("Aún no existen PDF procesados en el histórico.")
         return
-    weeks = sorted(history["Semana"].dropna().astype(str).unique())
-    current_week = weeks[-1]
+    current_week = _latest_week(history["Semana"].dropna().astype(str).unique())
     current = history[history["Semana"].eq(current_week)]
     _kpis([
         ("Semana actual", current_week, "Último corte", BLUE),
@@ -690,15 +833,33 @@ def _page_upload(bundle: dict, is_admin: bool) -> None:
     if not is_admin:
         st.error("Esta pestaña está disponible únicamente para Administrador o Propietario.")
         return
+    flash = st.session_state.pop("commercial_upload_flash", None)
+    if flash:
+        level, message = flash
+        getattr(st, level)(message)
     st.markdown('<div class="ac-source-note">Los archivos se validan antes de alimentar Resumen, Tiendas, Ubicaciones, Modelos, Inventario, Oportunidades, Pronóstico e Histórico.</div>', unsafe_allow_html=True)
+    cloud_bootstrap = st.session_state.get("commercial_cloud_bootstrap", {})
+    if cloud_bootstrap.get("error"):
+        st.error(f"El almacenamiento privado está configurado, pero no respondió: {cloud_bootstrap['error']}", icon=":material/cloud_off:")
+    elif cloud_enabled():
+        st.success("Histórico protegido: la carga se sincroniza con el almacenamiento privado configurado.", icon=":material/cloud_done:")
+    else:
+        st.warning("Almacenamiento temporal: configura el respaldo privado indicado en GUIA_PERSISTENCIA_COMERCIAL.md antes de volver a cargar los 17 PDF.", icon=":material/cloud_off:")
     c1, c2, c3 = st.columns(3, gap="large")
     with c1:
         st.markdown("### 1. Ventas mensuales")
         sales_upload = st.file_uploader("Excel de ventas", type=["xlsx", "xls", "csv"], key="commercial_sales_upload")
         if st.button("Guardar ventas", disabled=sales_upload is None, type="primary", width="stretch"):
             entry = save_sales_upload(sales_upload)
+            sync = sync_history_to_cloud([resolve_entry_path(entry)])
             st.cache_data.clear()
-            st.success("Archivo duplicado; se conservó el existente." if entry.get("duplicate") else "Ventas guardadas para validación.")
+            message = "Archivo duplicado; se conservó el existente." if entry.get("duplicate") else "Ventas guardadas para validación."
+            if sync.get("error"):
+                st.session_state["commercial_upload_flash"] = ("error", f"{message} No se pudo sincronizar: {sync['error']}")
+            elif not sync.get("configured"):
+                st.session_state["commercial_upload_flash"] = ("warning", f"{message} Aún están sólo en el servidor temporal.")
+            else:
+                st.session_state["commercial_upload_flash"] = ("success", f"{message} Respaldo privado actualizado.")
             st.rerun()
         latest = latest_entry("sales")
         st.caption(f"Activo: {latest['name']}" if latest else "Sin archivo cargado")
@@ -707,8 +868,15 @@ def _page_upload(bundle: dict, is_admin: bool) -> None:
         capacity_upload = st.file_uploader("XLS / XLSX de capacidades", type=["xlsx", "xls", "csv"], key="commercial_capacity_upload")
         if st.button("Guardar capacidades", disabled=capacity_upload is None, type="primary", width="stretch"):
             entry = save_capacity_upload(capacity_upload)
+            sync = sync_history_to_cloud([resolve_entry_path(entry)])
             st.cache_data.clear()
-            st.success("Archivo duplicado; se conservó el existente." if entry.get("duplicate") else "Capacidades guardadas para validación.")
+            message = "Archivo duplicado; se conservó el existente." if entry.get("duplicate") else "Capacidades guardadas para validación."
+            if sync.get("error"):
+                st.session_state["commercial_upload_flash"] = ("error", f"{message} No se pudo sincronizar: {sync['error']}")
+            elif not sync.get("configured"):
+                st.session_state["commercial_upload_flash"] = ("warning", f"{message} Aún están sólo en el servidor temporal.")
+            else:
+                st.session_state["commercial_upload_flash"] = ("success", f"{message} Respaldo privado actualizado.")
             st.rerun()
         latest = latest_entry("capacities")
         st.caption(f"Activo: {latest['name']}" if latest else "Sin archivo cargado")
@@ -720,20 +888,30 @@ def _page_upload(bundle: dict, is_admin: bool) -> None:
         pdf_uploads = st.file_uploader("Hasta 17 PDF de tiendas", type=["pdf"], accept_multiple_files=True, key="commercial_pdf_uploads")
         if st.button("Guardar y procesar PDF", disabled=not pdf_uploads, type="primary", width="stretch"):
             saved = 0
+            source_paths = []
             for uploaded in pdf_uploads:
                 entry = save_pdf_upload(uploaded, week_key)
                 path = resolve_entry_path(entry)
                 snapshot = extract_pdf_snapshot(path)
                 update_entry("pdfs", entry["id"], status=snapshot["status"], store=snapshot["store"], week=snapshot["week"] or week_key, report_date=snapshot["report_date"], pages=snapshot["pages"], records=snapshot["models"])
+                save_snapshot(entry["id"], snapshot)
+                source_paths.append(path)
                 saved += 0 if entry.get("duplicate") else 1
+            sync = sync_history_to_cloud(source_paths)
             st.cache_data.clear()
-            st.success(f"{saved} PDF nuevos guardados. El histórico anterior se conservó.")
+            message = f"{saved} PDF nuevos procesados. El histórico anterior se conservó."
+            if sync.get("error"):
+                st.session_state["commercial_upload_flash"] = ("error", f"{message} No se pudo sincronizar: {sync['error']}")
+            elif not sync.get("configured"):
+                st.session_state["commercial_upload_flash"] = ("warning", f"{message} Aún están sólo en el servidor temporal.")
+            else:
+                st.session_state["commercial_upload_flash"] = ("success", f"{message} Respaldo privado actualizado.")
             st.rerun()
         st.caption(f"Periodo seleccionado: {week_key}")
 
     manifest = bundle["manifest"]
     pdf_entries = pd.DataFrame(manifest.get("pdfs", []))
-    current_week = sorted(pdf_entries.get("week", pd.Series(dtype=str)).dropna().astype(str).unique())[-1] if not pdf_entries.empty and "week" in pdf_entries else "Sin semana"
+    current_week = _latest_week(pdf_entries.get("week", pd.Series(dtype=str)).dropna().astype(str).unique()) if not pdf_entries.empty and "week" in pdf_entries else "Sin semana"
     current_entries = pdf_entries[pdf_entries["week"].eq(current_week)] if not pdf_entries.empty and "week" in pdf_entries else pd.DataFrame()
     stores_recognized = current_entries.get("store", pd.Series(dtype=str)).replace("", np.nan).dropna().nunique() if not current_entries.empty else 0
     records = pd.to_numeric(current_entries.get("records", 0), errors="coerce").fillna(0).sum() if not current_entries.empty else 0
@@ -768,6 +946,10 @@ def _page_upload(bundle: dict, is_admin: bool) -> None:
 def render_commercial_page(page: str, existing_sales=None, is_admin: bool = False) -> None:
     _inject_styles()
     render_commercial_sidebar(page, is_admin=is_admin)
+    if "commercial_cloud_bootstrap" not in st.session_state:
+        st.session_state["commercial_cloud_bootstrap"] = restore_history_from_cloud()
+        if st.session_state["commercial_cloud_bootstrap"].get("restored"):
+            st.cache_data.clear()
     with st.spinner("Actualizando análisis comercial..."):
         bundle = _load_bundle(existing_sales)
     if page == "Resumen Comercial":

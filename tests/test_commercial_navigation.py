@@ -2,6 +2,8 @@ from pathlib import Path
 
 from streamlit.testing.v1 import AppTest
 
+from commercial.ui import _latest_week
+
 
 SMOKE_APP = Path(__file__).with_name("commercial_smoke_app.py")
 
@@ -27,3 +29,18 @@ def test_top_navigation_uses_deferred_request(monkeypatch):
     assert not app.exception
     assert app.session_state["nav_page"] == "Tiendas Comerciales"
     assert app.session_state["project_nav_selector"] == "Tiendas Comerciales"
+
+
+def test_latest_week_ignores_sin_semana_when_iso_weeks_exist():
+    assert _latest_week(["2024-W14", "Sin semana", "2026-W34"]) == "2026-W34"
+
+
+def test_summary_has_week_filter_and_visual_blocks(monkeypatch):
+    app = _summary_app(monkeypatch)
+
+    assert not app.exception
+    assert [item.label for item in app.selectbox][1:] == [
+        "Alcance", "Semana PDF", "Sección", "Ubicación", "Escenario"
+    ]
+    assert len(app.get("plotly_chart")) == 3
+    assert len(app.dataframe) == 1

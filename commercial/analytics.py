@@ -149,44 +149,63 @@ def weekly_sales(sales: pd.DataFrame) -> pd.DataFrame:
 
 
 def location_summary(models: pd.DataFrame, location_history: pd.DataFrame) -> pd.DataFrame:
+    model_grouped = pd.DataFrame()
     if models is not None and not models.empty:
-        grouped = models.groupby("Ubicación", as_index=False).agg({
+        model_grouped = models.groupby("Ubicación", as_index=False).agg({
             "Modelo": "nunique", "Venta pzas": "sum", "Venta $": "sum",
             "Utilidad $": "sum", "Existencia": "sum", "Inversión": "sum", "VPD": "sum",
         }).rename(columns={"Modelo": "Modelos"})
-        grouped["Utilidad %"] = grouped["Utilidad $"].div(grouped["Venta $"].replace(0, np.nan)).mul(100).fillna(0)
-        grouped["DDI"] = grouped["Existencia"].div(grouped["VPD"].replace(0, np.nan)).fillna(0)
-        return grouped.sort_values("Venta $", ascending=False)
+        model_grouped["Utilidad %"] = model_grouped["Utilidad $"].div(model_grouped["Venta $"].replace(0, np.nan)).mul(100).fillna(0)
+        model_grouped["DDI"] = model_grouped["Existencia"].div(model_grouped["VPD"].replace(0, np.nan)).fillna(0)
     if location_history is not None and not location_history.empty:
         latest = location_history.copy()
         latest["Fecha orden"] = pd.to_datetime(latest["Fecha"], errors="coerce")
         latest = latest.sort_values("Fecha orden").groupby(["Tienda", "Ubicación"], as_index=False).tail(1)
-        grouped = latest.groupby("Ubicación", as_index=False).agg({
+        pdf_grouped = latest.groupby("Ubicación", as_index=False).agg({
             "Modelos": "sum", "Existencia": "sum", "VPD": "sum", "DDI": "mean",
         })
-        for column in ("Venta pzas", "Venta $", "Utilidad $", "Inversión", "Utilidad %"):
-            grouped[column] = 0.0
-        return grouped
-    return pd.DataFrame()
+        if model_grouped.empty:
+            for column in ("Venta pzas", "Venta $", "Utilidad $", "Inversión", "Utilidad %"):
+                pdf_grouped[column] = 0.0
+            return pdf_grouped
+        # El PDF semanal es la fuente vigente para existencia, VPD y DDI. El
+        # archivo de capacidades complementa venta, inversión y utilidad.
+        overlay = pdf_grouped.rename(columns={
+            "Modelos": "Modelos PDF", "Existencia": "Existencia PDF",
+            "VPD": "VPD PDF", "DDI": "DDI PDF",
+        })
+        grouped = model_grouped.merge(overlay, on="Ubicación", how="outer")
+        for target, source in (("Modelos", "Modelos PDF"), ("Existencia", "Existencia PDF"), ("VPD", "VPD PDF"), ("DDI", "DDI PDF")):
+            grouped[target] = grouped[source].where(grouped[source].notna(), grouped.get(target, 0))
+        return grouped.drop(columns=["Modelos PDF", "Existencia PDF", "VPD PDF", "DDI PDF"], errors="ignore").fillna(0)
+    return model_grouped
 
 
 def section_summary(models: pd.DataFrame, section_history: pd.DataFrame) -> pd.DataFrame:
+    model_grouped = pd.DataFrame()
     if models is not None and not models.empty:
-        grouped = models.groupby("Sección", as_index=False).agg({
+        model_grouped = models.groupby("Sección", as_index=False).agg({
             "Modelo": "nunique", "Venta pzas": "sum", "Venta $": "sum",
             "Utilidad $": "sum", "Existencia": "sum", "Inversión": "sum", "VPD": "sum",
         }).rename(columns={"Modelo": "Modelos"})
-        grouped["Utilidad %"] = grouped["Utilidad $"].div(grouped["Venta $"].replace(0, np.nan)).mul(100).fillna(0)
-        return grouped.sort_values("Venta $", ascending=False)
+        model_grouped["Utilidad %"] = model_grouped["Utilidad $"].div(model_grouped["Venta $"].replace(0, np.nan)).mul(100).fillna(0)
     if section_history is not None and not section_history.empty:
         latest = section_history.copy()
         latest["Fecha orden"] = pd.to_datetime(latest["Fecha"], errors="coerce")
         latest = latest.sort_values("Fecha orden").groupby(["Tienda", "Sección detalle"], as_index=False).tail(1)
-        grouped = latest.groupby("Sección", as_index=False).agg({"Modelos": "sum", "Existencia": "sum", "VPD": "sum"})
-        for column in ("Venta pzas", "Venta $", "Utilidad $", "Inversión", "Utilidad %"):
-            grouped[column] = 0.0
-        return grouped
-    return pd.DataFrame()
+        pdf_grouped = latest.groupby("Sección", as_index=False).agg({"Modelos": "sum", "Existencia": "sum", "VPD": "sum"})
+        if model_grouped.empty:
+            for column in ("Venta pzas", "Venta $", "Utilidad $", "Inversión", "Utilidad %"):
+                pdf_grouped[column] = 0.0
+            return pdf_grouped
+        overlay = pdf_grouped.rename(columns={
+            "Modelos": "Modelos PDF", "Existencia": "Existencia PDF", "VPD": "VPD PDF",
+        })
+        grouped = model_grouped.merge(overlay, on="Sección", how="outer")
+        for target, source in (("Modelos", "Modelos PDF"), ("Existencia", "Existencia PDF"), ("VPD", "VPD PDF")):
+            grouped[target] = grouped[source].where(grouped[source].notna(), grouped.get(target, 0))
+        return grouped.drop(columns=["Modelos PDF", "Existencia PDF", "VPD PDF"], errors="ignore").fillna(0)
+    return model_grouped
 
 
 def rank_models(models: pd.DataFrame, scenario="Sugerido / VPD") -> pd.DataFrame:

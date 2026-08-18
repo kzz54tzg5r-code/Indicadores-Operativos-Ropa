@@ -6,8 +6,13 @@ from datetime import datetime
 from hashlib import sha256
 from io import BytesIO
 import json
+import mimetypes
+import os
 from pathlib import Path
 import re
+from urllib.error import HTTPError
+from urllib.parse import quote
+from urllib.request import Request, urlopen
 import zipfile
 
 from .config import (
@@ -18,6 +23,7 @@ from .config import (
     MANIFEST_FILE,
     PDF_DIR,
     SALES_DIR,
+    SNAPSHOTS_FILE,
     ensure_directories,
 )
 
@@ -45,6 +51,165 @@ def _atomic_json(path: Path, payload) -> None:
     temporary = path.with_suffix(path.suffix + ".tmp")
     temporary.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
     temporary.replace(path)
+
+
+def _setting(name: str, default: str = "") -> str:
+    """Lee una configuración sin obligar a importar Streamlit en las pruebas."""
+    value = os.getenv(name, "")
+    if value:
+        return str(value).strip()
+    try:
+        import streamlit as st
+
+        value = st.secrets.get(name, default)
+    except Exception:
+        value = default
+    return str(value or "").strip()
+
+
+def cloud_configuration() -> dict:
+    """Configuración opcional de un bucket privado de Supabase Storage."""
+    return {
+        "url": _setting("PS_COMMERCIAL_SUPABASE_URL").rstrip("/"),
+        "key": _setting("PS_COMMERCIAL_SUPABASE_KEY"),
+        "bucket": _setting("PS_COMMERCIAL_SUPABASE_BUCKET", "ps-operaciones-private"),
+        "prefix": _setting("PS_COMMERCIAL_SUPABASE_PREFIX", "commercial").strip("/"),
+    }
+
+
+def cloud_enabled() -> bool:
+    config = cloud_configuration()
+    return bool(config["url"] and config["key"] and config["bucket"])
+
+
+def _cloud_object_url(relative: str) -> tuple[str, dict]:
+    config = cloud_configuration()
+    object_name = "/".join(part for part in (config["prefix"], relative.strip("/")) if part)
+    encoded = quote(object_name, safe="/")
+    url = f"{config['url']}/storage/v1/object/{quote(config['bucket'], safe='')}/{encoded}"
+    headers = {
+        "Authorization": f"Bearer {config['key']}",
+        "apikey": config["key"],
+    }
+    return url, headers
+
+
+def _cloud_download(relative: str) -> bytes | None:
+    if not cloud_enabled():
+        return None
+    url, headers = _cloud_object_url(relative)
+    try:
+        with urlopen(Request(url, headers=headers), timeout=25) as response:
+            return response.read()
+    except HTTPError as exc:
+        if exc.code == 404:
+            return None
+        raise
+
+
+def _cloud_upload(relative: str, data: bytes, content_type: str = "application/octet-stream") -> None:
+    url, headers = _cloud_object_url(relative)
+    headers.update({"Content-Type": content_type, "x-upsert": "true"})
+    request = Request(url, data=data, headers=headers, method="POST")
+    with urlopen(request, timeout=90) as response:
+        response.read()
+
+
+def load_snapshots() -> dict[str, dict]:
+    try:
+        payload = json.loads(SNAPSHOTS_FILE.read_text(encoding="utf-8")) if SNAPSHOTS_FILE.exists() else {}
+    except Exception:
+        payload = {}
+    if isinstance(payload, dict) and isinstance(payload.get("items"), dict):
+        return payload["items"]
+    return payload if isinstance(payload, dict) else {}
+
+
+def save_snapshot(entry_id: str, snapshot: dict) -> None:
+    items = load_snapshots()
+    items[str(entry_id)] = dict(snapshot)
+    _atomic_json(SNAPSHOTS_FILE, {"version": 1, "updated_at": _now(), "items": items})
+
+
+def restore_history_from_cloud() -> dict:
+    """Restaura estado y fuentes tabulares; los PDF se leen desde su snapshot.
+
+    Así el arranque no vuelve a descargar todos los PDF históricos, pero sus
+    originales continúan resguardados en el bucket privado.
+    """
+    result = {"configured": cloud_enabled(), "restored": 0, "error": ""}
+    if not result["configured"]:
+        return result
+    try:
+        remote_manifest_data = _cloud_download("manifest.json")
+        if not remote_manifest_data:
+            return result
+        remote_manifest = json.loads(remote_manifest_data.decode("utf-8"))
+        local_manifest = load_manifest()
+        merged = {"version": 1, "sales": [], "capacities": [], "pdfs": []}
+        for category in ("sales", "capacities", "pdfs"):
+            by_id = {
+                str(item.get("id") or item.get("sha256")): dict(item)
+                for item in local_manifest.get(category, [])
+            }
+            for item in remote_manifest.get(category, []):
+                key = str(item.get("id") or item.get("sha256"))
+                by_id[key] = {**by_id.get(key, {}), **dict(item)}
+            merged[category] = list(by_id.values())
+        save_manifest(merged)
+
+        remote_snapshots = _cloud_download("snapshots.json")
+        if remote_snapshots:
+            payload = json.loads(remote_snapshots.decode("utf-8"))
+            remote_items = payload.get("items", payload) if isinstance(payload, dict) else {}
+            items = {**load_snapshots(), **(remote_items if isinstance(remote_items, dict) else {})}
+            _atomic_json(SNAPSHOTS_FILE, {"version": 1, "updated_at": _now(), "items": items})
+
+        remote_actions = _cloud_download("actions.json")
+        if remote_actions and not ACTIONS_FILE.exists():
+            ACTIONS_FILE.write_bytes(remote_actions)
+
+        # Ventas y capacidades sí se restauran porque alimentan el análisis
+        # por modelo. Los PDF históricos usan snapshots y no penalizan arranque.
+        for category in ("sales", "capacities"):
+            for entry in merged.get(category, []):
+                target = resolve_entry_path(entry)
+                if target.exists():
+                    continue
+                data = _cloud_download(str(entry.get("path", "")))
+                if data:
+                    target.parent.mkdir(parents=True, exist_ok=True)
+                    target.write_bytes(data)
+                    result["restored"] += 1
+        result["restored"] += len(load_snapshots())
+    except Exception as exc:
+        result["error"] = f"{type(exc).__name__}: {exc}"
+    return result
+
+
+def sync_history_to_cloud(source_paths: list[Path] | None = None) -> dict:
+    """Sincroniza fuentes nuevas y metadatos al bucket privado configurado."""
+    result = {"configured": cloud_enabled(), "uploaded": 0, "error": ""}
+    if not result["configured"]:
+        return result
+    try:
+        unique_paths = []
+        for path in source_paths or []:
+            path = Path(path)
+            if path.exists() and path.is_file() and path not in unique_paths:
+                unique_paths.append(path)
+        for path in unique_paths:
+            relative = str(path.relative_to(DATA_ROOT))
+            content_type = mimetypes.guess_type(path.name)[0] or "application/octet-stream"
+            _cloud_upload(relative, path.read_bytes(), content_type)
+            result["uploaded"] += 1
+        for path in (MANIFEST_FILE, SNAPSHOTS_FILE, ACTIONS_FILE):
+            if path.exists():
+                _cloud_upload(path.name, path.read_bytes(), "application/json")
+        result["uploaded"] += 1
+    except Exception as exc:
+        result["error"] = f"{type(exc).__name__}: {exc}"
+    return result
 
 
 def load_manifest() -> dict:
