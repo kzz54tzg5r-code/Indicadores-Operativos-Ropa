@@ -1,0 +1,28 @@
+PS Operaciones Ropa V55 · Validación final
+Fecha: 2026-08-18
+
+Resultado automatizado:
+- 25 pruebas aprobadas
+- 0 fallas
+- 9 vistas del análisis PDF abiertas sin excepción
+- Carga PDF abierta sin excepción
+- Navegación lateral y superior validada
+- Sin modificación tardía de project_nav_selector
+
+Extracción validada con AC_IZT.pdf:
+- Tienda: Iztapalapa
+- Semana: 2024-W14
+- Páginas: 23
+- IDs reportados: 7,615
+- Existencia: 291,307
+- VPD: 3,326
+- DDI: 88
+- Rubros: 116
+- Marcas: 80
+- Registros de rankings de modelos: 480
+
+Comando:
+PYTHONPATH=/workspace/scratch/857c3e186d03/runtime_v533_tests:$PYTHONPATH python -m pytest -q
+
+Salida:
+25 passed in 61.11s
