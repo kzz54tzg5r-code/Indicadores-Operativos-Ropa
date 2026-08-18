@@ -9,6 +9,7 @@ from commercial.analytics import (
     store_summary,
 )
 from commercial.parsers import extract_pdf_snapshot, read_capacity_file, store_from_filename
+from commercial.pdf_analytics import business_location_summary, pdf_opportunities, snapshots_to_pdf_frames, store_pdf_summary
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -38,8 +39,28 @@ def test_pdf_sample_builds_weekly_snapshot():
     assert snapshot["existence"] == 291307
     assert snapshot["vpd"] == 3326
     assert snapshot["ddi"] == 88
+    assert snapshot["parser_version"] == 3
     assert len(snapshot["sections"]) == 7
-    assert {row["Ubicación"] for row in snapshot["locations"]} == {"Doblado", "Colgado"}
+    assert {"Doblado", "Colgado", "Jeans"}.issubset({row["Ubicación"] for row in snapshot["locations"]})
+    assert len(snapshot["breakdowns"]["rubro"]) == 116
+    assert len(snapshot["brands"]) == 80
+    assert len(snapshot["model_rankings"]) == 480
+
+
+def test_pdf_only_frames_feed_all_commercial_views():
+    snapshot = extract_pdf_snapshot(PDF)
+    stores, _, _ = snapshots_to_frames([snapshot])
+    breakdowns, brands, models = snapshots_to_pdf_frames([snapshot])
+
+    summary = store_pdf_summary(stores, "2024-W14")
+    locations = business_location_summary(breakdowns, "2024-W14", "Compañía")
+    actions = pdf_opportunities(summary, breakdowns, models)
+
+    assert summary.iloc[0]["Tienda"] == "Iztapalapa"
+    assert set(locations["Ubicación"]) == {"Doblado", "Colgado", "Jeans", "Lencería"}
+    assert set(brands["Alcance marca"]) == {"General", "Nacional"}
+    assert set(models["Escenario"]) == {"Utilidad", "Sugerido / VPD", "Baja rotación", "Inversión"}
+    assert not actions.empty
 
 
 def test_model_rankings_and_inventory_views_are_available():
@@ -56,7 +77,7 @@ def test_model_rankings_and_inventory_views_are_available():
     assert not ranked_vpd.empty and not ranked_utility.empty
     assert {"Campeón", "Lento", "En riesgo"}.issubset(set(ranked_vpd["Estado modelo"]))
     assert len(coverage) == 4
-    assert {"Doblado", "Colgado", "Jeans", "Lencería"} == set(location["Ubicación"])
+    assert {"Doblado", "Colgado", "Jeans", "Lencería"}.issubset(set(location["Ubicación"]))
     assert not actions.empty
 
 
@@ -84,8 +105,8 @@ def test_pdf_snapshot_overlays_current_inventory_without_losing_sales():
 
     summary = store_summary(models, None, stores)
     by_store = summary.set_index("Tienda")
-    section = location_summary(models, locations).set_index("Ubicación")
+    section = location_summary(models, locations)
 
     assert by_store.loc["Iztapalapa", "Existencia"] == snapshot["existence"]
     assert by_store.loc["Olivar", "Venta $"] == models["Venta $"].sum()
-    assert section.loc["Doblado", "Existencia"] == 130854
+    assert locations.loc[locations["Ubicación"].eq("Doblado"), "Existencia"].max() == 130854

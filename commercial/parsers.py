@@ -357,8 +357,251 @@ def _first_page_text(path: Path) -> tuple[str, int]:
             return "", 0
 
 
+PDF_PARSER_VERSION = 3
+
+
+def _cell(value) -> str:
+    return re.sub(r"\s+", " ", str(value or "")).strip()
+
+
+def _pdf_number(value, default=0.0) -> float:
+    text = _cell(value)
+    if not text or text in {"-", "—"}:
+        return float(default)
+    # Cuando PDF-XChange une dos renglones en una celda conservamos el primer
+    # valor completo. Nunca se suman porcentajes ni métricas ambiguas.
+    text = text.split("\n", 1)[0]
+    match = re.search(r"-?\d[\d,]*(?:\.\d+)?", text.replace("$", ""))
+    if not match:
+        return float(default)
+    try:
+        return float(match.group(0).replace(",", ""))
+    except Exception:
+        return float(default)
+
+
+def _header_key(value) -> str:
+    key = norm_text(_cell(value))
+    if "VALORES #" in key and "ID" in key:
+        return "ids"
+    if key == "CURVA" or "VALORES CURVA" in key:
+        return "curve"
+    if key == "PISO":
+        return "floor"
+    if key == "BODEGA":
+        return "warehouse"
+    if "EXISTENCIA TOTAL" in key:
+        return "existence"
+    if "SUG 7" in key or key == "SUG7":
+        return "vpd"
+    if key == "DDI":
+        return "ddi"
+    if key == "DDC":
+        return "ddc"
+    if key in {"POS", "BRAZ", "BRAZ/ POS", "BRAZ/POS"}:
+        return "positions"
+    if key.startswith("MOD X"):
+        return "models_per_position"
+    if "PART INVENTARIO" in key:
+        return "inventory_share"
+    if "PART PZAS" in key:
+        return "pieces_share"
+    if "PART $" in key:
+        return "sales_share"
+    if "INVERSION" in key and "%" in str(value):
+        return "investment_share"
+    if key == "INVERSION":
+        return "investment"
+    if "UTILIDAD" in key:
+        return "utility_share"
+    if "PART CURVA" in key:
+        return "curve_share"
+    if "MUEBLE" in key:
+        return "space_share"
+    if "ART" in key and "80" in key:
+        return "articles_80"
+    if key == "DOBLADO" or key == "DOBLADA":
+        return "folded_positions"
+    if key == "COLGADO" or key == "COLGADA":
+        return "hanging_positions"
+    return ""
+
+
+def _metric_record(kind: str, label: str, headers: list, values: list, store: str, **extra) -> dict:
+    record = {"kind": kind, "label": _cell(label), "store": store, **extra}
+    for header, value in zip(headers, values):
+        key = _header_key(header)
+        if key:
+            record[key] = _pdf_number(value)
+    record.setdefault("ids", 0.0)
+    record.setdefault("curve", 0.0)
+    record.setdefault("floor", 0.0)
+    record.setdefault("warehouse", 0.0)
+    record["existence"] = record.get("existence", record["floor"] + record["warehouse"])
+    record.setdefault("vpd", 0.0)
+    record.setdefault("ddi", 0.0)
+    record.setdefault("ddc", 0.0)
+    record.setdefault("positions", 0.0)
+    return record
+
+
+def _parse_metric_table(table: list, kind: str, store: str, label_index=0, section_index=None) -> list[dict]:
+    if not table or len(table) < 3:
+        return []
+    headers = table[1]
+    rows = []
+    current_section = ""
+    for row in table[2:]:
+        if not row:
+            continue
+        label = _cell(row[label_index] if label_index < len(row) else "")
+        if section_index is not None:
+            section_value = _cell(row[section_index] if section_index < len(row) else "")
+            if section_value:
+                current_section = section_value
+        if not label or "TOTAL" in norm_text(label):
+            continue
+        record = _metric_record(
+            kind, label, headers[label_index + 1:], row[label_index + 1:], store,
+            section_detail=current_section,
+            section=_section_group(current_section) if current_section else "",
+        )
+        if record["ids"] or record["floor"] or record["warehouse"] or record["vpd"]:
+            rows.append(record)
+    return rows
+
+
+def _parse_brand_table(table: list, store: str, scope: str) -> list[dict]:
+    if not table or len(table) < 3:
+        return []
+    headers = table[1]
+    rows = []
+    for row in table[2:]:
+        if len(row) < 3:
+            continue
+        brand = _cell(row[1])
+        if not brand or "TOTAL" in norm_text(brand):
+            continue
+        record = _metric_record("brand", brand, headers[2:], row[2:], store, brand_scope=scope)
+        record["rank"] = int(_pdf_number(row[0], len(rows) + 1))
+        rows.append(record)
+    return rows
+
+
+def _parse_model_tables(tables: list, store: str, scenario: str) -> list[dict]:
+    records = []
+    for table in tables or []:
+        if not table or len(table) < 3:
+            continue
+        world = _cell(table[0][0]) or "Sin sección"
+        headers = [_header_key(value) for value in table[1]]
+        raw_headers = [norm_text(value) for value in table[1]]
+        has_rank = not raw_headers[0] or raw_headers[0] in {"#", "RANKING"}
+        offset = 1 if has_rank else 0
+        for row_number, row in enumerate(table[2:], start=1):
+            if len(row) < 10:
+                continue
+            art_index = offset
+            article = _cell(row[art_index])
+            if not article or not re.search(r"\d", article):
+                continue
+            record = {
+                "store": store,
+                "world": _section_group(world),
+                "world_detail": world.title(),
+                "scenario": scenario,
+                "rank": int(_pdf_number(row[0], row_number)) if has_rank else row_number,
+                "article_id": article,
+                "model": _cell(row[art_index + 1]),
+                "color": _cell(row[art_index + 2]),
+                "brand": _cell(row[art_index + 3]),
+                "subcategory": _cell(row[art_index + 4]),
+            }
+            for index, key in enumerate(headers):
+                if not key or index >= len(row):
+                    continue
+                record[key] = _pdf_number(row[index])
+            record.setdefault("curve", 0.0)
+            record.setdefault("floor", 0.0)
+            record.setdefault("warehouse", 0.0)
+            record["existence"] = record["floor"] + record["warehouse"]
+            record.setdefault("vpd", 0.0)
+            record.setdefault("ddi", 0.0)
+            record.setdefault("ddc", 0.0)
+            record.setdefault("utility_share", 0.0)
+            record.setdefault("investment", 0.0)
+            records.append(record)
+    return records
+
+
+def _extract_structured_pdf(path: Path, store: str) -> tuple[dict, list[dict], list[dict]]:
+    """Extrae tablas comerciales estables de las 23 páginas del AC."""
+    breakdowns: dict[str, list[dict]] = {
+        "catalog": [], "section": [], "category": [], "product_type": [],
+        "status": [], "location": [], "rubro": [],
+    }
+    brands: list[dict] = []
+    models: list[dict] = []
+    try:
+        import pdfplumber
+
+        with pdfplumber.open(path) as document:
+            if not document.pages:
+                return breakdowns, brands, models
+            first_tables = document.pages[0].extract_tables() or []
+            if first_tables:
+                wide = first_tables[0]
+                if wide and len(wide) >= 3 and len(wide[1]) >= 19:
+                    left = [row[:19] for row in wide]
+                    breakdowns["catalog"] = _parse_metric_table(left, "catalog", store)
+                table_kinds = ["section", "category", "product_type", "status", "location"]
+                for kind, table in zip(table_kinds, first_tables[1:6]):
+                    breakdowns[kind] = _parse_metric_table(table, kind, store)
+
+            if len(document.pages) >= 3:
+                rubro_tables = document.pages[2].extract_tables() or []
+                if rubro_tables:
+                    table = rubro_tables[0]
+                    # La página 3 agrega la sección en la primera columna y el
+                    # rubro en la segunda.
+                    if len(table) >= 3:
+                        headers = table[1]
+                        current_section = ""
+                        for row in table[2:]:
+                            if not row or len(row) < 3:
+                                continue
+                            if _cell(row[0]):
+                                current_section = _cell(row[0])
+                            label = _cell(row[1])
+                            if not label or "TOTAL" in norm_text(label):
+                                continue
+                            record = _metric_record(
+                                "rubro", label, headers[2:], row[2:], store,
+                                section_detail=current_section,
+                                section=_section_group(current_section),
+                            )
+                            if record["ids"] or record["existence"] or record["vpd"]:
+                                breakdowns["rubro"].append(record)
+
+            for page_index, scope in ((15, "General"), (17, "Nacional")):
+                if page_index < len(document.pages):
+                    tables = document.pages[page_index].extract_tables() or []
+                    if tables:
+                        brands.extend(_parse_brand_table(tables[0], store, scope))
+
+            scenarios = ["Utilidad", "Sugerido / VPD", "Baja rotación", "Inversión"]
+            if len(document.pages) >= 4:
+                for page, scenario in zip(document.pages[-4:], scenarios):
+                    models.extend(_parse_model_tables(page.extract_tables() or [], store, scenario))
+    except Exception:
+        # El resumen de primera página sigue siendo válido si una tabla cambia
+        # de geometría; el error no elimina el resto del corte.
+        pass
+    return breakdowns, brands, models
+
+
 def extract_pdf_snapshot(path: str | Path) -> dict:
-    """Extrae el resumen que alimenta histórico, secciones y ubicaciones."""
+    """Extrae resumen, dimensiones y rankings de un Análisis Comercial PDF."""
     path = Path(path)
     raw_text, pages = _first_page_text(path)
     text = re.sub(r"[ \t]+", " ", raw_text)
@@ -385,55 +628,34 @@ def extract_pdf_snapshot(path: str | Path) -> dict:
         total_values.append(0.0)
     models, curve, floor, warehouse, vpd, ddi, ddc, positions, models_per_position = total_values[:9]
 
+    breakdowns, brands, model_rankings = _extract_structured_pdf(path, store)
     section_rows = []
-    section_labels = ["DAMA", "CABALLERO", "NIÑA", "NIÑO", "BEBA", "BEBE", "UNISEX"]
-    for label in section_labels:
-        line = next((item for item in lines if item.upper().startswith(label + " ")), "")
-        values = _numbers_after_label(line, label)
-        if len(values) >= 8:
-            section_rows.append({
-                "Tienda": store,
-                "Sección detalle": label.title(),
-                "Sección": _section_group(label),
-                "Modelos": values[0],
-                "Curva": values[1],
-                "Piso": values[2],
-                "Bodega": values[3],
-                "VPD": values[4],
-                "DDI": values[5],
-                "DDC": values[6],
-                "Posiciones": values[7],
-                "Existencia": values[2] + values[3],
-            })
-
+    for row in breakdowns.get("section", []):
+        section_rows.append({
+            "Tienda": store, "Sección detalle": row["label"].title(),
+            "Sección": _section_group(row["label"]), "Modelos": row["ids"],
+            "Curva": row["curve"], "Piso": row["floor"], "Bodega": row["warehouse"],
+            "VPD": row["vpd"], "DDI": row["ddi"], "DDC": row["ddc"],
+            "Posiciones": row.get("positions", 0), "Existencia": row["existence"],
+        })
     location_rows = []
-    try:
-        location_index = next(i for i, line in enumerate(lines) if "VENTAS POR UBIC" in norm_text(line))
-        location_lines = lines[location_index + 1:]
-    except StopIteration:
-        location_lines = lines
-    location_aliases = {
-        "DOBLADA": "Doblado", "DOBLADO": "Doblado", "COLGADA": "Colgado",
-        "COLGADO": "Colgado", "JEANS": "Jeans", "LENCERIA": "Lencería",
-        "LENCERÍA": "Lencería",
-    }
-    for label, canonical in location_aliases.items():
-        line = next((item for item in location_lines if norm_text(item).startswith(norm_text(label) + " ")), "")
-        values = _numbers_after_label(line, label)
-        if len(values) >= 8:
-            location_rows.append({
-                "Tienda": store,
-                "Ubicación": canonical,
-                "Modelos": values[0],
-                "Curva": values[1],
-                "Piso": values[2],
-                "Bodega": values[3],
-                "VPD": values[4],
-                "DDI": values[5],
-                "DDC": values[6],
-                "Posiciones": values[7],
-                "Existencia": values[2] + values[3],
-            })
+    for row in breakdowns.get("location", []):
+        label_key = norm_text(row["label"])
+        if "MEZ" in label_key or "JEAN" in label_key:
+            canonical = "Jeans"
+        elif "COLG" in label_key:
+            canonical = "Colgado"
+        elif "DOBL" in label_key:
+            canonical = "Doblado"
+        else:
+            canonical = row["label"].title()
+        location_rows.append({
+            "Tienda": store, "Ubicación": canonical, "Ubicación detalle": row["label"],
+            "Modelos": row["ids"], "Curva": row["curve"], "Piso": row["floor"],
+            "Bodega": row["warehouse"], "VPD": row["vpd"], "DDI": row["ddi"],
+            "DDC": row["ddc"], "Posiciones": row.get("positions", 0),
+            "Existencia": row["existence"],
+        })
 
     if pd.notna(report_date):
         iso = report_date.isocalendar()
@@ -460,5 +682,9 @@ def extract_pdf_snapshot(path: str | Path) -> dict:
         "models_per_position": models_per_position,
         "sections": section_rows,
         "locations": location_rows,
+        "breakdowns": breakdowns,
+        "brands": brands,
+        "model_rankings": model_rankings,
+        "parser_version": PDF_PARSER_VERSION,
         "status": "Procesado" if total_line and store != "Tienda sin identificar" else "Revisar",
     }

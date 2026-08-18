@@ -15,7 +15,8 @@ def _summary_app(monkeypatch):
 
 def test_sidebar_navigation_does_not_mutate_an_instantiated_widget(monkeypatch):
     app = _summary_app(monkeypatch)
-    app.sidebar.button[8].click().run()
+    upload_button = next(button for button in app.sidebar.button if button.label == "Carga PDF")
+    upload_button.click().run()
 
     assert not app.exception
     assert app.session_state["nav_page"] == "Carga Comercial"
@@ -39,8 +40,6 @@ def test_summary_has_week_filter_and_visual_blocks(monkeypatch):
     app = _summary_app(monkeypatch)
 
     assert not app.exception
-    assert [item.label for item in app.selectbox][1:] == [
-        "Alcance", "Semana PDF", "Sección", "Ubicación", "Escenario"
-    ]
+    assert [item.label for item in app.selectbox][1:] == ["Semana", "Alcance"]
     assert len(app.get("plotly_chart")) == 3
     assert len(app.dataframe) == 1

@@ -16,11 +16,12 @@ SNAPSHOTS_FILE = DATA_ROOT / "snapshots.json"
 COMMERCIAL_PAGES = (
     "Resumen Comercial",
     "Tiendas Comerciales",
-    "Ubicaciones y Secciones",
-    "Modelos",
     "Inventario y Cobertura",
+    "Secciones y Categorías",
+    "Ubicaciones y Espacio",
+    "Marcas y Catálogo",
+    "Modelos",
     "Oportunidades y Acciones",
-    "Pronóstico Comercial",
     "Histórico Comercial",
 )
 
@@ -29,13 +30,14 @@ ADMIN_PAGE = "Carga Comercial"
 PAGE_LABELS = {
     "Resumen Comercial": "Resumen",
     "Tiendas Comerciales": "Tiendas",
-    "Ubicaciones y Secciones": "Ubicaciones",
-    "Modelos": "Modelos",
     "Inventario y Cobertura": "Inventario",
+    "Secciones y Categorías": "Secciones",
+    "Ubicaciones y Espacio": "Ubicaciones",
+    "Marcas y Catálogo": "Marcas",
+    "Modelos": "Modelos",
     "Oportunidades y Acciones": "Oportunidades",
-    "Pronóstico Comercial": "Pronóstico",
     "Histórico Comercial": "Histórico",
-    "Carga Comercial": "Carga comercial",
+    "Carga Comercial": "Carga PDF",
 }
 
 STORE_ALIASES = {

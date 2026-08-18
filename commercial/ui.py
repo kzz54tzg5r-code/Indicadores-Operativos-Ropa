@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import date, datetime
 from pathlib import Path
+from concurrent.futures import ThreadPoolExecutor, as_completed
 import html
 import re
 
@@ -13,32 +14,27 @@ import plotly.express as px
 import plotly.graph_objects as go
 import streamlit as st
 
-from .analytics import (
-    forecast,
-    inventory_buckets,
-    location_summary,
-    merge_model_sales,
-    opportunities,
-    rank_models,
-    section_summary,
-    snapshots_to_frames,
-    store_summary,
-    weekly_sales,
-)
+from .analytics import snapshots_to_frames
 from .config import ADMIN_PAGE, COMMERCIAL_PAGES, PAGE_LABELS, PROJECT_STORES, ensure_directories
-from .parsers import extract_pdf_snapshot, normalize_existing_sales, read_capacity_file, read_sales_file
+from .parsers import PDF_PARSER_VERSION, extract_pdf_snapshot
+from .pdf_analytics import (
+    aggregate_pdf,
+    business_location_summary,
+    company_projection,
+    filter_period,
+    pdf_opportunities,
+    snapshots_to_pdf_frames,
+    store_pdf_summary,
+)
 from .storage import (
     build_history_backup,
     cloud_enabled,
-    latest_entry,
     load_manifest,
     load_snapshots,
     resolve_entry_path,
     restore_history_from_cloud,
     restore_history_backup,
-    save_capacity_upload,
     save_pdf_upload,
-    save_sales_upload,
     save_snapshot,
     sync_history_to_cloud,
     update_entry,
@@ -81,57 +77,15 @@ def _latest_week(values) -> str:
 
 
 @st.cache_data(show_spinner=False)
-def _cached_capacity(path_text: str, mtime: float) -> pd.DataFrame:
-    return read_capacity_file(path_text)
-
-
-@st.cache_data(show_spinner=False)
-def _cached_sales(path_text: str, mtime: float) -> pd.DataFrame:
-    return read_sales_file(path_text)
-
-
-@st.cache_data(show_spinner=False)
 def _cached_pdf(path_text: str, mtime: float) -> dict:
     return extract_pdf_snapshot(path_text)
 
 
 def _load_bundle(existing_sales=None) -> dict:
+    """Carga exclusivamente la información persistida de los PDF semanales."""
     ensure_directories()
     manifest = load_manifest()
     snapshot_cache = load_snapshots()
-    capacity_frames = []
-    for entry in manifest.get("capacities", []):
-        path = resolve_entry_path(entry)
-        if not path.exists():
-            continue
-        try:
-            frame = _cached_capacity(str(path), path.stat().st_mtime)
-            if not frame.empty:
-                capacity_frames.append(frame)
-                if entry.get("status") != "Procesado":
-                    update_entry("capacities", entry["id"], status="Procesado", rows=len(frame), stores=sorted(frame["Tienda"].unique().tolist()))
-        except Exception as exc:
-            if entry.get("status") != "Error":
-                update_entry("capacities", entry["id"], status="Error", error=str(exc)[:300])
-
-    sales_frames = []
-    existing = normalize_existing_sales(existing_sales)
-    if not existing.empty:
-        sales_frames.append(existing)
-    for entry in manifest.get("sales", []):
-        path = resolve_entry_path(entry)
-        if not path.exists():
-            continue
-        try:
-            frame = _cached_sales(str(path), path.stat().st_mtime)
-            if not frame.empty:
-                sales_frames.append(frame)
-                if entry.get("status") != "Procesado":
-                    update_entry("sales", entry["id"], status="Procesado", rows=len(frame), stores=sorted(frame["Tienda"].unique().tolist()))
-        except Exception as exc:
-            if entry.get("status") != "Error":
-                update_entry("sales", entry["id"], status="Error", error=str(exc)[:300])
-
     snapshots = []
     for entry in manifest.get("pdfs", []):
         path = resolve_entry_path(entry)
@@ -140,10 +94,9 @@ def _load_bundle(existing_sales=None) -> dict:
             # permanecer sólo en el bucket privado. Su snapshot normalizado
             # conserva todas las métricas sin volver a descargar cada PDF.
             snapshot = snapshot_cache.get(str(entry.get("id")))
-            if path.exists():
+            if path.exists() and int((snapshot or {}).get("parser_version", 0)) < PDF_PARSER_VERSION:
                 snapshot = _cached_pdf(str(path), path.stat().st_mtime)
-                if snapshot_cache.get(str(entry.get("id"))) != snapshot:
-                    save_snapshot(entry["id"], snapshot)
+                save_snapshot(entry["id"], snapshot)
             if not snapshot:
                 continue
             snapshots.append(snapshot)
@@ -163,15 +116,14 @@ def _load_bundle(existing_sales=None) -> dict:
             if entry.get("status") != "Error":
                 update_entry("pdfs", entry["id"], status="Error", error=str(exc)[:300])
 
-    capacity = pd.concat(capacity_frames, ignore_index=True) if capacity_frames else pd.DataFrame()
-    sales = pd.concat(sales_frames, ignore_index=True) if sales_frames else pd.DataFrame()
-    models = merge_model_sales(capacity, sales)
     stores_pdf, sections_pdf, locations_pdf = snapshots_to_frames(snapshots)
-    stores = store_summary(models, sales, stores_pdf)
+    breakdowns, brands, models_pdf = snapshots_to_pdf_frames(snapshots)
+    stores = store_pdf_summary(stores_pdf)
     return {
-        "manifest": load_manifest(), "capacity": capacity, "sales": sales, "models": models,
+        "manifest": load_manifest(), "capacity": pd.DataFrame(), "sales": pd.DataFrame(), "models": models_pdf,
         "snapshots": snapshots, "stores_pdf": stores_pdf, "sections_pdf": sections_pdf,
-        "locations_pdf": locations_pdf, "stores": stores,
+        "locations_pdf": locations_pdf, "stores": stores, "breakdowns": breakdowns,
+        "brands": brands, "models_pdf": models_pdf,
     }
 
 
@@ -255,21 +207,23 @@ def render_commercial_sidebar(active_page: str, is_admin: bool = False) -> None:
     sidebar_labels = {
         "Resumen Comercial": "Resumen",
         "Tiendas Comerciales": "Tiendas",
-        "Ubicaciones y Secciones": "Ubicaciones",
-        "Modelos": "Modelos",
         "Inventario y Cobertura": "Inventario",
+        "Secciones y Categorías": "Secciones",
+        "Ubicaciones y Espacio": "Ubicaciones",
+        "Marcas y Catálogo": "Marcas",
+        "Modelos": "Modelos",
         "Oportunidades y Acciones": "Oportunidades",
-        "Pronóstico Comercial": "Pronóstico",
         "Histórico Comercial": "Histórico",
     }
     sidebar_icons = {
         "Resumen Comercial": ":material/dashboard:",
         "Tiendas Comerciales": ":material/storefront:",
-        "Ubicaciones y Secciones": ":material/location_on:",
-        "Modelos": ":material/emoji_events:",
         "Inventario y Cobertura": ":material/inventory_2:",
+        "Secciones y Categorías": ":material/category:",
+        "Ubicaciones y Espacio": ":material/location_on:",
+        "Marcas y Catálogo": ":material/loyalty:",
+        "Modelos": ":material/emoji_events:",
         "Oportunidades y Acciones": ":material/bolt:",
-        "Pronóstico Comercial": ":material/trending_up:",
         "Histórico Comercial": ":material/history:",
     }
     with st.sidebar:
@@ -292,7 +246,7 @@ def render_commercial_sidebar(active_page: str, is_admin: bool = False) -> None:
                 st.rerun()
         if is_admin:
             st.divider()
-            if st.button("Carga comercial", key="commercial_side_upload", type="primary" if active_page == ADMIN_PAGE else "secondary", width="stretch", icon=":material/upload_file:"):
+            if st.button("Carga PDF", key="commercial_side_upload", type="primary" if active_page == ADMIN_PAGE else "secondary", width="stretch", icon=":material/upload_file:"):
                 st.session_state["nav_page"] = ADMIN_PAGE
                 st.session_state["nav_request"] = ADMIN_PAGE
                 st.rerun()
@@ -952,23 +906,5 @@ def render_commercial_page(page: str, existing_sales=None, is_admin: bool = Fals
             st.cache_data.clear()
     with st.spinner("Actualizando análisis comercial..."):
         bundle = _load_bundle(existing_sales)
-    if page == "Resumen Comercial":
-        _page_summary(bundle)
-    elif page == "Tiendas Comerciales":
-        _page_stores(bundle)
-    elif page == "Ubicaciones y Secciones":
-        _page_locations(bundle)
-    elif page == "Modelos":
-        _page_models(bundle)
-    elif page == "Inventario y Cobertura":
-        _page_inventory(bundle)
-    elif page == "Oportunidades y Acciones":
-        _page_opportunities(bundle)
-    elif page == "Pronóstico Comercial":
-        _page_forecast(bundle)
-    elif page == "Histórico Comercial":
-        _page_history(bundle)
-    elif page == ADMIN_PAGE:
-        _page_upload(bundle, is_admin)
-    else:
-        st.error(f"La página comercial '{page}' no está registrada.")
+    from .pdf_pages import render_pdf_page
+    render_pdf_page(page, bundle, is_admin)
