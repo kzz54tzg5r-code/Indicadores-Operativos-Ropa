@@ -1,0 +1,23 @@
+PS Operaciones Ropa · V54
+Fecha de validación: 2026-08-18
+
+Resultado automatizado
+- 24 pruebas aprobadas.
+- 0 fallas.
+- 0 excepciones en la prueba de humo del Resumen Comercial.
+- 9 de 9 páginas comerciales renderizadas sin excepciones.
+
+Cobertura específica V54
+- Selector de semana PDF disponible.
+- Ocho KPI ejecutivos renderizados por la vista.
+- Tres visualizaciones del Resumen: tendencia, participación y ubicación.
+- Ranking compacto de tiendas.
+- Navegación lateral y superior sin mutar widgets instanciados.
+- Prioridad de existencia/VPD/DDI desde PDF y complemento de ventas desde capacidades.
+- Persistencia de snapshots normalizados para restauración del histórico.
+
+Comando ejecutado
+PYTHONPATH=runtime_v533_tests:$PYTHONPATH python -m pytest -q
+
+Salida
+24 passed in 9.42s

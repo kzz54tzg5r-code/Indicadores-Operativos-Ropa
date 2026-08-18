@@ -4,8 +4,8 @@ Plataforma Integral de Gestión Operativa del área de Operaciones Ropa.
 
 ## Versión
 
-- Versión: `V53.2`
-- Build: `Ventas y Análisis Comercial · menú lateral reforzado`
+- Versión: `V54`
+- Build: `Ventas y Análisis Comercial · histórico persistente y resumen visual`
 
 ## Ejecutar localmente
 
@@ -26,6 +26,7 @@ streamlit run app.py
 - Ventas y Análisis Comercial con ocho vistas ejecutivas.
 - Carga mensual de ventas y capacidades/existencias.
 - Carga semanal de hasta 17 PDF, con histórico acumulable y respaldo ZIP.
+- Sincronización opcional con almacenamiento privado para conservar el histórico después de reinicios.
 - Análisis por tienda, sección, ubicación y modelo.
 - Top 20 de campeones y lentos por Sugerido/VPD o Utilidad.
 - Inventario, cobertura, oportunidades y pronóstico comercial.
@@ -37,4 +38,4 @@ streamlit run app.py
 - Diagnóstico, usuarios y Centro de Control.
 - Exportación PDF en reportes autorizados.
 
-Consulte `CAMBIOS_V53.md`, `CAMBIOS_V53_1.md` y `CAMBIOS_V53_2.md` para conocer el nuevo flujo comercial y sus correcciones.
+Consulte `CAMBIOS_V53.md` y los archivos `CAMBIOS_V53_*.md` para conocer el nuevo flujo comercial y sus correcciones.
