@@ -1,0 +1,28 @@
+PS Operaciones Ropa V58 - Resultados de validación
+
+Fecha: 2026-08-19
+
+Pruebas automatizadas:
+- 28 pruebas aprobadas.
+- Procesamiento incremental: aprobado.
+- Persistencia inmediata por PDF: aprobada.
+- Continuación después de un PDF con error: aprobada.
+- Recuperación de estados Procesando, Error y Pendiente: aprobada.
+- Omisión de archivos Procesado/Revisar al reanudar: aprobada.
+
+Prueba con PDF real:
+- Archivo: AC_IZT.pdf.
+- Tienda: Iztapalapa.
+- Semana: 2024-W14.
+- Páginas: 23.
+- Modelos del resumen: 7615.
+- Modelos extraídos de rankings: 480.
+- Tiempo local observado: 13.384 segundos.
+
+Validación de interfaz Streamlit:
+- Radiografía Comercial: sin excepciones.
+- Catálogo Comercial: sin excepciones.
+- Planeación Comercial: sin excepciones.
+- Histórico Comercial: sin excepciones.
+- Carga PDF: sin excepciones.
+- Navegación lateral: Radiografía, Catálogo, Planeación, Histórico y Carga PDF.
