@@ -222,6 +222,7 @@ def _friendly_store_table(stores: pd.DataFrame) -> pd.DataFrame:
 def _table_style(frame: pd.DataFrame, status_columns=()):
     colors = {
         "Óptimo": "#DDF7E8", "Bien": "#DDF7E8", "Mantener": "#DDF7E8", "Seguimiento": "#DDF7E8",
+        "Procesado": "#DDF7E8", "Incrementar": "#E8F2FF",
         "Atención": "#FFF1D8", "Exceso": "#FFE4EF", "Transferir": "#EEE8FF", "Bajar a piso": "#E8F2FF",
         "Crítico": "#FFE2E7", "Alta": "#FFE2E7", "Hoy": "#FFE2E7", "Resurtir": "#FFE2E7",
         "Media": "#FFF1D8", "Esta semana": "#FFF1D8", "Reducir": "#FFE4EF", "Impulsar": "#E8F2FF",
@@ -585,6 +586,451 @@ def _page_models(bundle: dict) -> None:
     _decision_table(display[columns], status_columns=("Estado", "Qué hacer"), height=530)
 
 
+def _section_values(frame: pd.DataFrame) -> pd.Series:
+    """Normaliza la sección sin inventar categorías que no están en el PDF."""
+    if frame is None or frame.empty:
+        return pd.Series(dtype=str)
+    raw = frame.get("Sección", pd.Series("", index=frame.index)).fillna("").astype(str).str.strip()
+    fallback = frame.get("Etiqueta", pd.Series("", index=frame.index)).fillna("").astype(str).str.strip()
+    source = raw.where(raw.ne(""), fallback)
+    upper = source.str.upper()
+    normalized = np.select(
+        [upper.str.contains("DAMA|MUJER", regex=True), upper.str.contains("CABALL|HOMBRE", regex=True), upper.str.contains("INFANT|NIÑ|BEB", regex=True)],
+        ["Dama", "Caballero", "Infantil"],
+        default="Sin categoría",
+    )
+    return pd.Series(normalized, index=frame.index).replace({"": "Sin categoría"})
+
+
+def _valid_options(key: str, options: list[str]) -> None:
+    if st.session_state.get(key) not in options:
+        st.session_state.pop(key, None)
+
+
+def _clear_global_scope() -> None:
+    for key in ("commercial_period", "commercial_store", "commercial_category", "commercial_line", "commercial_model"):
+        st.session_state.pop(key, None)
+
+
+def _global_scope(bundle: dict) -> dict:
+    """Barra única de filtros que conserva el contexto entre módulos."""
+    weeks = _weeks(bundle)
+    stores = sorted(bundle["stores_pdf"].get("Tienda", pd.Series(dtype=str)).dropna().astype(str).unique())
+    _valid_options("commercial_period", weeks)
+    _valid_options("commercial_store", ["Compañía"] + stores)
+
+    week = st.session_state.get("commercial_period", weeks[0])
+    store = st.session_state.get("commercial_store", "Compañía")
+    breakdowns = filter_period(bundle["breakdowns"], week, store)
+    models = filter_period(bundle["models_pdf"], week, store)
+    if not breakdowns.empty:
+        breakdowns = breakdowns.copy()
+        breakdowns["Categoría"] = _section_values(breakdowns)
+    if not models.empty:
+        models = models.copy()
+        models["Categoría"] = _section_values(models)
+
+    category_values = set(breakdowns.get("Categoría", pd.Series(dtype=str)).dropna().astype(str))
+    category_values |= set(models.get("Categoría", pd.Series(dtype=str)).dropna().astype(str))
+    category_order = [value for value in ("Dama", "Caballero", "Infantil") if value in category_values]
+    categories = ["Todas"] + category_order
+    _valid_options("commercial_category", categories)
+    category = st.session_state.get("commercial_category", "Todas")
+
+    if category != "Todas":
+        if not breakdowns.empty:
+            breakdowns = breakdowns[breakdowns["Categoría"].eq(category)]
+        if not models.empty:
+            models = models[models["Categoría"].eq(category)]
+    line_values = set(
+        breakdowns.loc[breakdowns.get("Tipo", pd.Series(dtype=str)).eq("rubro"), "Etiqueta"].dropna().astype(str)
+        if not breakdowns.empty and "Tipo" in breakdowns and "Etiqueta" in breakdowns else []
+    )
+    line_values |= set(models.get("Rubro", pd.Series(dtype=str)).dropna().astype(str))
+    lines = ["Todas"] + sorted(value.strip() for value in line_values if value and value.strip())
+    _valid_options("commercial_line", lines)
+    line = st.session_state.get("commercial_line", "Todas")
+
+    if line != "Todas" and not models.empty:
+        models = models[models.get("Rubro", pd.Series("", index=models.index)).astype(str).str.casefold().eq(line.casefold())]
+    model_rows = models[[column for column in ("ID_ART", "Modelo") if column in models]].copy() if not models.empty else pd.DataFrame()
+    model_options = ["Todos"]
+    if "ID_ART" in model_rows:
+        model_rows = model_rows.fillna("").astype(str).drop_duplicates("ID_ART")
+        model_options += [
+            f"{row['ID_ART']} · {row.get('Modelo', '')}".rstrip(" ·")
+            for _, row in model_rows.sort_values("ID_ART").iterrows() if row["ID_ART"].strip()
+        ]
+    _valid_options("commercial_model", model_options)
+
+    with st.container(border=True):
+        st.markdown('<div class="ac-filter-caption">FILTROS GLOBALES · SE CONSERVAN DURANTE TODA LA NAVEGACIÓN</div>', unsafe_allow_html=True)
+        c1, c2, c3, c4, c5, c6 = st.columns([1, 1.1, 1, 1.25, 1.6, .55], vertical_alignment="bottom")
+        with c1:
+            selected_week = st.selectbox("Periodo", weeks, key="commercial_period", format_func=lambda value: value.replace("-W", " · Semana "))
+        with c2:
+            selected_store = st.selectbox("Tienda", ["Compañía"] + stores, key="commercial_store")
+        with c3:
+            selected_category = st.selectbox("Categoría", categories, key="commercial_category")
+        with c4:
+            selected_line = st.selectbox("Línea", lines, key="commercial_line")
+        with c5:
+            selected_model = st.selectbox("Modelo / SKU", model_options, key="commercial_model")
+        with c6:
+            st.button("Limpiar", icon=":material/filter_alt_off:", on_click=_clear_global_scope, width="stretch")
+
+    return {
+        "week": selected_week, "store": selected_store, "category": selected_category,
+        "line": selected_line, "model": selected_model,
+        "model_id": "" if selected_model == "Todos" else selected_model.split(" · ", 1)[0],
+    }
+
+
+def _breadcrumb(scope: dict) -> None:
+    levels = ["Compañía"]
+    if scope["store"] != "Compañía":
+        levels.append(scope["store"])
+    if scope["category"] != "Todas":
+        levels.append(scope["category"])
+    if scope["line"] != "Todas":
+        levels.append(scope["line"])
+    if scope["model"] != "Todos":
+        levels.append(scope["model"])
+    content = '<span class="ac-crumb-separator">›</span>'.join(f'<span class="ac-crumb">{html.escape(value)}</span>' for value in levels)
+    st.markdown(f'<div class="ac-breadcrumb">{content}</div>', unsafe_allow_html=True)
+
+
+def _scope_frames(bundle: dict, scope: dict, *, use_selected_week: bool = True):
+    week = scope["week"] if use_selected_week else None
+    stores = store_pdf_summary(bundle["stores_pdf"], week, scope["store"])
+    breakdowns = filter_period(bundle["breakdowns"], week, scope["store"])
+    models = filter_period(bundle["models_pdf"], week, scope["store"])
+    if not breakdowns.empty:
+        breakdowns = breakdowns.copy()
+        breakdowns["Categoría"] = _section_values(breakdowns)
+    if not models.empty:
+        models = models.copy()
+        models["Categoría"] = _section_values(models)
+    if scope["category"] != "Todas":
+        breakdowns = breakdowns[breakdowns["Categoría"].eq(scope["category"])] if not breakdowns.empty else breakdowns
+        models = models[models["Categoría"].eq(scope["category"])] if not models.empty else models
+    if scope["line"] != "Todas":
+        if not breakdowns.empty:
+            line_mask = breakdowns["Tipo"].eq("rubro") & breakdowns["Etiqueta"].astype(str).str.casefold().eq(scope["line"].casefold())
+            breakdowns = breakdowns[line_mask]
+        if not models.empty:
+            models = models[models.get("Rubro", pd.Series("", index=models.index)).astype(str).str.casefold().eq(scope["line"].casefold())]
+    if scope["model_id"] and not models.empty:
+        models = models[models["ID_ART"].astype(str).eq(scope["model_id"])]
+    return stores, breakdowns, models
+
+
+def _unique_models(models: pd.DataFrame) -> pd.DataFrame:
+    if models is None or models.empty:
+        return pd.DataFrame()
+    out = models.copy()
+    out["ID_ART"] = out.get("ID_ART", pd.Series("", index=out.index)).astype(str)
+    sort_columns = [column for column in ("Semana", "Tienda", "ID_ART", "Ranking") if column in out]
+    out = out.sort_values(sort_columns).drop_duplicates([column for column in ("Semana", "Tienda", "ID_ART") if column in out])
+    return out
+
+
+def _enrich_summary(frame: pd.DataFrame, name_column: str) -> pd.DataFrame:
+    if frame is None or frame.empty:
+        return pd.DataFrame()
+    out = frame.copy()
+    def numeric(column: str) -> pd.Series:
+        return pd.to_numeric(out.get(column, pd.Series(0, index=out.index)), errors="coerce").fillna(0)
+
+    existence = numeric("Existencia")
+    vpd = numeric("VPD")
+    positions = numeric("Posiciones")
+    out["% Inventario"] = existence.div(existence.sum() or np.nan).mul(100).fillna(0)
+    out["% Venta sugerida"] = vpd.div(vpd.sum() or np.nan).mul(100).fillna(0)
+    out["% Piso"] = numeric("Piso").div(existence.replace(0, np.nan)).mul(100).fillna(0)
+    out["% Bodega"] = numeric("Bodega").div(existence.replace(0, np.nan)).mul(100).fillna(0)
+    out["Productividad espacio"] = vpd.div(positions.replace(0, np.nan)).fillna(0)
+    if "DDI" not in out:
+        out["DDI"] = existence.div(vpd.replace(0, np.nan)).fillna(0)
+    out["Estado"] = out["DDI"].map(_coverage_status)
+    out["Acción"] = out["DDI"].map(_coverage_action)
+    first = [name_column] if name_column in out else []
+    remaining = [column for column in out if column not in first]
+    return out[first + remaining]
+
+
+def _category_summary(breakdowns: pd.DataFrame) -> pd.DataFrame:
+    if breakdowns is None or breakdowns.empty:
+        return pd.DataFrame()
+    detail = breakdowns[breakdowns["Tipo"].eq("section")].copy()
+    if detail.empty:
+        detail = breakdowns[breakdowns["Tipo"].eq("rubro")].copy()
+    detail = detail[detail["Categoría"].isin(["Dama", "Caballero", "Infantil"])]
+    return _enrich_summary(aggregate_pdf(detail, "Categoría"), "Categoría")
+
+
+def _line_summary(breakdowns: pd.DataFrame, models: pd.DataFrame) -> pd.DataFrame:
+    detail = breakdowns[breakdowns["Tipo"].eq("rubro")].copy() if breakdowns is not None and not breakdowns.empty else pd.DataFrame()
+    if not detail.empty:
+        result = aggregate_pdf(detail, "Etiqueta").rename(columns={"Etiqueta": "Línea"})
+        return _enrich_summary(result, "Línea")
+    unique = _unique_models(models)
+    if unique.empty or "Rubro" not in unique:
+        return pd.DataFrame()
+    return _enrich_summary(aggregate_pdf(unique.rename(columns={"Rubro": "Línea"}), "Línea"), "Línea")
+
+
+def _model_summary(models: pd.DataFrame) -> pd.DataFrame:
+    unique = _unique_models(models)
+    if unique.empty:
+        return unique
+    group_columns = [column for column in ("ID_ART", "Modelo", "Marca", "Categoría", "Rubro") if column in unique]
+    numeric = [column for column in ("Piso", "Bodega", "Existencia", "VPD", "Posiciones") if column in unique]
+    summary = unique.groupby(group_columns, as_index=False, dropna=False)[numeric].sum()
+    summary["DDI"] = summary.get("Existencia", 0).div(summary.get("VPD", 0).replace(0, np.nan)).fillna(0)
+    return _enrich_summary(summary, "ID_ART")
+
+
+def _render_company_level(bundle: dict, scope: dict, stores: pd.DataFrame, breakdowns: pd.DataFrame, models: pd.DataFrame) -> None:
+    if stores.empty:
+        _no_data(); return
+    total = _totals(stores)
+    floor_share = total["Piso"] / total["Existencia"] * 100 if total["Existencia"] else 0
+    warehouse_share = total["Bodega"] / total["Existencia"] * 100 if total["Existencia"] else 0
+    _kpis([
+        ("Tiendas con información", f'{stores["Tienda"].nunique()} / 17', scope["week"], BLUE),
+        ("Inventario total", _number(total["Existencia"]), "Piezas reportadas", PURPLE),
+        ("Piso de venta", _number(total["Piso"]), _percent(floor_share), GREEN),
+        ("Bodega", _number(total["Bodega"]), _percent(warehouse_share), ORANGE),
+        ("Venta diaria sugerida", _number(total["VPD"]), "Dato del PDF", CYAN),
+        ("Días de inventario", f'{total["DDI"]:.0f}', "Cobertura estimada", PINK),
+        ("Posiciones", _number(total["Posiciones"]), "Espacio reportado", BLUE),
+        ("Venta en pesos", "Información no disponible", "Requiere fuente de ventas", RED),
+    ], 8)
+    metrics = {"Inventario": "Existencia", "Piso": "Piso", "Bodega": "Bodega", "Venta diaria sugerida": "VPD", "Días de inventario": "DDI", "Posiciones": "Posiciones"}
+    metric_label = st.selectbox("Métrica del comparativo de tiendas", list(metrics), key="commercial_compare_metric")
+    metric = metrics[metric_label]
+    chart = stores.sort_values(metric)
+    colors = chart["Estatus"].map({"Óptimo": GREEN, "Atención": ORANGE, "Crítico": RED}).fillna(BLUE)
+    fig = go.Figure(go.Bar(y=chart["Tienda"], x=chart[metric], orientation="h", marker_color=colors, text=chart[metric].map(lambda value: f"{value:,.1f}"), textposition="outside"))
+    fig.update_layout(title=f"Comparativo de tiendas · {metric_label}", xaxis_title=metric_label, yaxis_title="", showlegend=False)
+    _plot(fig, max(390, len(chart) * 30 + 110))
+    master = _enrich_summary(stores, "Tienda")
+    master = master.rename(columns={"VPD": "Venta diaria sugerida", "DDI": "Días de inventario"})
+    columns = ["Tienda", "Estado", "Existencia", "Piso", "Bodega", "% Piso", "% Bodega", "% Inventario", "% Venta sugerida", "Venta diaria sugerida", "Días de inventario", "Posiciones", "Productividad espacio", "Acción"]
+    st.markdown('<div class="ac-section">Tabla maestra de tiendas</div>', unsafe_allow_html=True)
+    _decision_table(master[[column for column in columns if column in master]], status_columns=("Estado", "Acción"), height=470)
+    st.caption("Selecciona una tienda en el filtro superior para continuar con su radiografía.")
+
+
+def _render_store_level(scope: dict, stores: pd.DataFrame, breakdowns: pd.DataFrame, models: pd.DataFrame) -> None:
+    if stores.empty:
+        _no_data(); return
+    total = _totals(stores)
+    _kpis([
+        ("Inventario", _number(total["Existencia"]), "Piezas", PURPLE),
+        ("Piso", _number(total["Piso"]), "Exhibición", GREEN),
+        ("Bodega", _number(total["Bodega"]), "Reserva", ORANGE),
+        ("Venta diaria sugerida", _number(total["VPD"]), "Dato del PDF", CYAN),
+        ("Días de inventario", f'{total["DDI"]:.0f}', _coverage_meaning(total["DDI"]), PINK),
+        ("Posiciones", _number(total["Posiciones"]), "Espacio reportado", BLUE),
+        ("Capacidad", "Información no disponible", "Pendiente de fuente", RED),
+        ("Ocupación", "Información no disponible", "Pendiente de capacidad", RED),
+    ], 8)
+    categories = _category_summary(breakdowns)
+    st.markdown('<div class="ac-section">Radiografía por categoría</div>', unsafe_allow_html=True)
+    columns = ["Categoría", "Estado", "Existencia", "Piso", "Bodega", "% Inventario", "% Venta sugerida", "VPD", "DDI", "Posiciones", "Productividad espacio", "Acción"]
+    _decision_table(categories[[column for column in columns if column in categories]], status_columns=("Estado", "Acción"), height=360)
+    support = _model_summary(models).sort_values("VPD", ascending=False).head(15) if not models.empty else pd.DataFrame()
+    if not support.empty:
+        st.markdown('<div class="ac-section">Modelos que soportan el resultado</div>', unsafe_allow_html=True)
+        support = support.rename(columns={"VPD": "Venta diaria sugerida", "DDI": "Días de inventario", "Rubro": "Línea"})
+        support_columns = ["ID_ART", "Modelo", "Marca", "Categoría", "Línea", "Existencia", "Venta diaria sugerida", "Días de inventario", "% Venta sugerida", "Acción"]
+        _decision_table(support[[column for column in support_columns if column in support]], status_columns=("Acción",), height=360)
+
+
+def _render_category_level(scope: dict, breakdowns: pd.DataFrame, models: pd.DataFrame) -> None:
+    lines = _line_summary(breakdowns, models)
+    if lines.empty:
+        st.info("El PDF no contiene líneas para la categoría seleccionada."); return
+    totals = lines.sum(numeric_only=True)
+    _kpis([
+        ("Categoría", scope["category"], "Nivel actual", BLUE),
+        ("Líneas", _number(lines["Línea"].nunique()), "Disponibles", GREEN),
+        ("Inventario", _number(totals.get("Existencia", 0)), "Piezas", PURPLE),
+        ("Venta diaria sugerida", _number(totals.get("VPD", 0)), "Dato del PDF", CYAN),
+        ("Piso", _number(totals.get("Piso", 0)), "Piezas", GREEN),
+        ("Bodega", _number(totals.get("Bodega", 0)), "Piezas", ORANGE),
+    ], 6)
+    display = lines.rename(columns={"VPD": "Venta diaria sugerida", "DDI": "Días de inventario"})
+    columns = ["Línea", "Estado", "Existencia", "Piso", "Bodega", "% Inventario", "% Venta sugerida", "Venta diaria sugerida", "Días de inventario", "Posiciones", "Productividad espacio", "Acción"]
+    st.markdown('<div class="ac-section">Líneas que explican el resultado</div>', unsafe_allow_html=True)
+    _decision_table(display[[column for column in columns if column in display]], status_columns=("Estado", "Acción"), height=470)
+
+
+def _render_line_level(scope: dict, models: pd.DataFrame, breakdowns: pd.DataFrame) -> None:
+    summary = _model_summary(models)
+    if summary.empty:
+        line = _line_summary(breakdowns, models)
+        if line.empty:
+            st.info("El PDF no contiene información para la línea seleccionada."); return
+        row = line.iloc[0]
+        _kpis([
+            ("Línea", scope["line"], "Nivel actual", BLUE),
+            ("Inventario", _number(row.get("Existencia", 0)), "Piezas", PURPLE),
+            ("Venta diaria sugerida", _number(row.get("VPD", 0)), "Dato del PDF", CYAN),
+            ("Días de inventario", f'{row.get("DDI", 0):.0f}', _coverage_meaning(float(row.get("DDI", 0))), PINK),
+        ], 4)
+        display = line.rename(columns={"VPD": "Venta diaria sugerida", "DDI": "Días de inventario"})
+        columns = ["Línea", "Estado", "Existencia", "Piso", "Bodega", "Venta diaria sugerida", "Días de inventario", "Posiciones", "Productividad espacio", "Acción"]
+        _decision_table(display[[column for column in columns if column in display]], status_columns=("Estado", "Acción"), height=230)
+        st.info("El PDF contiene el total de la línea, pero no publicó modelos de esta línea dentro de sus rankings Top 40.")
+        return
+    _kpis([
+        ("Línea", scope["line"], "Nivel actual", BLUE),
+        ("Modelos publicados", _number(summary["ID_ART"].nunique()), "Rankings PDF", GREEN),
+        ("Inventario", _number(summary["Existencia"].sum()), "Piezas", PURPLE),
+        ("Venta diaria sugerida", _number(summary["VPD"].sum()), "Dato del PDF", CYAN),
+    ], 4)
+    display = summary.rename(columns={"VPD": "Venta diaria sugerida", "DDI": "Días de inventario", "Rubro": "Línea"})
+    columns = ["ID_ART", "Modelo", "Marca", "Categoría", "Línea", "Estado", "Existencia", "Piso", "Bodega", "Venta diaria sugerida", "Días de inventario", "% Venta sugerida", "Acción"]
+    st.markdown('<div class="ac-section">Tabla maestra de modelos</div>', unsafe_allow_html=True)
+    _decision_table(display[[column for column in columns if column in display]].sort_values("Venta diaria sugerida", ascending=False), status_columns=("Estado", "Acción"), height=540)
+
+
+def _render_model_level(bundle: dict, scope: dict, models: pd.DataFrame) -> None:
+    summary = _model_summary(models)
+    if summary.empty:
+        st.info("No existe detalle para el modelo seleccionado en este corte."); return
+    row = summary.iloc[0]
+    _kpis([
+        ("Modelo / SKU", scope["model"], "Selección actual", BLUE),
+        ("Inventario", _number(summary["Existencia"].sum()), "Piezas", PURPLE),
+        ("Piso", _number(summary.get("Piso", pd.Series(dtype=float)).sum()), "Piezas", GREEN),
+        ("Bodega", _number(summary.get("Bodega", pd.Series(dtype=float)).sum()), "Piezas", ORANGE),
+        ("Venta diaria sugerida", _number(summary["VPD"].sum()), "Dato del PDF", CYAN),
+        ("Días de inventario", f'{row.get("DDI", 0):.0f}', _coverage_meaning(float(row.get("DDI", 0))), PINK),
+        ("Sugerido de inventario", "Información no disponible", "No viene en el PDF", RED),
+        ("Venta en pesos", "Información no disponible", "No viene en el PDF", RED),
+    ], 8)
+    history = filter_period(bundle["models_pdf"], store=scope["store"])
+    history = history[history["ID_ART"].astype(str).eq(scope["model_id"])] if not history.empty else history
+    history = _unique_models(history)
+    if not history.empty:
+        trend = history.groupby("Semana", as_index=False)[[column for column in ("Existencia", "VPD") if column in history]].sum().sort_values("Semana")
+        trend["DDI"] = trend.get("Existencia", 0).div(trend.get("VPD", 0).replace(0, np.nan)).fillna(0)
+        fig = go.Figure()
+        fig.add_scatter(x=trend["Semana"], y=trend["VPD"], mode="lines", name="Venta diaria sugerida", line=dict(color=BLUE, width=4))
+        fig.add_scatter(x=trend["Semana"], y=trend["DDI"], mode="lines", name="Días de inventario", yaxis="y2", line=dict(color=PINK, width=4))
+        fig.update_layout(title="Historia disponible del modelo", yaxis_title="Venta diaria sugerida", yaxis2=dict(title="Días de inventario", overlaying="y", side="right"))
+        _plot(fig, 360)
+    all_stores = filter_period(bundle["models_pdf"], scope["week"], "Compañía")
+    all_stores = all_stores[all_stores["ID_ART"].astype(str).eq(scope["model_id"])] if not all_stores.empty else all_stores
+    performance = _unique_models(all_stores)
+    if not performance.empty:
+        performance = _enrich_summary(performance, "Tienda").rename(columns={"VPD": "Venta diaria sugerida", "DDI": "Días de inventario"})
+        columns = ["Tienda", "Estado", "Existencia", "Piso", "Bodega", "Venta diaria sugerida", "Días de inventario", "% Venta sugerida", "Acción"]
+        st.markdown('<div class="ac-section">Desempeño del modelo por tienda</div>', unsafe_allow_html=True)
+        _decision_table(performance[[column for column in columns if column in performance]], status_columns=("Estado", "Acción"), height=390)
+
+
+def _page_radiography(bundle: dict) -> None:
+    _header("Radiografía Comercial", "Compañía → Tienda → Categoría → Línea → Modelo", bundle)
+    st.markdown('<div class="ac-source-note">La vista muestra exclusivamente información publicada en los PDF. Los campos que requieren ventas, capacidad o existencias futuras se identifican como <b>Información no disponible</b>.</div>', unsafe_allow_html=True)
+    scope = _global_scope(bundle)
+    _breadcrumb(scope)
+    stores, breakdowns, models = _scope_frames(bundle, scope)
+    if scope["model_id"]:
+        _render_model_level(bundle, scope, models)
+    elif scope["line"] != "Todas":
+        _render_line_level(scope, models, breakdowns)
+    elif scope["category"] != "Todas":
+        _render_category_level(scope, breakdowns, models)
+    elif scope["store"] != "Compañía":
+        _render_store_level(scope, stores, breakdowns, models)
+    else:
+        _render_company_level(bundle, scope, stores, breakdowns, models)
+
+
+def _page_catalog(bundle: dict) -> None:
+    _header("Catálogo Comercial", "Explora categorías, líneas y modelos sin perder el contexto", bundle)
+    scope = _global_scope(bundle)
+    _breadcrumb(scope)
+    _, breakdowns, models = _scope_frames(bundle, scope)
+    level = st.segmented_control("Nivel del catálogo", ["Categorías", "Líneas", "Modelos"], default="Categorías", key="catalog_level")
+    if level == "Categorías":
+        data = _category_summary(breakdowns)
+        columns = ["Categoría", "Existencia", "Piso", "Bodega", "% Inventario", "% Venta sugerida", "VPD", "DDI", "Posiciones", "Estado", "Acción"]
+    elif level == "Líneas":
+        data = _line_summary(breakdowns, models)
+        columns = ["Línea", "Existencia", "Piso", "Bodega", "% Inventario", "% Venta sugerida", "VPD", "DDI", "Posiciones", "Estado", "Acción"]
+    else:
+        data = _model_summary(models)
+        query = st.text_input("Buscar por modelo, SKU, marca, categoría o línea", key="catalog_query", placeholder="Escribe para localizar...")
+        if query and not data.empty:
+            search_columns = [column for column in ("ID_ART", "Modelo", "Marca", "Categoría", "Rubro") if column in data]
+            mask = pd.Series(False, index=data.index)
+            for column in search_columns:
+                mask |= data[column].astype(str).str.contains(query, case=False, na=False, regex=False)
+            data = data[mask]
+        data = data.rename(columns={"Rubro": "Línea"})
+        columns = ["ID_ART", "Modelo", "Marca", "Categoría", "Línea", "Existencia", "Piso", "Bodega", "% Venta sugerida", "VPD", "DDI", "Estado", "Acción"]
+    if data.empty:
+        st.info("No hay información disponible para los filtros seleccionados."); return
+    display = data.rename(columns={"VPD": "Venta diaria sugerida", "DDI": "Días de inventario"})
+    columns = ["Venta diaria sugerida" if column == "VPD" else "Días de inventario" if column == "DDI" else column for column in columns]
+    _decision_table(display[[column for column in columns if column in display]], status_columns=("Estado", "Acción"), height=590)
+    st.caption("Los modelos corresponden a los rankings publicados en los PDF; el sistema no inventa modelos fuera de la fuente.")
+
+
+def _planning_summary(scope: dict, breakdowns: pd.DataFrame, models: pd.DataFrame, stores: pd.DataFrame) -> pd.DataFrame:
+    if scope["line"] != "Todas":
+        source = _model_summary(models).rename(columns={"ID_ART": "Elemento"})
+    elif scope["store"] != "Compañía" or scope["category"] != "Todas":
+        source = _line_summary(breakdowns, models).rename(columns={"Línea": "Elemento"})
+    else:
+        source = _enrich_summary(stores, "Tienda").rename(columns={"Tienda": "Elemento"})
+    if source.empty:
+        return source
+    source = source.copy()
+    source["Participación VPD"] = pd.to_numeric(source.get("VPD", 0), errors="coerce").fillna(0).div(pd.to_numeric(source.get("VPD", 0), errors="coerce").fillna(0).sum() or np.nan).mul(100).fillna(0)
+    source["Participación espacio"] = pd.to_numeric(source.get("Posiciones", 0), errors="coerce").fillna(0).div(pd.to_numeric(source.get("Posiciones", 0), errors="coerce").fillna(0).sum() or np.nan).mul(100).fillna(0)
+    source["Diferencia"] = source["Participación VPD"] - source["Participación espacio"]
+    source["Recomendación"] = np.select(
+        [source["Diferencia"].ge(3) & source["DDI"].le(120), source["Diferencia"].le(-3) | source["DDI"].gt(120)],
+        ["Incrementar", "Reducir"], default="Mantener",
+    )
+    source["Explicación"] = source.apply(
+        lambda row: f"{row['Participación VPD']:.1f}% de VPD frente a {row['Participación espacio']:.1f}% del espacio reportado; cobertura de {row['DDI']:.0f} días.", axis=1
+    )
+    return source
+
+
+def _page_planning(bundle: dict) -> None:
+    _header("Planeación Comercial", "Diagnóstico → Oportunidad → Decisión → Acción", bundle)
+    scope = _global_scope(bundle)
+    _breadcrumb(scope)
+    stores, breakdowns, models = _scope_frames(bundle, scope)
+    planning = _planning_summary(scope, breakdowns, models, stores)
+    actions = pdf_opportunities(stores, breakdowns, models)
+    plain = _plain_opportunities(actions)
+    _kpis([
+        ("Acciones para hoy", _number(plain["Cuándo"].eq("Hoy").sum()) if not plain.empty else "0", "Prioridad alta", RED),
+        ("Incrementar espacio", _number(planning["Recomendación"].eq("Incrementar").sum()) if not planning.empty else "0", "Oportunidades", BLUE),
+        ("Reducir espacio", _number(planning["Recomendación"].eq("Reducir").sum()) if not planning.empty else "0", "Sobreasignación", PINK),
+        ("Capacidad disponible", "Información no disponible", "Requiere archivo de capacidades", ORANGE),
+    ], 4)
+    st.info("Las recomendaciones actuales usan VPD, días de inventario y posiciones reportadas en el PDF. No se presentan como capacidad definitiva hasta cargar la fuente de espacios.", icon=":material/info:")
+    if not planning.empty:
+        display = planning.rename(columns={"VPD": "Venta diaria sugerida", "DDI": "Días de inventario", "Posiciones": "Espacio actual"})
+        columns = ["Elemento", "Existencia", "Venta diaria sugerida", "Días de inventario", "Espacio actual", "Participación VPD", "Participación espacio", "Diferencia", "Recomendación", "Explicación"]
+        st.markdown('<div class="ac-section">Planeación de inventario y espacio</div>', unsafe_allow_html=True)
+        _decision_table(display[[column for column in columns if column in display]], status_columns=("Recomendación",), height=430)
+    if not plain.empty:
+        st.markdown('<div class="ac-section">Plan de acción operativo</div>', unsafe_allow_html=True)
+        _decision_table(plain, status_columns=("Cuándo",), height=430)
+
+
 def _page_opportunities(bundle: dict) -> None:
     _header("Plan de Acción Semanal", "Una lista operativa con responsable, prioridad y seguimiento", bundle)
     _top_navigation("Oportunidades y Acciones")
@@ -607,13 +1053,34 @@ def _page_opportunities(bundle: dict) -> None:
 
 
 def _page_history(bundle: dict) -> None:
-    _header("Histórico: Qué mejoró y qué empeoró", "Comparaciones simples para aprender de cada semana", bundle)
-    _top_navigation("Histórico Comercial")
-    history = bundle["stores_pdf"].copy()
-    if history.empty: _no_data(); return
+    _header("Histórico Comercial", "Evolución del nivel seleccionado sin perder el contexto", bundle)
+    scope = _global_scope(bundle)
+    _breadcrumb(scope)
+    if scope["model_id"]:
+        history = filter_period(bundle["models_pdf"], store=scope["store"])
+        history = history[history["ID_ART"].astype(str).eq(scope["model_id"])] if not history.empty else history
+        history = _unique_models(history)
+    elif scope["line"] != "Todas":
+        history = filter_period(bundle["breakdowns"], store=scope["store"])
+        history = history[history["Tipo"].eq("rubro") & history["Etiqueta"].astype(str).str.casefold().eq(scope["line"].casefold())] if not history.empty else history
+    elif scope["category"] != "Todas":
+        history = filter_period(bundle["breakdowns"], store=scope["store"])
+        if not history.empty:
+            history = history.copy()
+            history["Categoría"] = _section_values(history)
+            history = history[history["Tipo"].eq("section") & history["Categoría"].eq(scope["category"])]
+    else:
+        history = filter_period(bundle["stores_pdf"], store=scope["store"])
+    if history.empty:
+        st.info("No existe histórico para el nivel seleccionado."); return
+    for column in ("Existencia", "VPD", "Curva", "Piso", "Bodega", "Posiciones"):
+        if column not in history:
+            history[column] = 0
+        history[column] = pd.to_numeric(history[column], errors="coerce").fillna(0)
+    history = history.groupby(["Semana", "Tienda"], as_index=False)[["Existencia", "VPD", "Curva", "Piso", "Bodega", "Posiciones"]].sum()
+    history["DDI"] = history["Existencia"].div(history["VPD"].replace(0, np.nan)).fillna(0)
     week = _latest_week(history["Semana"])
     current = history[history["Semana"].eq(week)]
-    total = _totals(current)
     trend = history.groupby("Semana", as_index=False)[["Existencia", "VPD", "Curva"]].sum().sort_values("Semana")
     previous = trend.iloc[-2] if len(trend) > 1 else trend.iloc[-1]
     current_trend = trend.iloc[-1]
@@ -623,7 +1090,7 @@ def _page_history(bundle: dict) -> None:
         ("Venta diaria sugerida", f"{vpd_change:+.1f}%", "Vs. semana anterior", BLUE),
         ("Inventario total", f"{inv_change:+.1f}%", "Vs. semana anterior", GREEN),
         ("Tiendas críticas", _number(((current["DDI"] > 0) & (current["DDI"] <= 30)).sum()), "Requieren acción", RED),
-        ("Calidad histórica", _percent(current["Tienda"].nunique() / 17 * 100), "Cobertura de PDF", ORANGE),
+        ("Cobertura del corte", _percent(current["Tienda"].nunique() / (17 if scope["store"] == "Compañía" else 1) * 100), "Tiendas con información", ORANGE),
     ], 4)
     pivot = history.assign(Disponible="✓").pivot_table(index="Tienda", columns="Semana", values="Disponible", aggfunc="first", fill_value="—")
     left, right = st.columns([1.2, 1], gap="medium")
@@ -678,7 +1145,7 @@ def _page_upload(bundle: dict, is_admin: bool) -> None:
             for uploaded in uploads:
                 entry = save_pdf_upload(uploaded, week_key)
                 entries.append((entry, resolve_entry_path(entry)))
-            progress = st.progress(0, text="Extrayendo información estructurada...")
+            progress = st.progress(.05, text=f"Preparando {len(entries)} PDF para extracción...")
             completed, errors = 0, []
             with ThreadPoolExecutor(max_workers=min(4, len(entries))) as executor:
                 futures = {executor.submit(extract_pdf_snapshot, path): (entry, path) for entry, path in entries}
@@ -692,7 +1159,8 @@ def _page_upload(bundle: dict, is_admin: bool) -> None:
                         errors.append(f"{entry.get('name')}: {exc}")
                         update_entry("pdfs", entry["id"], status="Error", error=str(exc)[:300])
                     completed += 1
-                    progress.progress(completed / len(entries), text=f"Procesados {completed} de {len(entries)} PDF")
+                    progress.progress(.05 + .90 * completed / len(entries), text=f"Procesados {completed} de {len(entries)} PDF · {entry.get('name', '')}")
+            progress.progress(1.0, text="Validación terminada. Publicando el corte...")
             sync = sync_history_to_cloud([path for _, path in entries])
             st.cache_data.clear()
             message = f"{completed - len(errors)} PDF procesados; el histórico anterior se conservó."
@@ -746,14 +1214,9 @@ def _page_upload(bundle: dict, is_admin: bool) -> None:
 
 def render_pdf_page(page: str, bundle: dict, is_admin: bool) -> None:
     routes = {
-        "Resumen Comercial": _page_summary,
-        "Tiendas Comerciales": _page_stores,
-        "Inventario y Cobertura": _page_inventory,
-        "Secciones y Categorías": _page_sections,
-        "Ubicaciones y Espacio": _page_locations,
-        "Marcas y Catálogo": _page_brands,
-        "Modelos": _page_models,
-        "Oportunidades y Acciones": _page_opportunities,
+        "Radiografía Comercial": _page_radiography,
+        "Catálogo Comercial": _page_catalog,
+        "Planeación Comercial": _page_planning,
         "Histórico Comercial": _page_history,
     }
     if page == ADMIN_PAGE:

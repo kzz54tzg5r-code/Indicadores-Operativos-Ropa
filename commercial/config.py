@@ -14,28 +14,18 @@ ACTIONS_FILE = DATA_ROOT / "actions.json"
 SNAPSHOTS_FILE = DATA_ROOT / "snapshots.json"
 
 COMMERCIAL_PAGES = (
-    "Resumen Comercial",
-    "Tiendas Comerciales",
-    "Inventario y Cobertura",
-    "Secciones y Categorías",
-    "Ubicaciones y Espacio",
-    "Marcas y Catálogo",
-    "Modelos",
-    "Oportunidades y Acciones",
+    "Radiografía Comercial",
+    "Catálogo Comercial",
+    "Planeación Comercial",
     "Histórico Comercial",
 )
 
 ADMIN_PAGE = "Carga Comercial"
 
 PAGE_LABELS = {
-    "Resumen Comercial": "Resumen",
-    "Tiendas Comerciales": "Tiendas",
-    "Inventario y Cobertura": "Inventario",
-    "Secciones y Categorías": "Secciones",
-    "Ubicaciones y Espacio": "Ubicaciones",
-    "Marcas y Catálogo": "Marcas",
-    "Modelos": "Modelos",
-    "Oportunidades y Acciones": "Plan de acción",
+    "Radiografía Comercial": "Radiografía",
+    "Catálogo Comercial": "Catálogo",
+    "Planeación Comercial": "Planeación",
     "Histórico Comercial": "Histórico",
     "Carga Comercial": "Carga PDF",
 }

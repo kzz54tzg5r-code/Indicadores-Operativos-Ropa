@@ -141,6 +141,8 @@ def _inject_styles() -> None:
         .ac-kpis{{display:grid;grid-template-columns:repeat(var(--columns,6),minmax(0,1fr));gap:8px;margin:10px 0 12px}}.ac-kpi{{background:#fff;border:1px solid #E1E7F0;border-radius:12px;padding:12px 11px;min-height:98px;box-shadow:0 3px 11px rgba(23,59,115,.04);position:relative;overflow:hidden}}.ac-kpi:before{{content:"";position:absolute;left:0;top:0;bottom:0;width:4px;background:var(--accent)}}.ac-kpi-label{{font-size:9px;text-transform:uppercase;letter-spacing:.35px;color:{MUTED};font-weight:850;white-space:nowrap}}.ac-kpi-value{{font-size:22px;font-weight:900;color:{NAVY};margin-top:9px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}}.ac-kpi-note{{font-size:9.5px;color:{MUTED};margin-top:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}}
         .ac-alert{{display:flex;align-items:center;gap:10px;border:1px solid #F8B8D2;background:#FFF4F8;color:{PINK};border-radius:11px;padding:11px 14px;margin:8px 0 14px;font-size:12px;font-weight:800}}.ac-section{{font-size:17px;font-weight:900;color:{NAVY};margin:8px 0 9px}}
         .ac-source-note{{background:#EAF2FF;border:1px solid #CADBFA;border-radius:10px;padding:10px 13px;color:{NAVY};font-size:11px;margin:8px 0 12px}}
+        .ac-breadcrumb{{display:flex;align-items:center;gap:8px;flex-wrap:wrap;background:#fff;border:1px solid #DDE5F0;border-radius:10px;padding:9px 12px;margin:8px 0 11px;box-shadow:0 2px 8px rgba(23,59,115,.04)}}
+        .ac-crumb{{color:{NAVY};font-size:11px;font-weight:800}}.ac-crumb:last-child{{color:{BLUE};background:#EAF2FF;border-radius:7px;padding:4px 7px}}.ac-crumb-separator{{color:#98A2B3;font-weight:900}}
         .ac-filter-caption{{font-size:10px;color:{MUTED};margin:-2px 0 4px}}
         div[data-testid="stRadio"] [role="radiogroup"]{{gap:6px!important;flex-wrap:wrap!important}}div[data-testid="stRadio"] [role="radiogroup"] label{{background:#fff;border:1px solid #D9E2EF;border-radius:999px;padding:7px 14px!important}}div[data-testid="stRadio"] [role="radiogroup"] label>div:first-child{{display:none!important}}div[data-testid="stRadio"] [role="radiogroup"] label:has(input:checked){{background:{BLUE}!important;color:#fff!important;border-color:{BLUE}!important}}
         [data-testid="stDataFrame"]{{border:1px solid #E1E7F0;border-radius:12px;overflow:hidden}}.stPlotlyChart{{border:1px solid #E1E7F0!important;border-radius:13px!important;background:#fff!important;box-shadow:none!important}}
@@ -205,33 +207,23 @@ def _inject_styles() -> None:
 
 def render_commercial_sidebar(active_page: str, is_admin: bool = False) -> None:
     sidebar_labels = {
-        "Resumen Comercial": "Resumen",
-        "Tiendas Comerciales": "Tiendas",
-        "Inventario y Cobertura": "Inventario",
-        "Secciones y Categorías": "Secciones",
-        "Ubicaciones y Espacio": "Ubicaciones",
-        "Marcas y Catálogo": "Marcas",
-        "Modelos": "Modelos",
-        "Oportunidades y Acciones": "Plan de acción",
+        "Radiografía Comercial": "Radiografía",
+        "Catálogo Comercial": "Catálogo",
+        "Planeación Comercial": "Planeación",
         "Histórico Comercial": "Histórico",
     }
     sidebar_icons = {
-        "Resumen Comercial": ":material/dashboard:",
-        "Tiendas Comerciales": ":material/storefront:",
-        "Inventario y Cobertura": ":material/inventory_2:",
-        "Secciones y Categorías": ":material/category:",
-        "Ubicaciones y Espacio": ":material/location_on:",
-        "Marcas y Catálogo": ":material/loyalty:",
-        "Modelos": ":material/emoji_events:",
-        "Oportunidades y Acciones": ":material/bolt:",
+        "Radiografía Comercial": ":material/account_tree:",
+        "Catálogo Comercial": ":material/view_list:",
+        "Planeación Comercial": ":material/strategy:",
         "Histórico Comercial": ":material/history:",
     }
     with st.sidebar:
         logo = Path(__file__).resolve().parents[1] / "assets" / "price_shoes_logo.png"
         if logo.exists():
             st.image(str(logo), width=105)
-        st.markdown("### Control Comercial")
-        st.caption("Operación y decisiones")
+        st.markdown("### Planeación Comercial")
+        st.caption("De compañía a modelo")
         for page_name in COMMERCIAL_PAGES:
             if st.button(
                 sidebar_labels.get(page_name, PAGE_LABELS[page_name]), key=f"commercial_side_{page_name}",
