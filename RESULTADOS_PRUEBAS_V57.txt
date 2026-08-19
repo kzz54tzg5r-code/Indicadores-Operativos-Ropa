@@ -1,0 +1,15 @@
+PS Operaciones Ropa V57 - Resultados de validación
+Fecha: 2026-08-19
+
+- Compilación Python: correcta.
+- Pruebas automatizadas: 26 aprobadas de 26.
+- Radiografía Comercial: sin excepciones.
+- Catálogo Comercial: sin excepciones.
+- Planeación Comercial: sin excepciones.
+- Histórico Comercial: sin excepciones.
+- Carga PDF: sin excepciones.
+- Navegación lateral: Radiografía, Catálogo, Planeación, Histórico y Carga PDF.
+- Recorrido validado: Compañía → Iztapalapa → Dama → Blusa → Modelo/SKU.
+- Filtros globales conservados entre módulos.
+- Gráficas: una comparativa a nivel compañía y una histórica únicamente en detalle.
+- Información ausente: identificada explícitamente como Información no disponible.

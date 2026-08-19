@@ -8171,18 +8171,18 @@ def page_inicio():
             <div class="v30-project-card v30-project-live v53-commercial-card">
               <div class="v30-project-icon">$</div>
               <div class="v30-project-copy">
-                <div class="v30-project-name">Ventas y Análisis Comercial</div>
-                <div class="v30-project-desc">Ventas, utilidad, modelos, inventario, ubicaciones, oportunidades, pronóstico e histórico semanal por tienda.</div>
+                <div class="v30-project-name">Planeación Comercial</div>
+                <div class="v30-project-desc">Radiografía conectada de compañía, tienda, categoría, línea y modelo con planeación e histórico semanal.</div>
                 <div class="v30-project-status">Proyecto activo</div>
               </div>
             </div>
             """,
             unsafe_allow_html=True,
         )
-        if st.button("Abrir Ventas y Análisis", key="v53_open_commercial", type="primary", width="stretch"):
+        if st.button("Abrir Planeación Comercial", key="v53_open_commercial", type="primary", width="stretch"):
             st.session_state["active_app"] = "Ventas y Análisis Comercial"
-            st.session_state["nav_page"] = "Resumen Comercial"
-            st.session_state["project_nav_selector"] = "Resumen Comercial"
+            st.session_state["nav_page"] = "Radiografía Comercial"
+            st.session_state["project_nav_selector"] = "Radiografía Comercial"
             st.rerun()
 
 
@@ -8218,7 +8218,7 @@ def nav_bar():
 
     pages = _project_pages()
     requested = st.session_state.pop("nav_request", None)
-    default_page = "Resumen Comercial" if active_app == "Ventas y Análisis Comercial" else "Centro Ejecutivo"
+    default_page = "Radiografía Comercial" if active_app == "Ventas y Análisis Comercial" else "Centro Ejecutivo"
     current = requested if requested in pages else st.session_state.get("nav_page", default_page)
     if current not in pages:
         current = default_page
@@ -12121,7 +12121,7 @@ h1,h2,h3{color:#172B4D!important}.footer{opacity:.72!important}
 @media(max-width:360px){.v25-kpi-grid{grid-template-columns:1fr!important}}
 </style>
 ''', unsafe_allow_html=True)
-st.caption("PS Operaciones Ropa · V56 · Control Comercial Operativo")
+st.caption("PS Operaciones Ropa · V57 · Planeación Comercial")
 
 # V53: shell visual del proyecto comercial. Esta regla es la última capa CSS
 # para neutralizar los estilos heredados que ocultaban el sidebar en V52.
