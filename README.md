@@ -4,8 +4,8 @@ Plataforma Integral de Gestión Operativa del área de Operaciones Ropa.
 
 ## Versión
 
-- Versión: `V55`
-- Build: `Análisis Comercial Semanal · sólo PDF`
+- Versión: `V56`
+- Build: `Control Comercial · operación y toma de decisiones`
 
 ## Ejecutar localmente
 
@@ -23,7 +23,8 @@ streamlit run app.py
 
 ## Módulos existentes
 
-- Análisis Comercial Semanal con nueve vistas ejecutivas alimentadas sólo por PDF.
+- Control Comercial con nueve vistas operativas alimentadas sólo por PDF.
+- Diseño de lectura universal: semáforos, barras simples y tablas con qué pasa, qué significa y qué hacer.
 - Carga única de hasta 17 PDF con procesamiento paralelo, histórico acumulable y respaldo ZIP.
 - Sincronización opcional con almacenamiento privado para conservar el histórico después de reinicios.
 - Análisis por tienda, inventario, sección, ubicación, marca y modelo.
@@ -37,4 +38,4 @@ streamlit run app.py
 - Diagnóstico, usuarios y Centro de Control.
 - Exportación PDF en reportes autorizados.
 
-Consulte `CAMBIOS_V55.md` para conocer el alcance del reporte comercial sólo PDF.
+Consulte `CAMBIOS_V56.md` para conocer el alcance del nuevo diseño operativo.
