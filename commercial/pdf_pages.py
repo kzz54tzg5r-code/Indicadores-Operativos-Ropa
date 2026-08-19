@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import date, datetime
 from pathlib import Path
 import html
@@ -15,7 +14,7 @@ import plotly.graph_objects as go
 import streamlit as st
 
 from .config import ADMIN_PAGE, COMMERCIAL_PAGES, PAGE_LABELS, PROJECT_STORES
-from .parsers import extract_pdf_snapshot
+from .parsers import PDF_PARSER_VERSION, extract_pdf_snapshot
 from .pdf_analytics import (
     aggregate_pdf,
     business_location_summary,
@@ -28,6 +27,7 @@ from .storage import (
     build_history_backup,
     cloud_enabled,
     load_manifest,
+    load_snapshots,
     resolve_entry_path,
     restore_history_backup,
     save_pdf_upload,
@@ -1109,6 +1109,72 @@ def _page_history(bundle: dict) -> None:
     _decision_table(display[columns], status_columns=("Estado", "Qué hacer"), height=430)
 
 
+def _pending_pdf_entries(manifest: dict, week_key: str) -> list[dict]:
+    """Recupera archivos incompletos para continuar después de un reinicio."""
+    final_statuses = {"Procesado", "Revisar"}
+    return [
+        entry for entry in manifest.get("pdfs", [])
+        if str(entry.get("week", "")) == week_key
+        and str(entry.get("status", "")) not in final_statuses
+        and resolve_entry_path(entry).exists()
+    ]
+
+
+def _process_pdf_entries(entries: list[tuple[dict, Path]], week_key: str, progress, status_placeholder) -> dict:
+    """Procesa y persiste cada PDF antes de avanzar al siguiente.
+
+    Se evita ejecutar varios pdfplumber en paralelo porque en Streamlit Cloud
+    esa carga puede agotar memoria y dejar el corte indefinidamente al 5%.
+    """
+    unique_entries = {}
+    for entry, path in entries:
+        unique_entries[str(entry.get("id"))] = (entry, Path(path))
+    queue = list(unique_entries.values())
+    snapshots = load_snapshots()
+    results = []
+    errors = []
+    reused = 0
+    total = len(queue)
+
+    def show_status() -> None:
+        if not results:
+            return
+        frame = pd.DataFrame(results)
+        status_placeholder.dataframe(frame, width="stretch", height=min(330, 42 + len(frame) * 35), hide_index=True)
+
+    for index, (entry, path) in enumerate(queue, start=1):
+        name = str(entry.get("name") or path.name)
+        start_value = .03 + .90 * (index - 1) / max(total, 1)
+        progress.progress(start_value, text=f"Procesando {index} de {total}: {name}")
+        results.append({"#": index, "Archivo": name, "Tienda": entry.get("store", "Por identificar"), "Estado": "Procesando"})
+        show_status()
+        update_entry("pdfs", entry["id"], status="Procesando", error="")
+        try:
+            cached = snapshots.get(str(entry.get("id")), {})
+            if int(cached.get("parser_version", 0)) >= PDF_PARSER_VERSION and cached.get("status") in {"Procesado", "Revisar"}:
+                snapshot = cached
+                reused += 1
+            else:
+                snapshot = extract_pdf_snapshot(path)
+                save_snapshot(entry["id"], snapshot)
+                snapshots[str(entry["id"])] = snapshot
+            update_entry(
+                "pdfs", entry["id"], status=snapshot["status"], store=snapshot["store"],
+                week=snapshot["week"] or week_key, report_date=snapshot["report_date"],
+                pages=snapshot["pages"], records=snapshot["models"], error="",
+            )
+            results[-1].update({"Tienda": snapshot.get("store", ""), "Estado": snapshot.get("status", "Procesado")})
+        except Exception as exc:
+            error_text = f"{type(exc).__name__}: {exc}"[:300]
+            errors.append(f"{name}: {error_text}")
+            update_entry("pdfs", entry["id"], status="Error", error=error_text)
+            results[-1]["Estado"] = "Error"
+        show_status()
+        progress.progress(.03 + .90 * index / max(total, 1), text=f"Completados {index} de {total} PDF")
+
+    return {"completed": total, "errors": errors, "reused": reused, "paths": [path for _, path in queue], "results": results}
+
+
 def _page_upload(bundle: dict, is_admin: bool) -> None:
     _header("Carga Semanal de PDF", "Tres pasos claros para publicar información confiable", bundle)
     if not is_admin:
@@ -1140,32 +1206,35 @@ def _page_upload(bundle: dict, is_admin: bool) -> None:
         uploads = st.file_uploader("Carga hasta 17 PDF de tiendas", type=["pdf"], accept_multiple_files=True, key="commercial_pdf_uploads")
         if uploads and len(uploads) > 17:
             st.error("Selecciona un máximo de 17 PDF por corte.")
-        if st.button("Validar y publicar corte", disabled=not uploads or len(uploads) > 17, type="primary", width="stretch"):
+        pending = _pending_pdf_entries(load_manifest(), week_key)
+        new_col, resume_col = st.columns([1.35, 1])
+        with new_col:
+            start_new = st.button("Validar y publicar corte", disabled=not uploads or len(uploads) > 17, type="primary", width="stretch")
+        with resume_col:
+            resume = st.button(f"Reanudar pendientes ({len(pending)})", disabled=not pending, width="stretch", icon=":material/resume:")
+        if start_new or resume:
             entries = []
-            for uploaded in uploads:
-                entry = save_pdf_upload(uploaded, week_key)
+            source_entries = []
+            if start_new:
+                for uploaded in uploads:
+                    source_entries.append(save_pdf_upload(uploaded, week_key))
+            else:
+                source_entries = pending
+            for entry in source_entries:
                 entries.append((entry, resolve_entry_path(entry)))
-            progress = st.progress(.05, text=f"Preparando {len(entries)} PDF para extracción...")
-            completed, errors = 0, []
-            with ThreadPoolExecutor(max_workers=min(4, len(entries))) as executor:
-                futures = {executor.submit(extract_pdf_snapshot, path): (entry, path) for entry, path in entries}
-                for future in as_completed(futures):
-                    entry, _ = futures[future]
-                    try:
-                        snapshot = future.result()
-                        save_snapshot(entry["id"], snapshot)
-                        update_entry("pdfs", entry["id"], status=snapshot["status"], store=snapshot["store"], week=snapshot["week"] or week_key, report_date=snapshot["report_date"], pages=snapshot["pages"], records=snapshot["models"])
-                    except Exception as exc:
-                        errors.append(f"{entry.get('name')}: {exc}")
-                        update_entry("pdfs", entry["id"], status="Error", error=str(exc)[:300])
-                    completed += 1
-                    progress.progress(.05 + .90 * completed / len(entries), text=f"Procesados {completed} de {len(entries)} PDF · {entry.get('name', '')}")
-            progress.progress(1.0, text="Validación terminada. Publicando el corte...")
-            sync = sync_history_to_cloud([path for _, path in entries])
+            progress = st.progress(.01, text=f"Preparando {len(entries)} PDF...")
+            status_placeholder = st.empty()
+            outcome = _process_pdf_entries(entries, week_key, progress, status_placeholder)
+            progress.progress(.96, text="Guardando el corte y su histórico...")
+            sync = sync_history_to_cloud(outcome["paths"])
+            progress.progress(1.0, text="Corte terminado")
             st.cache_data.clear()
-            message = f"{completed - len(errors)} PDF procesados; el histórico anterior se conservó."
-            if errors:
-                level, message = "error", f"{message} {len(errors)} archivo(s) presentaron error."
+            success_count = outcome["completed"] - len(outcome["errors"])
+            message = f"{success_count} PDF procesados; el histórico anterior se conservó."
+            if outcome["reused"]:
+                message = f"{message} {outcome['reused']} ya estaban listos y no se procesaron nuevamente."
+            if outcome["errors"]:
+                level, message = "error", f"{message} {len(outcome['errors'])} archivo(s) presentaron error; puedes reintentarlos con Reanudar pendientes."
             elif sync.get("error"):
                 level, message = "error", f"{message} No se pudo sincronizar: {sync['error']}"
             elif not sync.get("configured"):
@@ -1181,7 +1250,7 @@ def _page_upload(bundle: dict, is_admin: bool) -> None:
     stores = set(current.get("store", pd.Series(dtype=str)).replace("", np.nan).dropna().astype(str))
     missing = sorted(set(PROJECT_STORES) - stores)
     records = pd.to_numeric(current.get("records", pd.Series(dtype=float)), errors="coerce").fillna(0).sum()
-    errors = int((pdfs.get("status", pd.Series(dtype=str)) == "Error").sum())
+    errors = int((current.get("status", pd.Series(dtype=str)) == "Error").sum())
     publication_state = "Listo" if len(stores) == 17 and not errors else ("Revisar" if current_week != "Sin semana" else "Sin corte")
     _kpis([
         ("Archivos recibidos", f"{len(current)} / 17", current_week, GREEN),

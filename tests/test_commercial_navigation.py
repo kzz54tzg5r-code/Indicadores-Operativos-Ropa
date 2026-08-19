@@ -2,6 +2,8 @@ from pathlib import Path
 
 from streamlit.testing.v1 import AppTest
 
+from commercial import pdf_pages
+from commercial.pdf_pages import _pending_pdf_entries, _process_pdf_entries
 from commercial.ui import _latest_week
 
 
@@ -57,3 +59,81 @@ def test_macro_to_micro_navigation_reaches_model_detail(monkeypatch):
     assert not app.exception
     assert len(app.get("plotly_chart")) == 1
     assert len(app.dataframe) == 1
+
+
+def test_pending_pdf_entries_only_returns_retryable_files_for_week(monkeypatch, tmp_path):
+    source = tmp_path / "AC_IZT.pdf"
+    source.write_bytes(b"pdf")
+    monkeypatch.setattr(pdf_pages, "resolve_entry_path", lambda _entry: source)
+    manifest = {
+        "pdfs": [
+            {"id": "done", "week": "2026-W34", "status": "Procesado"},
+            {"id": "review", "week": "2026-W34", "status": "Revisar"},
+            {"id": "working", "week": "2026-W34", "status": "Procesando"},
+            {"id": "error", "week": "2026-W34", "status": "Error"},
+            {"id": "waiting", "week": "2026-W34", "status": "Pendiente de validación"},
+            {"id": "other-week", "week": "2026-W33", "status": "Error"},
+        ]
+    }
+
+    assert [entry["id"] for entry in _pending_pdf_entries(manifest, "2026-W34")] == [
+        "working", "error", "waiting",
+    ]
+
+
+def test_pdf_processing_persists_each_success_and_continues_after_error(monkeypatch, tmp_path):
+    good = tmp_path / "AC_IZT.pdf"
+    bad = tmp_path / "AC_BAD.pdf"
+    good.write_bytes(b"good")
+    bad.write_bytes(b"bad")
+    updates = []
+    snapshots = []
+
+    def extract(path):
+        if path == bad:
+            raise ValueError("PDF ilegible")
+        return {
+            "status": "Procesado", "store": "Iztapalapa", "week": "2026-W34",
+            "report_date": "2026-08-19", "pages": 23, "models": 100,
+            "parser_version": pdf_pages.PDF_PARSER_VERSION,
+        }
+
+    class Progress:
+        def __init__(self):
+            self.calls = []
+
+        def progress(self, value, text=""):
+            self.calls.append((value, text))
+
+    class Placeholder:
+        def __init__(self):
+            self.frames = []
+
+        def dataframe(self, frame, **_kwargs):
+            self.frames.append(frame.copy())
+
+    monkeypatch.setattr(pdf_pages, "load_snapshots", lambda: {})
+    monkeypatch.setattr(pdf_pages, "extract_pdf_snapshot", extract)
+    monkeypatch.setattr(pdf_pages, "save_snapshot", lambda entry_id, snapshot: snapshots.append((entry_id, snapshot)))
+    monkeypatch.setattr(pdf_pages, "update_entry", lambda category, entry_id, **changes: updates.append((category, entry_id, changes)))
+    progress = Progress()
+    placeholder = Placeholder()
+
+    outcome = _process_pdf_entries(
+        [
+            ({"id": "good", "name": good.name, "store": ""}, good),
+            ({"id": "bad", "name": bad.name, "store": ""}, bad),
+        ],
+        "2026-W34",
+        progress,
+        placeholder,
+    )
+
+    assert outcome["completed"] == 2
+    assert len(outcome["errors"]) == 1
+    assert snapshots[0][0] == "good"
+    assert any(entry_id == "good" and changes.get("status") == "Procesado" for _, entry_id, changes in updates)
+    assert any(entry_id == "bad" and changes.get("status") == "Error" for _, entry_id, changes in updates)
+    assert outcome["results"][-1]["Estado"] == "Error"
+    assert len(progress.calls) == 4
+    assert placeholder.frames
