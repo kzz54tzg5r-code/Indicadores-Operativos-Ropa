@@ -135,9 +135,9 @@ def _inject_styles() -> None:
         f"""
         <style>
         :root{{--ac-navy:{NAVY};--ac-blue:{BLUE};--ac-pink:{PINK};--ac-green:{GREEN};--ac-bg:#F4F7FB;}}
-        .ac-header{{display:flex;align-items:center;justify-content:space-between;gap:16px;background:#fff;border:1px solid #E1E7F0;border-radius:15px;padding:14px 17px;margin:0 0 8px;box-shadow:0 5px 18px rgba(23,59,115,.055)}}
-        .ac-title{{font-size:25px;font-weight:900;color:{NAVY};line-height:1.08}}.ac-subtitle{{font-size:12px;color:{MUTED};margin-top:5px}}
-        .ac-status{{display:flex;gap:7px;align-items:center;flex-wrap:wrap;justify-content:flex-end}}.ac-pill{{border-radius:9px;padding:7px 10px;font-size:10.5px;font-weight:800;background:#E9F8F0;color:{GREEN}}}.ac-pill-blue{{background:#EAF2FF;color:{BLUE}}}.ac-updated{{font-size:10px;color:{MUTED};white-space:nowrap}}
+        .ac-header{{display:flex;align-items:center;justify-content:space-between;gap:16px;background:linear-gradient(135deg,#0C2E63 0%,#173F78 100%);border:0;border-radius:15px;padding:17px 19px;margin:0 0 10px;box-shadow:0 8px 24px rgba(12,46,99,.16)}}
+        .ac-title{{font-size:25px;font-weight:900;color:#fff;line-height:1.08}}.ac-subtitle{{font-size:12px;color:#C6D7F2;margin-top:5px}}
+        .ac-status{{display:flex;gap:7px;align-items:center;flex-wrap:wrap;justify-content:flex-end}}.ac-pill{{border:1px solid rgba(255,255,255,.16);border-radius:9px;padding:7px 10px;font-size:10.5px;font-weight:800;background:rgba(12,163,91,.22);color:#D8FFEB}}.ac-pill-blue{{background:rgba(72,137,255,.24);color:#E7F0FF}}.ac-updated{{font-size:10px;color:#C6D7F2;white-space:nowrap}}
         .ac-kpis{{display:grid;grid-template-columns:repeat(var(--columns,6),minmax(0,1fr));gap:8px;margin:10px 0 12px}}.ac-kpi{{background:#fff;border:1px solid #E1E7F0;border-radius:12px;padding:12px 11px;min-height:98px;box-shadow:0 3px 11px rgba(23,59,115,.04);position:relative;overflow:hidden}}.ac-kpi:before{{content:"";position:absolute;left:0;top:0;bottom:0;width:4px;background:var(--accent)}}.ac-kpi-label{{font-size:9px;text-transform:uppercase;letter-spacing:.35px;color:{MUTED};font-weight:850;white-space:nowrap}}.ac-kpi-value{{font-size:22px;font-weight:900;color:{NAVY};margin-top:9px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}}.ac-kpi-note{{font-size:9.5px;color:{MUTED};margin-top:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}}
         .ac-alert{{display:flex;align-items:center;gap:10px;border:1px solid #F8B8D2;background:#FFF4F8;color:{PINK};border-radius:11px;padding:11px 14px;margin:8px 0 14px;font-size:12px;font-weight:800}}.ac-section{{font-size:17px;font-weight:900;color:{NAVY};margin:8px 0 9px}}
         .ac-source-note{{background:#EAF2FF;border:1px solid #CADBFA;border-radius:10px;padding:10px 13px;color:{NAVY};font-size:11px;margin:8px 0 12px}}
@@ -151,7 +151,7 @@ def _inject_styles() -> None:
           position:fixed!important;inset:0 auto 0 0!important;
           width:184px!important;min-width:184px!important;max-width:184px!important;
           height:100vh!important;flex:0 0 184px!important;transform:translateX(0)!important;
-          background:linear-gradient(180deg,#0B326D 0%,#102E67 100%)!important;
+          background:#FFFFFF!important;border-right:1px solid #DCE4F0!important;
           z-index:1500!important;overflow-y:auto!important;overflow-x:hidden!important;
           pointer-events:auto!important;
         }}
@@ -175,16 +175,16 @@ def _inject_styles() -> None:
         body [data-testid="stAppViewContainer"]:has(.ac-shell-marker) [data-testid="stHorizontalBlock"]:has([aria-label="Menú de Ventas y Análisis Comercial"]){{display:none!important;}}
         body [data-testid="stAppViewContainer"]:has(.ac-shell-marker) section[data-testid="stSidebar"] h3,
         body [data-testid="stAppViewContainer"]:has(.ac-shell-marker) section[data-testid="stSidebar"] p,
-        body [data-testid="stAppViewContainer"]:has(.ac-shell-marker) section[data-testid="stSidebar"] span{{color:#fff!important;}}
+        body [data-testid="stAppViewContainer"]:has(.ac-shell-marker) section[data-testid="stSidebar"] span{{color:{NAVY}!important;}}
         body [data-testid="stAppViewContainer"]:has(.ac-shell-marker) section[data-testid="stSidebar"] img{{background:#fff!important;border-radius:10px!important;padding:6px!important;margin:0 auto 8px!important;}}
         body [data-testid="stAppViewContainer"]:has(.ac-shell-marker) section[data-testid="stSidebar"] h3{{font-size:17px!important;line-height:1.2!important;margin-top:8px!important;}}
         body [data-testid="stAppViewContainer"]:has(.ac-shell-marker) section[data-testid="stSidebar"] .stButton>button{{
           display:flex!important;visibility:visible!important;opacity:1!important;width:100%!important;
-          color:#fff!important;background:transparent!important;border:0!important;border-radius:10px!important;
+          color:{NAVY}!important;background:transparent!important;border:0!important;border-radius:10px!important;
           justify-content:flex-start!important;text-align:left!important;min-height:38px!important;padding:7px 9px!important;font-size:12px!important;
         }}
-        body [data-testid="stAppViewContainer"]:has(.ac-shell-marker) section[data-testid="stSidebar"] .stButton>button[kind="primary"]{{background:{BLUE}!important;box-shadow:0 5px 14px rgba(0,0,0,.15)!important;}}
-        body [data-testid="stAppViewContainer"]:has(.ac-shell-marker) section[data-testid="stSidebar"] .stButton>button:hover{{background:rgba(255,255,255,.12)!important;}}
+        body [data-testid="stAppViewContainer"]:has(.ac-shell-marker) section[data-testid="stSidebar"] .stButton>button[kind="primary"]{{background:#E9F1FF!important;color:{BLUE}!important;border-left:4px solid {BLUE}!important;box-shadow:none!important;}}
+        body [data-testid="stAppViewContainer"]:has(.ac-shell-marker) section[data-testid="stSidebar"] .stButton>button:hover{{background:#F0F5FF!important;color:{BLUE}!important;}}
         @media(max-width:1350px){{.ac-kpis{{grid-template-columns:repeat(4,minmax(0,1fr))!important}}}}@media(max-width:700px){{.ac-header{{align-items:flex-start;flex-direction:column}}.ac-title{{font-size:22px}}.ac-status{{justify-content:flex-start}}.ac-kpis{{grid-template-columns:repeat(2,minmax(0,1fr))!important}}}}@media(max-width:390px){{.ac-kpis{{grid-template-columns:1fr!important}}}}
         @media(max-width:900px){{
           body [data-testid="stAppViewContainer"]:has(.ac-shell-marker) section[data-testid="stSidebar"]{{
@@ -212,7 +212,7 @@ def render_commercial_sidebar(active_page: str, is_admin: bool = False) -> None:
         "Ubicaciones y Espacio": "Ubicaciones",
         "Marcas y Catálogo": "Marcas",
         "Modelos": "Modelos",
-        "Oportunidades y Acciones": "Oportunidades",
+        "Oportunidades y Acciones": "Plan de acción",
         "Histórico Comercial": "Histórico",
     }
     sidebar_icons = {
@@ -230,8 +230,8 @@ def render_commercial_sidebar(active_page: str, is_admin: bool = False) -> None:
         logo = Path(__file__).resolve().parents[1] / "assets" / "price_shoes_logo.png"
         if logo.exists():
             st.image(str(logo), width=105)
-        st.markdown("### Ventas y Análisis")
-        st.caption("Módulo comercial")
+        st.markdown("### Control Comercial")
+        st.caption("Operación y decisiones")
         for page_name in COMMERCIAL_PAGES:
             if st.button(
                 sidebar_labels.get(page_name, PAGE_LABELS[page_name]), key=f"commercial_side_{page_name}",

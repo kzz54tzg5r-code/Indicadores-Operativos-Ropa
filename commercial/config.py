@@ -35,7 +35,7 @@ PAGE_LABELS = {
     "Ubicaciones y Espacio": "Ubicaciones",
     "Marcas y Catálogo": "Marcas",
     "Modelos": "Modelos",
-    "Oportunidades y Acciones": "Oportunidades",
+    "Oportunidades y Acciones": "Plan de acción",
     "Histórico Comercial": "Histórico",
     "Carga Comercial": "Carga PDF",
 }
