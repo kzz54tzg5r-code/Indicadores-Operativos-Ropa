@@ -208,9 +208,9 @@ def _inject_styles() -> None:
 def render_commercial_sidebar(active_page: str, is_admin: bool = False) -> None:
     sidebar_labels = {
         "Mi Tienda Comercial": "Macro compañía",
-        "Ventas Comerciales": "Qué vendo",
-        "Sugeridos Comerciales": "Qué resurtir",
-        "Modelos Comerciales": "Mis modelos",
+        "Ventas Comerciales": "Tiendas",
+        "Sugeridos Comerciales": "Sección / Rubro",
+        "Modelos Comerciales": "Ubicación / Área",
         "Utilidad Comercial": "Dinero y utilidad",
         "Histórico Comercial": "Mi evolución",
     }
