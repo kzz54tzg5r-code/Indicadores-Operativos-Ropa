@@ -1109,6 +1109,304 @@ def _page_history(bundle: dict) -> None:
     _decision_table(display[columns], status_columns=("Estado", "Qué hacer"), height=430)
 
 
+def _canonical_location(values: pd.Series) -> pd.Series:
+    upper = values.fillna("").astype(str).str.upper()
+    return pd.Series(
+        np.select(
+            [
+                upper.str.contains("MEZ|JEAN", regex=True),
+                upper.str.contains("COLG", regex=True),
+                upper.str.contains("DOBL", regex=True),
+                upper.str.contains("LENCER|BRASIER|PANTALETA|ROPA INTERIOR", regex=True),
+            ],
+            ["Jeans", "Colgado", "Doblado", "Lencería"],
+            default=values.fillna("").astype(str).str.title(),
+        ),
+        index=values.index,
+    ).replace("", "Sin ubicación")
+
+
+def _dimension_summary(breakdowns: pd.DataFrame, dimension: str) -> pd.DataFrame:
+    """Resume piezas, venta y utilidad sin convertir participaciones en montos."""
+    if breakdowns is None or breakdowns.empty:
+        return pd.DataFrame()
+    kind = {"Sección": "section", "Ubicación": "location", "Línea": "rubro"}[dimension]
+    data = breakdowns[breakdowns["Tipo"].eq(kind)].copy()
+    if data.empty:
+        return data
+    if dimension == "Sección":
+        data["Elemento"] = _section_values(data)
+    elif dimension == "Ubicación":
+        data["Elemento"] = _canonical_location(data["Etiqueta"])
+    else:
+        data["Elemento"] = data["Etiqueta"].fillna("").astype(str).str.strip().str.title()
+    data = data[data["Elemento"].ne("")]
+    absolute = ["VPD", "Existencia", "Piso", "Bodega", "Posiciones", "Inversión"]
+    percentages = ["% Piezas", "% Venta", "% Utilidad"]
+    for column in absolute + percentages:
+        data[column] = pd.to_numeric(data.get(column, 0), errors="coerce").fillna(0)
+    per_store = data.groupby(["Tienda", "Elemento"], as_index=False)[absolute + percentages].sum()
+    totals = per_store.groupby("Elemento", as_index=False)[absolute].sum()
+    averages = per_store.groupby("Elemento", as_index=False)[percentages].mean()
+    summary = totals.merge(averages, on="Elemento", how="left")
+    summary["% Part. piezas"] = summary["VPD"].div(summary["VPD"].sum() or np.nan).mul(100).fillna(0)
+    summary["% Part. venta $"] = summary["% Venta"]
+    summary["% Part. utilidad"] = summary["% Utilidad"]
+    summary["DDI"] = summary["Existencia"].div(summary["VPD"].replace(0, np.nan)).fillna(0)
+    summary["Estado"] = summary["DDI"].map(_coverage_status)
+    summary["Acción"] = [
+        _coverage_action(float(days), float(warehouse) / float(existence) * 100 if existence else 0)
+        for days, warehouse, existence in zip(summary["DDI"], summary["Bodega"], summary["Existencia"])
+    ]
+    return summary.sort_values(["VPD", "% Part. venta $"], ascending=False).reset_index(drop=True)
+
+
+def _scope_participation(bundle: dict, scope: dict, stores: pd.DataFrame) -> float:
+    company = store_pdf_summary(bundle["stores_pdf"], scope["week"], "Compañía")
+    company_vpd = pd.to_numeric(company.get("VPD", 0), errors="coerce").sum() if not company.empty else 0
+    selected_vpd = pd.to_numeric(stores.get("VPD", 0), errors="coerce").sum() if not stores.empty else 0
+    return selected_vpd / company_vpd * 100 if company_vpd else 0
+
+
+def _scenario_models(models: pd.DataFrame, scenario: str) -> pd.DataFrame:
+    if models is None or models.empty:
+        return pd.DataFrame()
+    data = models[models.get("Escenario", pd.Series("", index=models.index)).astype(str).eq(scenario)].copy()
+    if data.empty:
+        return data
+    for column in ("Ranking", "Piso", "Bodega", "Existencia", "VPD", "DDI", "Inversión", "% Utilidad", "% Venta"):
+        data[column] = pd.to_numeric(data.get(column, 0), errors="coerce").fillna(0)
+    data["Categoría"] = _section_values(data)
+    data["Línea"] = data.get("Rubro", pd.Series("", index=data.index)).fillna("").astype(str).str.title()
+    data = data.sort_values(["Ranking", "Tienda", "ID_ART"]).drop_duplicates(["Tienda", "ID_ART"])
+    warehouse_share = data["Bodega"].div(data["Existencia"].replace(0, np.nan)).mul(100).fillna(0)
+    data["Prioridad"] = np.select(
+        [data["DDI"].le(14) & data["VPD"].gt(0), data["DDI"].le(30) & data["VPD"].gt(0), data["DDI"].gt(120), warehouse_share.gt(20)],
+        ["1 · Urgente", "2 · Hoy", "3 · Revisar", "4 · Piso"],
+        default="5 · Mantener",
+    )
+    data["Acción"] = np.select(
+        [data["DDI"].le(14) & data["VPD"].gt(0), data["DDI"].le(30) & data["VPD"].gt(0), data["DDI"].gt(120), warehouse_share.gt(20)],
+        ["Resurtir", "Vigilar agotamiento", "Contener o transferir", "Subir de bodega a piso"],
+        default="Mantener",
+    )
+    return data.reset_index(drop=True)
+
+
+def _participation_chart(data: pd.DataFrame, title: str, *, include_pieces: bool = True) -> None:
+    if data.empty:
+        return
+    chart = data.head(14).sort_values("% Part. venta $")
+    fig = go.Figure()
+    if include_pieces:
+        fig.add_bar(
+            y=chart["Elemento"], x=chart["% Part. piezas"], orientation="h",
+            name="Participación piezas", marker_color=BLUE,
+            text=chart["% Part. piezas"].map(lambda value: f"{value:.1f}%"), textposition="outside",
+        )
+    fig.add_bar(
+        y=chart["Elemento"], x=chart["% Part. venta $"], orientation="h",
+        name="Participación venta $", marker_color=PINK,
+        text=chart["% Part. venta $"].map(lambda value: f"{value:.1f}%"), textposition="outside",
+    )
+    fig.update_layout(title=title, barmode="group", xaxis_title="Participación (%)", yaxis_title="")
+    _plot(fig, max(360, len(chart) * 34 + 120))
+
+
+def _page_store_home(bundle: dict) -> None:
+    _header("Mi tienda en 30 segundos", "Lo que aporta, lo que se mueve y lo que requiere atención", bundle)
+    scope = _global_scope(bundle)
+    _breadcrumb(scope)
+    stores, breakdowns, models = _scope_frames(bundle, scope)
+    if scope["model_id"]:
+        _render_model_level(bundle, scope, models); return
+    if scope["line"] != "Todas":
+        _render_line_level(scope, models, breakdowns); return
+    if scope["category"] != "Todas":
+        _render_category_level(scope, breakdowns, models); return
+    if stores.empty:
+        _no_data(); return
+    total = _totals(stores)
+    participation = _scope_participation(bundle, scope, stores)
+    actions = _plain_opportunities(pdf_opportunities(stores, breakdowns, models))
+    urgent = int(actions["Cuándo"].eq("Hoy").sum()) if not actions.empty else 0
+    _kpis([
+        ("Venta piezas", "Información no disponible", "El PDF aporta VPD, no venta semanal", BLUE),
+        ("Venta en pesos", "Información no disponible", "Requiere fuente de ventas", PINK),
+        ("Sugerido / VPD", _number(total["VPD"]), "Promedio diario de piezas", GREEN),
+        ("Participación piezas", _percent(participation), "Calculada sobre VPD compañía", BLUE),
+        ("Participación venta $", "Información no disponible", "No existe total $ por tienda", PINK),
+        ("Margen de utilidad", "Información no disponible", "El PDF publica participación", ORANGE),
+    ], 6)
+    dimension = _dimension_summary(breakdowns, "Sección")
+    left, right = st.columns([1.25, 1], gap="medium")
+    with left:
+        if not dimension.empty:
+            _participation_chart(dimension, "Qué secciones explican el resultado")
+    with right:
+        _kpis([
+            ("Inventario", _number(total["Existencia"]), "Piso + bodega", PURPLE),
+            ("Días de inventario", f'{total["DDI"]:.0f}', _coverage_meaning(total["DDI"]), CYAN),
+            ("Acciones para hoy", _number(urgent), "Prioridad operativa", RED),
+        ], 1)
+    st.markdown('<div class="ac-section">Qué debe hacer la tienda</div>', unsafe_allow_html=True)
+    if actions.empty:
+        st.success("No se detectaron acciones críticas con los datos del corte.")
+    else:
+        _decision_table(actions.head(12), status_columns=("Cuándo",), height=390)
+    if scope["store"] == "Compañía":
+        st.caption("Selecciona una tienda para convertir el resumen de compañía en una lista operativa específica para esa sucursal.")
+
+
+def _page_sales_focus(bundle: dict) -> None:
+    _header("Qué está vendiendo", "Participación en piezas, venta en pesos y utilidad con lectura directa", bundle)
+    scope = _global_scope(bundle)
+    _breadcrumb(scope)
+    _, breakdowns, _ = _scope_frames(bundle, scope)
+    dimension = st.segmented_control("Ver por", ["Sección", "Ubicación", "Línea"], default="Sección", key="sales_dimension") or "Sección"
+    data = _dimension_summary(breakdowns, dimension)
+    if data.empty:
+        st.info(f"El PDF no contiene información de {dimension.lower()} para el alcance seleccionado."); return
+    leader = data.iloc[0]
+    _kpis([
+        ("Sugerido / VPD", _number(data["VPD"].sum()), "Promedio diario de piezas", GREEN),
+        ("Líder en piezas", leader["Elemento"], _percent(leader["% Part. piezas"]), BLUE),
+        ("Líder en venta $", data.nlargest(1, "% Part. venta $").iloc[0]["Elemento"], _percent(data["% Part. venta $"].max()), PINK),
+        ("Líder en utilidad", data.nlargest(1, "% Part. utilidad").iloc[0]["Elemento"], _percent(data["% Part. utilidad"].max()), ORANGE),
+    ], 4)
+    _participation_chart(data, f"Participación por {dimension.lower()}")
+    display = data.rename(columns={"VPD": "Sugerido / VPD", "DDI": "Días inventario"})
+    columns = ["Elemento", "Sugerido / VPD", "% Part. piezas", "% Part. venta $", "% Part. utilidad", "Existencia", "Piso", "Bodega", "Días inventario", "Estado", "Acción"]
+    st.markdown('<div class="ac-section">Tabla de venta y participación</div>', unsafe_allow_html=True)
+    _decision_table(display[columns], status_columns=("Estado", "Acción"), height=500)
+    note = "En alcance Compañía, los porcentajes monetarios son el promedio de participación reportado por las tiendas; no son un importe consolidado. " if scope["store"] == "Compañía" else ""
+    st.caption(note + "% Part. venta $ y % Part. utilidad son participaciones publicadas en el PDF; no representan monto vendido ni margen.")
+
+
+def _page_restock_focus(bundle: dict) -> None:
+    _header("Qué debo resurtir", "Sugerido diario, existencia y acciones ordenadas por urgencia", bundle)
+    scope = _global_scope(bundle)
+    _breadcrumb(scope)
+    _, _, models = _scope_frames(bundle, scope)
+    data = _scenario_models(models, "Sugerido / VPD")
+    if data.empty:
+        st.info("El PDF no publicó modelos dentro del ranking Sugerido / VPD para este alcance."); return
+    urgent = data[data["Prioridad"].str.startswith(("1", "2"))]
+    _kpis([
+        ("Modelos publicados", _number(data["ID_ART"].nunique()), "Ranking del PDF", BLUE),
+        ("Sugerido / VPD", _number(data["VPD"].sum()), "Promedio diario Top publicados", GREEN),
+        ("Atención inmediata", _number(len(urgent)), "Hasta 30 días", RED),
+        ("Mercancía en bodega", _number(data["Bodega"].sum()), "Piezas de modelos publicados", ORANGE),
+    ], 4)
+    display = data.rename(columns={"VPD": "Sugerido diario", "DDI": "Días inventario", "% Utilidad": "% Part. utilidad"})
+    columns = ["Prioridad", "Tienda", "ID_ART", "Modelo", "Categoría", "Línea", "Existencia", "Piso", "Bodega", "Sugerido diario", "Días inventario", "% Part. utilidad", "Acción"]
+    _decision_table(display[[column for column in columns if column in display]].sort_values(["Prioridad", "Sugerido diario"], ascending=[True, False]), status_columns=("Prioridad", "Acción"), height=610)
+    st.caption("Sugerido / VPD es el promedio diario de piezas publicado por el PDF. La acción compara ese ritmo con existencia, piso, bodega y días de inventario.")
+
+
+def _page_models_focus(bundle: dict) -> None:
+    _header("Mis modelos", "Campeones que debo cuidar y lentos que debo mover", bundle)
+    scope = _global_scope(bundle)
+    _breadcrumb(scope)
+    _, _, models = _scope_frames(bundle, scope)
+    scenario = st.segmented_control(
+        "Ranking", ["Sugerido / VPD", "Utilidad", "Baja rotación", "Inversión"],
+        default="Sugerido / VPD", key="model_scenario",
+    ) or "Sugerido / VPD"
+    data = _scenario_models(models, scenario)
+    if data.empty:
+        st.info(f"No existen modelos publicados en el ranking {scenario} para este alcance."); return
+    metric = "Inversión" if scenario == "Inversión" else ("% Utilidad" if scenario == "Utilidad" else ("DDI" if scenario == "Baja rotación" else "VPD"))
+    chart = data.head(20).sort_values(metric)
+    fig = go.Figure(go.Bar(
+        y=chart["ID_ART"].astype(str) + " · " + chart["Modelo"].astype(str), x=chart[metric], orientation="h",
+        marker_color=ORANGE if scenario == "Inversión" else (PINK if scenario == "Utilidad" else BLUE),
+        text=chart[metric].map(_money if metric == "Inversión" else lambda value: f"{value:,.1f}"), textposition="outside",
+    ))
+    fig.update_layout(title=f"Top 20 · {scenario}", xaxis_title=metric, yaxis_title="", showlegend=False)
+    _plot(fig, 660)
+    _kpis([
+        ("Modelos del ranking", _number(data["ID_ART"].nunique()), scenario, BLUE),
+        ("Sugerido / VPD", _number(data["VPD"].sum()), "Top publicados", GREEN),
+        ("Existencia", _number(data["Existencia"].sum()), "Top publicados", PURPLE),
+        ("Inversión", _money(data["Inversión"].sum()), "Sólo cuando el PDF la publica", ORANGE),
+    ], 4)
+    display = data.rename(columns={"VPD": "Sugerido / VPD", "DDI": "Días inventario", "% Utilidad": "% Part. utilidad"})
+    columns = ["Ranking", "Tienda", "ID_ART", "Modelo", "Marca", "Categoría", "Línea", "Sugerido / VPD", "Existencia", "Días inventario", "% Part. utilidad", "Inversión", "Acción"]
+    _decision_table(display[[column for column in columns if column in display]], status_columns=("Acción",), height=560)
+
+
+def _page_profit_focus(bundle: dict) -> None:
+    _header("Dinero y utilidad", "Dónde participa la venta y qué elementos sostienen la utilidad", bundle)
+    scope = _global_scope(bundle)
+    _breadcrumb(scope)
+    _, breakdowns, models = _scope_frames(bundle, scope)
+    dimension = st.segmented_control("Ver por", ["Sección", "Ubicación", "Línea"], default="Sección", key="profit_dimension") or "Sección"
+    data = _dimension_summary(breakdowns, dimension)
+    if data.empty:
+        st.info("No existe desglose monetario en el PDF para los filtros seleccionados."); return
+    investment_models = _scenario_models(models, "Inversión")
+    investment = investment_models["Inversión"].sum() if not investment_models.empty else 0
+    sale_leader = data.nlargest(1, "% Part. venta $").iloc[0]
+    utility_leader = data.nlargest(1, "% Part. utilidad").iloc[0]
+    _kpis([
+        ("Venta en pesos", "Información no disponible", "El PDF sólo publica participación", PINK),
+        ("Margen de utilidad", "Información no disponible", "No viene venta y costo total", ORANGE),
+        ("Mayor participación venta $", sale_leader["Elemento"], _percent(sale_leader["% Part. venta $"]), BLUE),
+        ("Mayor participación utilidad", utility_leader["Elemento"], _percent(utility_leader["% Part. utilidad"]), GREEN),
+        ("Inversión publicada", _money(investment), "Modelos del ranking Inversión", PURPLE),
+    ], 5)
+    chart = data.head(16).sort_values("% Part. utilidad")
+    fig = go.Figure()
+    fig.add_bar(y=chart["Elemento"], x=chart["% Part. venta $"], orientation="h", name="Participación venta $", marker_color=BLUE, text=chart["% Part. venta $"].map(lambda value: f"{value:.1f}%"), textposition="outside")
+    fig.add_bar(y=chart["Elemento"], x=chart["% Part. utilidad"], orientation="h", name="Participación utilidad", marker_color=PINK, text=chart["% Part. utilidad"].map(lambda value: f"{value:.1f}%"), textposition="outside")
+    fig.update_layout(title=f"Venta y utilidad por {dimension.lower()}", barmode="group", xaxis_title="Participación (%)", yaxis_title="")
+    _plot(fig, max(390, len(chart) * 36 + 120))
+    display = data.rename(columns={"VPD": "Sugerido / VPD", "DDI": "Días inventario", "Inversión": "Inversión $"})
+    columns = ["Elemento", "% Part. venta $", "% Part. utilidad", "% Part. piezas", "Sugerido / VPD", "Existencia", "Inversión $", "Días inventario", "Acción"]
+    _decision_table(display[columns], status_columns=("Acción",), height=490)
+    st.info("La vista separa participación de monto: el PDF permite saber qué porcentaje aporta cada elemento, pero no contiene la venta total en pesos ni el margen total. Esos campos permanecerán como Información no disponible hasta integrar la fuente de ventas.", icon=":material/info:")
+
+
+def _page_store_evolution(bundle: dict) -> None:
+    _header("Mi evolución", "Cómo cambia el sugerido, el inventario y la cobertura semana a semana", bundle)
+    scope = _global_scope(bundle)
+    _breadcrumb(scope)
+    stores, _, _ = _scope_frames(bundle, scope, use_selected_week=False)
+    history = filter_period(bundle["stores_pdf"], store=scope["store"])
+    if history.empty:
+        st.info("Aún no existen suficientes cortes PDF para construir el histórico."); return
+    for column in ("Existencia", "VPD", "Piso", "Bodega"):
+        history[column] = pd.to_numeric(history.get(column, 0), errors="coerce").fillna(0)
+    trend = history.groupby("Semana", as_index=False)[["Existencia", "VPD", "Piso", "Bodega"]].sum().sort_values("Semana")
+    trend["DDI"] = trend["Existencia"].div(trend["VPD"].replace(0, np.nan)).fillna(0)
+    current = trend.iloc[-1]
+    previous = trend.iloc[-2] if len(trend) > 1 else current
+    vpd_change = (current["VPD"] / previous["VPD"] - 1) * 100 if previous["VPD"] else 0
+    inventory_change = (current["Existencia"] / previous["Existencia"] - 1) * 100 if previous["Existencia"] else 0
+    _kpis([
+        ("Sugerido / VPD", f"{vpd_change:+.1f}%", "Vs. corte anterior", GREEN if vpd_change >= 0 else RED),
+        ("Inventario", f"{inventory_change:+.1f}%", "Vs. corte anterior", BLUE),
+        ("Días inventario", f'{current["DDI"]:.0f}', _coverage_meaning(float(current["DDI"])), ORANGE),
+        ("Venta en pesos", "Información no disponible", "No viene en el PDF", PINK),
+    ], 4)
+    left, right = st.columns(2, gap="medium")
+    with left:
+        fig = go.Figure()
+        fig.add_scatter(x=trend["Semana"], y=trend["VPD"], mode="lines", name="Sugerido / VPD", line=dict(color=BLUE, width=4), fill="tozeroy", fillcolor="rgba(21,91,239,.08)")
+        fig.update_layout(title="Evolución del sugerido diario", yaxis_title="Piezas por día")
+        _plot(fig, 370)
+    with right:
+        fig = go.Figure()
+        fig.add_scatter(x=trend["Semana"], y=trend["DDI"], mode="lines", name="Días inventario", line=dict(color=PINK, width=4))
+        fig.update_layout(title="Evolución de cobertura", yaxis_title="Días")
+        _plot(fig, 370)
+    display = trend.rename(columns={"VPD": "Sugerido / VPD", "DDI": "Días inventario"}).sort_values("Semana", ascending=False)
+    _decision_table(display[["Semana", "Sugerido / VPD", "Existencia", "Piso", "Bodega", "Días inventario"]], height=390)
+    if len(trend) == 1:
+        st.caption("Existe un solo corte. La tendencia se completará automáticamente al cargar las siguientes semanas.")
+
+
 def _pending_pdf_entries(manifest: dict, week_key: str) -> list[dict]:
     """Recupera archivos incompletos para continuar después de un reinicio."""
     final_statuses = {"Procesado", "Revisar"}
@@ -1283,10 +1581,12 @@ def _page_upload(bundle: dict, is_admin: bool) -> None:
 
 def render_pdf_page(page: str, bundle: dict, is_admin: bool) -> None:
     routes = {
-        "Radiografía Comercial": _page_radiography,
-        "Catálogo Comercial": _page_catalog,
-        "Planeación Comercial": _page_planning,
-        "Histórico Comercial": _page_history,
+        "Mi Tienda Comercial": _page_store_home,
+        "Ventas Comerciales": _page_sales_focus,
+        "Sugeridos Comerciales": _page_restock_focus,
+        "Modelos Comerciales": _page_models_focus,
+        "Utilidad Comercial": _page_profit_focus,
+        "Histórico Comercial": _page_store_evolution,
     }
     if page == ADMIN_PAGE:
         _page_upload(bundle, is_admin)

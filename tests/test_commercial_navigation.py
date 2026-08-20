@@ -1,9 +1,10 @@
 from pathlib import Path
 
+import pandas as pd
 from streamlit.testing.v1 import AppTest
 
 from commercial import pdf_pages
-from commercial.pdf_pages import _pending_pdf_entries, _process_pdf_entries
+from commercial.pdf_pages import _dimension_summary, _pending_pdf_entries, _process_pdf_entries, _scenario_models
 from commercial.ui import _latest_week
 
 
@@ -11,7 +12,7 @@ SMOKE_APP = Path(__file__).with_name("commercial_smoke_app.py")
 
 
 def _summary_app(monkeypatch):
-    monkeypatch.setenv("COMMERCIAL_SMOKE_PAGE", "Radiografía Comercial")
+    monkeypatch.setenv("COMMERCIAL_SMOKE_PAGE", "Mi Tienda Comercial")
     return AppTest.from_file(str(SMOKE_APP), default_timeout=45).run()
 
 
@@ -27,12 +28,12 @@ def test_sidebar_navigation_does_not_mutate_an_instantiated_widget(monkeypatch):
 
 def test_sidebar_navigation_uses_deferred_request(monkeypatch):
     app = _summary_app(monkeypatch)
-    catalog_button = next(button for button in app.sidebar.button if button.label == "Catálogo")
+    catalog_button = next(button for button in app.sidebar.button if button.label == "Qué vendo")
     catalog_button.click().run()
 
     assert not app.exception
-    assert app.session_state["nav_page"] == "Catálogo Comercial"
-    assert app.session_state["project_nav_selector"] == "Catálogo Comercial"
+    assert app.session_state["nav_page"] == "Ventas Comerciales"
+    assert app.session_state["project_nav_selector"] == "Ventas Comerciales"
 
 
 def test_latest_week_ignores_sin_semana_when_iso_weeks_exist():
@@ -137,3 +138,31 @@ def test_pdf_processing_persists_each_success_and_continues_after_error(monkeypa
     assert outcome["results"][-1]["Estado"] == "Error"
     assert len(progress.calls) == 4
     assert placeholder.frames
+
+
+def test_dimension_summary_keeps_pieces_sales_and_utility_as_separate_participations():
+    frame = pd.DataFrame([
+        {"Tienda": "A", "Tipo": "section", "Etiqueta": "DAMA", "Sección": "", "VPD": 70, "Existencia": 700, "Piso": 600, "Bodega": 100, "Posiciones": 10, "Inversión": 0, "% Piezas": 70, "% Venta": 75, "% Utilidad": 80},
+        {"Tienda": "A", "Tipo": "section", "Etiqueta": "NIÑA", "Sección": "", "VPD": 30, "Existencia": 300, "Piso": 250, "Bodega": 50, "Posiciones": 5, "Inversión": 0, "% Piezas": 30, "% Venta": 25, "% Utilidad": 20},
+    ])
+
+    result = _dimension_summary(frame, "Sección").set_index("Elemento")
+
+    assert result.loc["Dama", "% Part. piezas"] == 70
+    assert result.loc["Dama", "% Part. venta $"] == 75
+    assert result.loc["Dama", "% Part. utilidad"] == 80
+    assert result.loc["Infantil", "VPD"] == 30
+
+
+def test_scenario_models_filters_ranking_and_assigns_plain_language_action():
+    frame = pd.DataFrame([
+        {"Tienda": "A", "Escenario": "Sugerido / VPD", "Ranking": 1, "Sección": "Dama", "ID_ART": "100", "Modelo": "M1", "Rubro": "BLUSA", "Piso": 8, "Bodega": 2, "Existencia": 10, "VPD": 1, "DDI": 10, "Inversión": 0, "% Utilidad": 2, "% Venta": 3},
+        {"Tienda": "A", "Escenario": "Utilidad", "Ranking": 1, "Sección": "Dama", "ID_ART": "100", "Modelo": "M1", "Rubro": "BLUSA", "Piso": 8, "Bodega": 2, "Existencia": 10, "VPD": 1, "DDI": 10, "Inversión": 0, "% Utilidad": 5, "% Venta": 3},
+    ])
+
+    result = _scenario_models(frame, "Sugerido / VPD")
+
+    assert len(result) == 1
+    assert result.iloc[0]["Prioridad"] == "1 · Urgente"
+    assert result.iloc[0]["Acción"] == "Resurtir"
+    assert result.iloc[0]["Línea"] == "Blusa"

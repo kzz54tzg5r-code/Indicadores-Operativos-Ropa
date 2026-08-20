@@ -11,7 +11,7 @@ from commercial.ui import render_commercial_page
 pages = [*COMMERCIAL_PAGES, ADMIN_PAGE]
 requested_page = st.session_state.pop("nav_request", None)
 active_page = requested_page if requested_page in pages else os.environ.get(
-    "COMMERCIAL_SMOKE_PAGE", "Radiografía Comercial"
+    "COMMERCIAL_SMOKE_PAGE", "Mi Tienda Comercial"
 )
 st.session_state["nav_page"] = active_page
 

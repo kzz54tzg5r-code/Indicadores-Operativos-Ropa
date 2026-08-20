@@ -207,15 +207,19 @@ def _inject_styles() -> None:
 
 def render_commercial_sidebar(active_page: str, is_admin: bool = False) -> None:
     sidebar_labels = {
-        "Radiografía Comercial": "Radiografía",
-        "Catálogo Comercial": "Catálogo",
-        "Planeación Comercial": "Planeación",
-        "Histórico Comercial": "Histórico",
+        "Mi Tienda Comercial": "Mi tienda",
+        "Ventas Comerciales": "Qué vendo",
+        "Sugeridos Comerciales": "Qué resurtir",
+        "Modelos Comerciales": "Mis modelos",
+        "Utilidad Comercial": "Dinero y utilidad",
+        "Histórico Comercial": "Mi evolución",
     }
     sidebar_icons = {
-        "Radiografía Comercial": ":material/account_tree:",
-        "Catálogo Comercial": ":material/view_list:",
-        "Planeación Comercial": ":material/strategy:",
+        "Mi Tienda Comercial": ":material/store:",
+        "Ventas Comerciales": ":material/bar_chart:",
+        "Sugeridos Comerciales": ":material/inventory_2:",
+        "Modelos Comerciales": ":material/emoji_events:",
+        "Utilidad Comercial": ":material/paid:",
         "Histórico Comercial": ":material/history:",
     }
     with st.sidebar:
@@ -223,7 +227,7 @@ def render_commercial_sidebar(active_page: str, is_admin: bool = False) -> None:
         if logo.exists():
             st.image(str(logo), width=105)
         st.markdown("### Planeación Comercial")
-        st.caption("De compañía a modelo")
+        st.caption("Venta, sugerido y utilidad")
         for page_name in COMMERCIAL_PAGES:
             if st.button(
                 sidebar_labels.get(page_name, PAGE_LABELS[page_name]), key=f"commercial_side_{page_name}",
