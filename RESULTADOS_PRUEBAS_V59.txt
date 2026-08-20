@@ -1,0 +1,25 @@
+PS Operaciones Ropa V59 - Resultados de validación
+
+Fecha: 2026-08-20
+
+Pruebas automatizadas:
+- 30 pruebas aprobadas.
+- Participación de piezas, venta $ y utilidad separadas: aprobada.
+- Clasificación operativa del ranking Sugerido/VPD: aprobada.
+- Navegación macro a micro hasta Modelo/SKU: aprobada.
+- Persistencia incremental y reanudación de PDF: aprobada.
+
+Validación de interfaz Streamlit:
+- Mi Tienda Comercial: sin excepciones.
+- Ventas Comerciales: sin excepciones.
+- Sugeridos Comerciales: sin excepciones.
+- Modelos Comerciales: sin excepciones.
+- Utilidad Comercial: sin excepciones.
+- Histórico Comercial: sin excepciones.
+- Carga Comercial: sin excepciones.
+
+Fuente PDF de prueba:
+- Tienda reconocida: Iztapalapa.
+- Semana reconocida: 2024-W14.
+- Desglose disponible: sección, ubicación, línea y modelo.
+- Rankings disponibles: Sugerido/VPD, Utilidad, Baja rotación e Inversión.
