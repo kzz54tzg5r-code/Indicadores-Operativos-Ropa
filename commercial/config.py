@@ -25,7 +25,7 @@ COMMERCIAL_PAGES = (
 ADMIN_PAGE = "Carga Comercial"
 
 PAGE_LABELS = {
-    "Mi Tienda Comercial": "Mi tienda",
+    "Mi Tienda Comercial": "Macro compañía",
     "Ventas Comerciales": "Qué vendo",
     "Sugeridos Comerciales": "Qué resurtir",
     "Modelos Comerciales": "Mis modelos",

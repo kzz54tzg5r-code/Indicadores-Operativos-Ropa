@@ -791,36 +791,144 @@ def _model_summary(models: pd.DataFrame) -> pd.DataFrame:
     return _enrich_summary(summary, "ID_ART")
 
 
+def _company_catalog_summary(breakdowns: pd.DataFrame) -> pd.DataFrame:
+    """Estatus de catálogo a nivel compañía con las métricas publicadas por PDF."""
+    if breakdowns is None or breakdowns.empty:
+        return pd.DataFrame()
+    data = breakdowns[breakdowns.get("Tipo", pd.Series("", index=breakdowns.index)).eq("catalog")].copy()
+    if data.empty:
+        return pd.DataFrame()
+    data["Estatus catálogo"] = data.get("Etiqueta", pd.Series("Sin estatus", index=data.index)).fillna("Sin estatus").astype(str).str.strip().replace("", "Sin estatus")
+    summary = aggregate_pdf(data, "Estatus catálogo")
+    return _enrich_summary(summary, "Estatus catálogo").sort_values("VPD", ascending=False).reset_index(drop=True)
+
+
+def _company_rubro_ranking(breakdowns: pd.DataFrame) -> pd.DataFrame:
+    """Ranking compañía de rubros, usando VPD como venta diaria sugerida publicada."""
+    if breakdowns is None or breakdowns.empty:
+        return pd.DataFrame()
+    data = breakdowns[breakdowns.get("Tipo", pd.Series("", index=breakdowns.index)).eq("rubro")].copy()
+    if data.empty:
+        return pd.DataFrame()
+    data["Rubro"] = data.get("Etiqueta", pd.Series("Sin rubro", index=data.index)).fillna("Sin rubro").astype(str).str.strip().str.title().replace("", "Sin rubro")
+    summary = aggregate_pdf(data, "Rubro")
+    summary = _enrich_summary(summary, "Rubro").sort_values(["VPD", "Existencia"], ascending=[False, False]).reset_index(drop=True)
+    summary.insert(0, "Ranking", np.arange(1, len(summary) + 1))
+    return summary
+
+
+def _company_model_ranking(models: pd.DataFrame, *, slow: bool = False) -> pd.DataFrame:
+    """Consolida modelos compañía evitando duplicarlos entre escenarios del PDF."""
+    if models is None or models.empty:
+        return pd.DataFrame()
+    scenario = "Baja rotación" if slow else "Sugerido / VPD"
+    data = models[models.get("Escenario", pd.Series("", index=models.index)).astype(str).eq(scenario)].copy()
+    if data.empty:
+        return pd.DataFrame()
+    for column in ("VPD", "Existencia", "Piso", "Bodega", "DDI", "% Venta", "% Utilidad"):
+        data[column] = pd.to_numeric(data.get(column, 0), errors="coerce").fillna(0)
+    data["Categoría"] = _section_values(data)
+    data["Rubro"] = data.get("Rubro", pd.Series("", index=data.index)).fillna("").astype(str).str.title()
+    # Un modelo puede aparecer en varias tiendas; el ranking compañía suma sus métricas.
+    group_cols = [c for c in ("ID_ART", "Modelo", "Marca", "Categoría", "Rubro") if c in data]
+    out = data.groupby(group_cols, as_index=False, dropna=False).agg({
+        "VPD": "sum", "Existencia": "sum", "Piso": "sum", "Bodega": "sum",
+        "% Venta": "mean", "% Utilidad": "mean",
+    })
+    out["DDI"] = out["Existencia"].div(out["VPD"].replace(0, np.nan)).fillna(0)
+    out["% Part. sugerido"] = out["VPD"].div(out["VPD"].sum() or np.nan).mul(100).fillna(0)
+    if slow:
+        # Los de menor movimiento primero; ante empate, más inventario tiene mayor prioridad.
+        out = out.sort_values(["VPD", "Existencia"], ascending=[True, False]).head(20).reset_index(drop=True)
+    else:
+        out = out.sort_values(["VPD", "Existencia"], ascending=[False, False]).head(50).reset_index(drop=True)
+    out.insert(0, "Ranking", np.arange(1, len(out) + 1))
+    return out
+
+
 def _render_company_level(bundle: dict, scope: dict, stores: pd.DataFrame, breakdowns: pd.DataFrame, models: pd.DataFrame) -> None:
     if stores.empty:
         _no_data(); return
     total = _totals(stores)
-    floor_share = total["Piso"] / total["Existencia"] * 100 if total["Existencia"] else 0
-    warehouse_share = total["Bodega"] / total["Existencia"] * 100 if total["Existencia"] else 0
+    existence = float(total.get("Existencia", 0))
+    floor = float(total.get("Piso", 0))
+    warehouse = float(total.get("Bodega", 0))
+    vpd = float(total.get("VPD", 0))
+    floor_share = floor / existence * 100 if existence else 0
+    warehouse_share = warehouse / existence * 100 if existence else 0
+    ddi = existence / vpd if vpd else 0
+
+    st.markdown('<div class="ac-section">1 · Macro de toda la compañía</div>', unsafe_allow_html=True)
     _kpis([
-        ("Tiendas con información", f'{stores["Tienda"].nunique()} / 17', scope["week"], BLUE),
-        ("Inventario total", _number(total["Existencia"]), "Piezas reportadas", PURPLE),
-        ("Piso de venta", _number(total["Piso"]), _percent(floor_share), GREEN),
-        ("Bodega", _number(total["Bodega"]), _percent(warehouse_share), ORANGE),
-        ("Venta diaria sugerida", _number(total["VPD"]), "Dato del PDF", CYAN),
-        ("Días de inventario", f'{total["DDI"]:.0f}', "Cobertura estimada", PINK),
-        ("Posiciones", _number(total["Posiciones"]), "Espacio reportado", BLUE),
-        ("Venta en pesos", "Información no disponible", "Requiere fuente de ventas", RED),
-    ], 8)
-    metrics = {"Inventario": "Existencia", "Piso": "Piso", "Bodega": "Bodega", "Venta diaria sugerida": "VPD", "Días de inventario": "DDI", "Posiciones": "Posiciones"}
-    metric_label = st.selectbox("Métrica del comparativo de tiendas", list(metrics), key="commercial_compare_metric")
+        ("Cía. Sug. / VPD", _number(vpd), "Piezas promedio por día", CYAN),
+        ("Existencia compañía", _number(existence), "Piezas totales", PURPLE),
+        ("Piso de venta", _number(floor), _percent(floor_share) + " de la existencia", GREEN),
+        ("Bodega", _number(warehouse), _percent(warehouse_share) + " de la existencia", ORANGE),
+        ("Días de inventario", f"{ddi:.0f}", _coverage_meaning(ddi), PINK),
+        ("Tiendas reportadas", f'{stores["Tienda"].nunique()} / 17', scope["week"], BLUE),
+    ], 6)
+
+    # Única gráfica ejecutiva: comparación entre tiendas.
+    st.markdown('<div class="ac-section">Comparativo de tiendas</div>', unsafe_allow_html=True)
+    metrics = {"Cía. Sug. / VPD": "VPD", "Existencia": "Existencia", "Piso": "Piso", "Bodega": "Bodega", "Días de inventario": "DDI"}
+    metric_label = st.segmented_control("Métrica", list(metrics), default="Cía. Sug. / VPD", key="commercial_compare_metric") or "Cía. Sug. / VPD"
     metric = metrics[metric_label]
     chart = stores.sort_values(metric)
     colors = chart["Estatus"].map({"Óptimo": GREEN, "Atención": ORANGE, "Crítico": RED}).fillna(BLUE)
-    fig = go.Figure(go.Bar(y=chart["Tienda"], x=chart[metric], orientation="h", marker_color=colors, text=chart[metric].map(lambda value: f"{value:,.1f}"), textposition="outside"))
-    fig.update_layout(title=f"Comparativo de tiendas · {metric_label}", xaxis_title=metric_label, yaxis_title="", showlegend=False)
-    _plot(fig, max(390, len(chart) * 30 + 110))
-    master = _enrich_summary(stores, "Tienda")
-    master = master.rename(columns={"VPD": "Venta diaria sugerida", "DDI": "Días de inventario"})
-    columns = ["Tienda", "Estado", "Existencia", "Piso", "Bodega", "% Piso", "% Bodega", "% Inventario", "% Venta sugerida", "Venta diaria sugerida", "Días de inventario", "Posiciones", "Productividad espacio", "Acción"]
-    st.markdown('<div class="ac-section">Tabla maestra de tiendas</div>', unsafe_allow_html=True)
-    _decision_table(master[[column for column in columns if column in master]], status_columns=("Estado", "Acción"), height=470)
-    st.caption("Selecciona una tienda en el filtro superior para continuar con su radiografía.")
+    fig = go.Figure(go.Bar(
+        y=chart["Tienda"], x=chart[metric], orientation="h", marker_color=colors,
+        text=chart[metric].map(lambda value: f"{value:,.1f}"), textposition="outside",
+    ))
+    fig.update_layout(title=f"Compañía por tienda · {metric_label}", xaxis_title=metric_label, yaxis_title="", showlegend=False)
+    _plot(fig, max(390, len(chart) * 29 + 100))
+
+    st.markdown('<div class="ac-section">2 · Radiografía compañía por sección</div>', unsafe_allow_html=True)
+    sections = _dimension_summary(breakdowns, "Sección")
+    if sections.empty:
+        st.info("El PDF no contiene desglose por sección para este corte.")
+    else:
+        sec = sections.rename(columns={"Elemento": "Sección", "VPD": "Cía. Sug. / VPD", "DDI": "Días inventario"})
+        sec["% Piso"] = sec["Piso"].div(sec["Existencia"].replace(0, np.nan)).mul(100).fillna(0)
+        sec["% Bodega"] = sec["Bodega"].div(sec["Existencia"].replace(0, np.nan)).mul(100).fillna(0)
+        sec_cols = ["Sección", "Cía. Sug. / VPD", "% Part. piezas", "Existencia", "Piso", "% Piso", "Bodega", "% Bodega", "Días inventario", "Estado", "Acción"]
+        _decision_table(sec[[c for c in sec_cols if c in sec]], status_columns=("Estado", "Acción"), height=360)
+
+    st.markdown('<div class="ac-section">3 · Estatus de catálogo · compañía</div>', unsafe_allow_html=True)
+    catalog = _company_catalog_summary(breakdowns)
+    if catalog.empty:
+        st.info("El PDF no contiene estatus de catálogo para este corte.")
+    else:
+        cat = catalog.rename(columns={"VPD": "Cía. Sug. / VPD", "DDI": "Días inventario"})
+        cat_cols = ["Estatus catálogo", "Cía. Sug. / VPD", "% Venta sugerida", "Existencia", "Piso", "Bodega", "Días inventario", "Estado", "Acción"]
+        _decision_table(cat[[c for c in cat_cols if c in cat]], status_columns=("Estado", "Acción"), height=310)
+
+    st.markdown('<div class="ac-section">4 · Ranking de rubros · compañía</div>', unsafe_allow_html=True)
+    rubros = _company_rubro_ranking(breakdowns)
+    if rubros.empty:
+        st.info("El PDF no contiene información por rubro para este corte.")
+    else:
+        rub = rubros.rename(columns={"VPD": "Cía. Sug. / VPD", "DDI": "Días inventario"})
+        rub_cols = ["Ranking", "Rubro", "Cía. Sug. / VPD", "% Venta sugerida", "Existencia", "Piso", "Bodega", "Días inventario", "Estado", "Acción"]
+        _decision_table(rub[[c for c in rub_cols if c in rub]], status_columns=("Estado", "Acción"), height=470)
+
+    st.markdown('<div class="ac-section">5 · Top 50 modelos con mayor movimiento · compañía</div>', unsafe_allow_html=True)
+    top = _company_model_ranking(models, slow=False)
+    if top.empty:
+        st.info("El PDF no publicó modelos dentro del ranking Sugerido / VPD para este corte.")
+    else:
+        top = top.rename(columns={"VPD": "Cía. Sug. / VPD", "DDI": "Días inventario", "Rubro": "Rubro / Línea", "% Venta": "% Part. venta $"})
+        top_cols = ["Ranking", "ID_ART", "Modelo", "Marca", "Categoría", "Rubro / Línea", "Cía. Sug. / VPD", "% Part. sugerido", "% Part. venta $", "Existencia", "Piso", "Bodega", "Días inventario"]
+        _decision_table(top[[c for c in top_cols if c in top]], height=610)
+        st.caption("El orden usa Sugerido / VPD publicado en los PDF como indicador de movimiento. No se convierte a venta en pesos si la fuente no contiene el importe base.")
+
+    st.markdown('<div class="ac-section">6 · Bottom 20 modelos con menor movimiento · compañía</div>', unsafe_allow_html=True)
+    bottom = _company_model_ranking(models, slow=True)
+    if bottom.empty:
+        st.info("El PDF no publicó modelos dentro del ranking Baja rotación para este corte.")
+    else:
+        bottom = bottom.rename(columns={"VPD": "Cía. Sug. / VPD", "DDI": "Días inventario", "Rubro": "Rubro / Línea", "% Venta": "% Part. venta $"})
+        bottom_cols = ["Ranking", "ID_ART", "Modelo", "Marca", "Categoría", "Rubro / Línea", "Cía. Sug. / VPD", "% Part. venta $", "Existencia", "Piso", "Bodega", "Días inventario"]
+        _decision_table(bottom[[c for c in bottom_cols if c in bottom]], height=470)
 
 
 def _render_store_level(scope: dict, stores: pd.DataFrame, breakdowns: pd.DataFrame, models: pd.DataFrame) -> None:
@@ -935,7 +1043,7 @@ def _render_model_level(bundle: dict, scope: dict, models: pd.DataFrame) -> None
 
 
 def _page_radiography(bundle: dict) -> None:
-    _header("Radiografía Comercial", "Compañía → Tienda → Categoría → Línea → Modelo", bundle)
+    _header("Planeación Comercial · Macro Compañía", "Compañía → Sección → Catálogo → Rubro → Modelo", bundle)
     st.markdown('<div class="ac-source-note">La vista muestra exclusivamente información publicada en los PDF. Los campos que requieren ventas, capacidad o existencias futuras se identifican como <b>Información no disponible</b>.</div>', unsafe_allow_html=True)
     scope = _global_scope(bundle)
     _breadcrumb(scope)
@@ -1581,7 +1689,7 @@ def _page_upload(bundle: dict, is_admin: bool) -> None:
 
 def render_pdf_page(page: str, bundle: dict, is_admin: bool) -> None:
     routes = {
-        "Mi Tienda Comercial": _page_store_home,
+        "Mi Tienda Comercial": _page_radiography,
         "Ventas Comerciales": _page_sales_focus,
         "Sugeridos Comerciales": _page_restock_focus,
         "Modelos Comerciales": _page_models_focus,
