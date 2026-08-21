@@ -12121,7 +12121,7 @@ h1,h2,h3{color:#172B4D!important}.footer{opacity:.72!important}
 @media(max-width:360px){.v25-kpi-grid{grid-template-columns:1fr!important}}
 </style>
 ''', unsafe_allow_html=True)
-st.caption("PS Operaciones Ropa · V68 · Planeación Comercial Mobile")
+st.caption("PS Operaciones Ropa · V69 · ORION Mobile")
 
 # V53: shell visual del proyecto comercial. Esta regla es la última capa CSS
 # para neutralizar los estilos heredados que ocultaban el sidebar en V52.
@@ -12158,13 +12158,20 @@ if st.session_state.get("active_app") == "Ventas y Análisis Comercial":
         unsafe_allow_html=True,
     )
 
-# V68: navegación móvil comercial autoritativa + densidad de KPIs.
+# V69: navegación inferior tipo app + densidad de KPIs y tablas móviles.
 if st.session_state.get("active_app") == "Ventas y Análisis Comercial":
     st.markdown(
         """
         <style>
-        /* El selector móvil es la navegación primaria en teléfonos/tablets. */
+        /* La barra inferior es la navegación primaria en teléfonos/tablets. */
         .st-key-commercial_mobile_nav{display:none!important;}
+        .ac-more-card{
+          min-height:82px;background:#fff;border:1px solid #DCE5F1;border-radius:13px;
+          padding:14px 15px;margin:4px 0 7px;box-shadow:0 4px 14px rgba(23,59,115,.05);
+        }
+        .ac-more-card b{display:block;color:#173B73;font-size:15px;margin-bottom:6px;}
+        .ac-more-card span{display:block;color:#667085;font-size:11px;line-height:1.35;}
+        .ac-more-card-muted{opacity:.68;}
         @media(max-width:900px){
           [data-testid="stSidebar"],
           [data-testid="stSidebarCollapsedControl"],
@@ -12173,21 +12180,54 @@ if st.session_state.get("active_app") == "Ventas y Análisis Comercial":
             width:0!important;min-width:0!important;max-width:0!important;
           }
           [data-testid="stMain"]{margin-left:0!important;width:100%!important;max-width:100%!important;}
+          [data-testid="stMainBlockContainer"],.block-container{
+            padding:.35rem 9px calc(82px + env(safe-area-inset-bottom))!important;
+          }
           .st-key-commercial_mobile_nav{
             display:block!important;visibility:visible!important;opacity:1!important;
-            position:sticky!important;top:4px!important;z-index:2200!important;
-            background:rgba(244,247,251,.96)!important;backdrop-filter:blur(10px)!important;
-            padding:5px 0 7px!important;margin:0 0 5px!important;
+            position:fixed!important;left:0!important;right:0!important;bottom:0!important;top:auto!important;
+            z-index:2200!important;background:rgba(255,255,255,.97)!important;
+            backdrop-filter:blur(12px)!important;border-top:1px solid #D8E1EE!important;
+            box-shadow:0 -7px 22px rgba(16,46,99,.10)!important;
+            padding:5px 7px calc(5px + env(safe-area-inset-bottom))!important;margin:0!important;
           }
-          .st-key-commercial_mobile_nav .ac-mobile-menu-title{
-            font-size:10px!important;font-weight:900!important;letter-spacing:.45px!important;
-            text-transform:uppercase!important;color:#173B73!important;margin:0 0 4px 2px!important;
+          .st-key-commercial_mobile_nav [data-testid="stRadio"]{margin:0!important;padding:0!important;}
+          .st-key-commercial_mobile_nav [role="radiogroup"]{
+            display:grid!important;grid-template-columns:repeat(5,minmax(0,1fr))!important;
+            width:100%!important;gap:3px!important;align-items:stretch!important;
           }
-          .st-key-commercial_mobile_nav [data-testid="stSelectbox"]{min-width:0!important;width:100%!important;}
-          .st-key-commercial_mobile_nav [data-baseweb="select"]>div{
-            min-height:42px!important;height:42px!important;border:1px solid #C9D8EE!important;
-            border-radius:11px!important;background:#fff!important;box-shadow:0 3px 10px rgba(23,59,115,.06)!important;
+          .st-key-commercial_mobile_nav [role="radiogroup"] label{
+            display:flex!important;align-items:center!important;justify-content:center!important;
+            min-width:0!important;width:100%!important;min-height:50px!important;margin:0!important;
+            padding:5px 2px!important;border:0!important;border-radius:10px!important;
+            background:transparent!important;color:#667085!important;text-align:center!important;
+            font-size:9px!important;line-height:1.15!important;font-weight:800!important;white-space:normal!important;
           }
+          .st-key-commercial_mobile_nav [role="radiogroup"] label>div:first-child,
+          .st-key-commercial_mobile_nav [role="radiogroup"] input{display:none!important;}
+          .st-key-commercial_mobile_nav [role="radiogroup"] label:has(input:checked){
+            background:#EAF2FF!important;color:#155BEF!important;box-shadow:inset 0 3px 0 #155BEF!important;
+          }
+          .st-key-commercial_mobile_nav [role="radiogroup"] label *{
+            color:inherit!important;font-size:inherit!important;font-weight:inherit!important;white-space:normal!important;
+          }
+          .ac-header{padding:10px 11px!important;border-radius:12px!important;margin-bottom:7px!important;gap:7px!important;}
+          .ac-title{font-size:18px!important;line-height:1.05!important;}
+          .ac-subtitle{font-size:9px!important;line-height:1.25!important;margin-top:4px!important;}
+          .ac-status{gap:4px!important;}
+          .ac-pill{font-size:8px!important;padding:5px 7px!important;}
+          .ac-updated{display:none!important;}
+          .st-key-commercial_global_filters [data-testid="stHorizontalBlock"]{
+            display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:7px!important;
+          }
+          .st-key-commercial_global_filters [data-testid="stColumn"]{
+            min-width:0!important;width:auto!important;flex:none!important;
+          }
+          .st-key-commercial_global_filters [data-testid="stSelectbox"]{min-width:0!important;}
+          .st-key-commercial_global_filters [data-baseweb="select"]>div{min-height:39px!important;}
+          .st-key-commercial_global_filters label{font-size:8px!important;}
+          .st-key-commercial_more_actions [data-testid="stHorizontalBlock"]{display:block!important;}
+          .st-key-commercial_more_actions [data-testid="stColumn"]{width:100%!important;min-width:0!important;}
         }
         @media(max-width:700px){
           /* Siempre dos KPIs por fila en móviles comunes. */
@@ -12199,10 +12239,23 @@ if st.session_state.get("active_app") == "Ventas y Análisis Comercial":
           .ac-section{font-size:15px!important;margin:7px 0 7px!important;}
           .ac-breadcrumb{padding:6px 8px!important;margin:5px 0 7px!important;gap:5px!important;}
           .ac-crumb{font-size:9px!important;}
+          .ac-table-scroll{display:none!important;}
+          .ac-mobile-cards{display:grid!important;grid-template-columns:1fr!important;gap:8px!important;margin:5px 0 12px!important;}
+          .ac-mobile-card{background:#fff;border:1px solid #DCE5F1;border-radius:12px;padding:10px;box-shadow:0 3px 11px rgba(23,59,115,.045);}
+          .ac-mobile-card-head{display:flex;justify-content:space-between;align-items:flex-start;gap:8px;padding-bottom:8px;border-bottom:1px solid #EDF1F6;}
+          .ac-mobile-card-head>div{min-width:0;}
+          .ac-mobile-card-title{display:block;color:#173B73;font-size:13px;line-height:1.2;overflow-wrap:anywhere;}
+          .ac-mobile-card-head small{display:block;color:#667085;font-size:8.5px;line-height:1.25;margin-top:4px;overflow-wrap:anywhere;}
+          .ac-mobile-rank{display:inline-block;color:#155BEF;background:#EAF2FF;border-radius:999px;padding:2px 6px;margin:0 5px 3px 0;font-size:8px;font-weight:900;}
+          .ac-mobile-badge{display:inline-block;border-radius:999px!important;padding:4px 7px!important;font-size:8px!important;white-space:nowrap;}
+          .ac-mobile-card-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px;margin-top:8px;}
+          .ac-mobile-field{min-width:0;background:#F7F9FC;border-radius:8px;padding:6px 7px;}
+          .ac-mobile-field span{display:block;color:#7B8794;font-size:7.5px;line-height:1.15;text-transform:uppercase;font-weight:800;overflow-wrap:anywhere;}
+          .ac-mobile-field strong{display:block;color:#173B73;font-size:11px;line-height:1.15;margin-top:4px;overflow-wrap:anywhere;}
+          .stPlotlyChart,.js-plotly-plot,.plot-container{touch-action:pan-y!important;overscroll-behavior:contain!important;}
         }
         @media(max-width:330px){.ac-kpis{grid-template-columns:1fr!important;}}
         </style>
         """,
         unsafe_allow_html=True,
     )
-

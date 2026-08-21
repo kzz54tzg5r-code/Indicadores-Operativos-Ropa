@@ -4,8 +4,8 @@ Plataforma Integral de Gestión Operativa del área de Operaciones Ropa.
 
 ## Versión
 
-- Versión: `V59`
-- Build: `Planeación Comercial · vistas operativas de tienda`
+- Versión: `V69`
+- Build: `ORION Mobile · navegación inferior y tarjetas de decisión`
 
 ## Ejecutar localmente
 
@@ -24,6 +24,9 @@ streamlit run app.py
 ## Módulos existentes
 
 - Planeación Comercial con navegación continua: Compañía → Tienda → Categoría → Línea → Modelo.
+- Barra inferior móvil: Inicio, Tiendas, Secciones, Modelos y Más.
+- Tablas convertidas automáticamente en tarjetas compactas en teléfonos.
+- Filtros globales persistentes entre las pantallas comerciales.
 - Menú operativo: Mi tienda, Qué vendo, Qué resurtir, Mis modelos, Dinero y utilidad, Mi evolución y Carga PDF para administrador.
 - Filtros globales persistentes y breadcrumb para conservar el contexto.
 - Diseño concentrado en tarjetas compactas, tablas maestras, semáforos y una sola gráfica comparativa a nivel compañía.
