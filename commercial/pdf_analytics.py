@@ -74,10 +74,28 @@ def aggregate_pdf(frame: pd.DataFrame, group_column: str) -> pd.DataFrame:
         if column in frame
     ]
     out = frame.groupby(group_column, as_index=False)[sum_columns].sum()
-    out["DDI"] = out.get("Existencia", 0).div(out.get("VPD", 0).replace(0, np.nan)).fillna(0)
-    out["DDC"] = out.get("Curva", 0).div(out.get("VPD", 0).replace(0, np.nan)).fillna(0)
-    out["Bodega %"] = out.get("Bodega", 0).div(out.get("Existencia", 0).replace(0, np.nan)).mul(100).fillna(0)
-    out["VPD/posición"] = out.get("VPD", 0).div(out.get("Posiciones", 0).replace(0, np.nan)).fillna(0)
+    # Los porcentajes publicados no se suman. Se consolidan ponderados por el
+    # sugerido para conservar el valor comercial de utilidad, piezas y venta.
+    weights = pd.to_numeric(frame.get("VPD", pd.Series(0, index=frame.index)), errors="coerce").fillna(0)
+    for percentage in ("% Utilidad", "% Piezas", "% Venta"):
+        if percentage not in frame:
+            continue
+        values = pd.to_numeric(frame[percentage], errors="coerce").fillna(0)
+        weighted = (values * weights).groupby(frame[group_column]).sum()
+        denominator = weights.groupby(frame[group_column]).sum().replace(0, np.nan)
+        fallback = values.groupby(frame[group_column]).mean()
+        consolidated = weighted.div(denominator).fillna(fallback).fillna(0)
+        out[percentage] = out[group_column].map(consolidated).fillna(0)
+    zero = pd.Series(0.0, index=out.index)
+    existence = out.get("Existencia", zero)
+    suggested = out.get("VPD", zero)
+    curve = out.get("Curva", zero)
+    warehouse = out.get("Bodega", zero)
+    positions = out.get("Posiciones", zero)
+    out["DDI"] = existence.div(suggested.replace(0, np.nan)).fillna(0)
+    out["DDC"] = curve.div(suggested.replace(0, np.nan)).fillna(0)
+    out["Bodega %"] = warehouse.div(existence.replace(0, np.nan)).mul(100).fillna(0)
+    out["VPD/posición"] = suggested.div(positions.replace(0, np.nan)).fillna(0)
     return out
 
 

@@ -278,11 +278,11 @@ def render_commercial_mobile_nav(active_page: str, is_admin: bool = False) -> No
     """Barra inferior móvil con las cinco decisiones principales de ORION."""
     options = list(COMMERCIAL_PRIMARY_PAGES)
     labels = {
-        "Mi Tienda Comercial": "⌂ Inicio",
-        "Ventas Comerciales": "▥ Tiendas",
-        "Sugeridos Comerciales": "◫ Secciones",
-        "Modelos Comerciales": "◇ Modelos",
-        MORE_PAGE: "••• Más",
+        "Mi Tienda Comercial": "Inicio",
+        "Ventas Comerciales": "Tiendas",
+        "Sugeridos Comerciales": "Sección",
+        "Modelos Comerciales": "Modelos",
+        MORE_PAGE: "Más",
     }
     state_key = "commercial_mobile_bottom_nav"
     active_option = active_page if active_page in options else MORE_PAGE
@@ -949,7 +949,6 @@ def _page_upload(bundle: dict, is_admin: bool) -> None:
 def render_commercial_page(page: str, existing_sales=None, is_admin: bool = False) -> None:
     _inject_styles()
     render_commercial_sidebar(page, is_admin=is_admin)
-    render_commercial_mobile_nav(page, is_admin=is_admin)
     if "commercial_cloud_bootstrap" not in st.session_state:
         st.session_state["commercial_cloud_bootstrap"] = restore_history_from_cloud()
         if st.session_state["commercial_cloud_bootstrap"].get("restored"):
@@ -958,3 +957,6 @@ def render_commercial_page(page: str, existing_sales=None, is_admin: bool = Fals
         bundle = _load_bundle(existing_sales)
     from .pdf_pages import render_pdf_page
     render_pdf_page(page, bundle, is_admin)
+    # Se crea al final para que el contenedor fijado no reserve un espacio
+    # vacío antes del contenido en Safari móvil.
+    render_commercial_mobile_nav(page, is_admin=is_admin)
