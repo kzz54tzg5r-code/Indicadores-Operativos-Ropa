@@ -146,6 +146,12 @@ def _inject_styles() -> None:
         .ac-filter-caption{{font-size:10px;color:{MUTED};margin:-2px 0 4px}}
         div[data-testid="stRadio"] [role="radiogroup"]{{gap:6px!important;flex-wrap:wrap!important}}div[data-testid="stRadio"] [role="radiogroup"] label{{background:#fff;border:1px solid #D9E2EF;border-radius:999px;padding:7px 14px!important}}div[data-testid="stRadio"] [role="radiogroup"] label>div:first-child{{display:none!important}}div[data-testid="stRadio"] [role="radiogroup"] label:has(input:checked){{background:{BLUE}!important;color:#fff!important;border-color:{BLUE}!important}}
         [data-testid="stDataFrame"]{{border:1px solid #E1E7F0;border-radius:12px;overflow:hidden}}.stPlotlyChart{{border:1px solid #E1E7F0!important;border-radius:13px!important;background:#fff!important;box-shadow:none!important}}
+        .ac-table-scroll{{width:100%;overflow:auto;border:1px solid #D8E0EC;border-radius:12px;background:#fff;margin:4px 0 12px}}
+        .ac-decision-table{{width:100%;border-collapse:separate;border-spacing:0;min-width:max-content;font-size:12px;color:#173B73}}
+        .ac-decision-table thead th{{position:sticky;top:0;z-index:3;background:#173B73!important;color:#FFFFFF!important;font-weight:850;text-align:left;padding:11px 12px;border-right:1px solid rgba(255,255,255,.18);white-space:nowrap}}
+        .ac-decision-table tbody td{{padding:10px 12px;border-right:1px solid #E5EAF1;border-bottom:1px solid #E5EAF1;white-space:nowrap;background:#fff}}
+        .ac-decision-table tbody tr:nth-child(even) td{{background:#F8FAFD}}
+        .ac-decision-table tbody tr:hover td{{background:#EEF4FF}}
         /* Shell lateral comercial. Los selectores deliberadamente incluyen el
            marcador para superar las reglas globales que usan !important. */
         body [data-testid="stAppViewContainer"]:has(.ac-shell-marker) section[data-testid="stSidebar"]{{

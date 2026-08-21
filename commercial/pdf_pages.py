@@ -261,48 +261,53 @@ def _table_style(frame: pd.DataFrame, status_columns=()):
 
 
 def _decision_table(frame: pd.DataFrame, *, status_columns=(), height=360) -> None:
+    """Tabla comercial con encabezado azul corporativo garantizado."""
     if frame is None or frame.empty:
         st.info("No hay registros para el alcance seleccionado.")
         return
 
-    # Formato de PRESENTACIÓN: Streamlit puede ignorar el formato numérico de
-    # pandas.Styler en algunas versiones. Convertimos una copia a texto para
-    # garantizar que nunca se muestren floats crudos (102301.000000).
-    display = frame.copy()
-    display = display.rename(columns={"Sug": "Sug 7"})
+    display = frame.copy().rename(columns={"Sug": "Sug 7"})
 
-    for column in display.columns:
-        if not pd.api.types.is_numeric_dtype(display[column]):
-            continue
+    def fmt_value(column, value):
+        if pd.isna(value):
+            return ""
         name = str(column).strip().lower()
-        values = pd.to_numeric(display[column], errors="coerce")
-        if "%" in str(column) or "porcentaje" in name:
-            display[column] = values.map(lambda v: "" if pd.isna(v) else f"{v:,.1f}%")
-        elif any(token in name for token in ("inversión", "inversion", "venta $", "ventas $", "importe", "costo", "monto", "pesos", "$")):
-            display[column] = values.map(lambda v: "" if pd.isna(v) else f"${v:,.0f}")
-        else:
-            display[column] = values.map(lambda v: "" if pd.isna(v) else f"{v:,.0f}")
+        if isinstance(value, (int, float, np.integer, np.floating)):
+            number = float(value)
+            if "%" in str(column) or "porcentaje" in name:
+                return f"{number:,.1f}%"
+            if any(token in name for token in ("inversión", "inversion", "venta $", "ventas $", "importe", "costo", "monto", "pesos", "$")):
+                return f"${number:,.0f}"
+            return f"{number:,.0f}"
+        return str(value)
 
-    def paint(value):
-        text = str(value).lower()
+    def status_style(text):
+        text = str(text).lower()
         if any(word in text for word in ("óptimo", "impulsar", "saludable", "bien")):
-            return "background-color:#DCFCE7;color:#14532D;font-weight:700"
-        if any(word in text for word in ("atención", "mantener", "revisar")):
-            return "background-color:#FEF3C7;color:#92400E;font-weight:700"
-        if any(word in text for word in ("crítico", "reducir", "riesgo")):
-            return "background-color:#FEE2E2;color:#991B1B;font-weight:700"
+            return "background:#DCFCE7;color:#14532D;font-weight:800;"
+        if any(word in text for word in ("atención", "mantener", "revisar", "media")):
+            return "background:#FEF3C7;color:#92400E;font-weight:800;"
+        if any(word in text for word in ("crítico", "reducir", "riesgo", "alta")):
+            return "background:#FEE2E2;color:#991B1B;font-weight:800;"
         return ""
 
-    styler = display.style.set_table_styles([
-        {"selector": "th", "props": [("background-color", "#173B73"), ("color", "#FFFFFF"), ("font-weight", "800"), ("border-color", "#D8E0EC")]},
-        {"selector": "th:hover", "props": [("background-color", "#173B73"), ("color", "#FFFFFF")]},
-        {"selector": "td", "props": [("border-bottom", "1px solid #E5EAF1")]},
-    ])
-    for column in status_columns:
-        if column in display:
-            styler = styler.map(paint, subset=[column])
-    st.dataframe(styler, width="stretch", height=height, hide_index=True)
+    headers = "".join(f"<th>{html.escape(str(c))}</th>" for c in display.columns)
+    body = []
+    status_set = set(status_columns or ())
+    for _, row in display.iterrows():
+        cells = []
+        for col in display.columns:
+            text = fmt_value(col, row[col])
+            style = status_style(text) if col in status_set else ""
+            cells.append(f'<td style="{style}">{html.escape(text)}</td>')
+        body.append("<tr>" + "".join(cells) + "</tr>")
 
+    table_html = (
+        f'<div class="ac-table-scroll" style="max-height:{int(height)}px">'
+        f'<table class="ac-decision-table"><thead><tr>{headers}</tr></thead>'
+        f'<tbody>{"".join(body)}</tbody></table></div>'
+    )
+    st.markdown("".join(table_html), unsafe_allow_html=True)
 
 def _plain_opportunities(data: pd.DataFrame) -> pd.DataFrame:
     if data is None or data.empty:
@@ -1881,29 +1886,67 @@ def _page_location_v61(bundle: dict) -> None:
         area_summary.insert(0,'#',range(1,len(area_summary)+1))
         _decision_table(area_summary[[c for c in ['#','Área','Sug 7','Existencia','Piso','Bodega','DDI','Posiciones'] if c in area_summary]],height=300)
 
-    # Tabla física independiente: mesas/racks/pasillos, siempre mayor → menor Sug 7.
-    st.markdown('<div class="ac-section">Mesas, racks y pasillos</div>',unsafe_allow_html=True)
+    # Tabla de ubicaciones operativas. Mesa y Pasillo se toman del detalle
+    # físico; Jeans y Lencería también aprovechan el corte por ubicación cuando
+    # el PDF no publica una mesa/pasillo específico para esos grupos.
+    st.markdown('<div class="ac-section">Ubicaciones físicas</div>',unsafe_allow_html=True)
     physical=breakdowns[breakdowns['Tipo'].eq('physical_location')].copy()
-    if physical.empty:
-        st.info('Este corte no contiene el detalle físico de mesas/racks/pasillos. Los nuevos PDF se extraerán automáticamente al cargarlos.')
-    else:
-        physical['Área']=physical.get('Sección detalle',pd.Series('',index=physical.index)).astype(str)
-        if area!='Todas':
-            target='Jeans / Doblado Mezclilla' if area=='Jeans / Doblado Mezclilla' else area
-            physical=physical[physical['Área'].eq(target)]
-        if physical.empty:
-            st.info(f'No hay mesas/racks/pasillos para {area} en el alcance seleccionado.')
+    location_rows=breakdowns[breakdowns['Tipo'].eq('location')].copy()
+
+    physical_filter=st.segmented_control(
+        'Filtrar ubicación física',
+        ['Todas','Mesa','Pasillo','Jeans','Lencería'],
+        default='Todas',
+        key='v65_physical_filter'
+    ) or 'Todas'
+
+    detail_source=pd.DataFrame()
+    if physical_filter in ('Todas','Mesa','Pasillo') and not physical.empty:
+        ph=physical.copy()
+        labels=ph.get('Etiqueta',pd.Series('',index=ph.index)).fillna('').astype(str)
+        ph['Tipo físico']=np.select(
+            [labels.str.contains('MESA',case=False,regex=False),labels.str.contains('PASIL',case=False,regex=False)],
+            ['Mesa','Pasillo'],default='Otro'
+        )
+        if physical_filter!='Todas':
+            ph=ph[ph['Tipo físico'].eq(physical_filter)]
         else:
-            detail=aggregate_pdf(physical,'Etiqueta').rename(columns={'Etiqueta':'Mesa / Pasillo','VPD':'Sug 7'})
-            detail=detail.sort_values(['Sug 7','Existencia'],ascending=[False,False]).reset_index(drop=True)
-            detail.insert(0,'#',range(1,len(detail)+1))
-            _decision_table(detail[[c for c in ['#','Mesa / Pasillo','Sug 7','Existencia','Piso','Bodega','DDI','Posiciones'] if c in detail]],height=620)
-            st.caption('Ordenado de mayor a menor Sug 7. Al elegir una tienda, sólo se muestran sus mesas/racks/pasillos.')
+            ph=ph[ph['Tipo físico'].isin(['Mesa','Pasillo'])]
+        detail_source=ph
+
+    if physical_filter in ('Jeans','Lencería'):
+        src=physical.copy() if not physical.empty else pd.DataFrame()
+        if not src.empty:
+            sec=src.get('Sección detalle',pd.Series('',index=src.index)).fillna('').astype(str)
+            pattern='JEAN|MEZ' if physical_filter=='Jeans' else 'LENC'
+            src=src[sec.str.contains(pattern,case=False,regex=True,na=False)]
+        if src.empty and not location_rows.empty:
+            src=location_rows.copy()
+            area_series=src.get('Etiqueta',pd.Series('',index=src.index)).map(_area_name)
+            wanted='Jeans / Doblado Mezclilla' if physical_filter=='Jeans' else 'Colgado Lencería'
+            src=src[area_series.eq(wanted)]
+        detail_source=src
+
+    if detail_source.empty:
+        st.info(f'No hay registros publicados para {physical_filter} en el alcance seleccionado.')
+    else:
+        detail=aggregate_pdf(detail_source,'Etiqueta').rename(columns={'Etiqueta':'Ubicación','VPD':'Sug 7'})
+        detail=detail.sort_values(['Sug 7','Existencia'],ascending=[False,False]).reset_index(drop=True)
+        detail.insert(0,'#',range(1,len(detail)+1))
+        _decision_table(detail[[c for c in ['#','Ubicación','Sug 7','Existencia','Piso','Bodega','DDI','Posiciones'] if c in detail]],height=620)
+        st.caption('Ordenado de mayor a menor Sug 7. Mesa, Pasillo, Jeans y Lencería se consultan por separado.')
 
     # Modelos del alcance se mantienen disponibles debajo para bajar al detalle.
     _render_model_rankings(models,'area_models')
 
 def render_pdf_page(page: str, bundle: dict, is_admin: bool) -> None:
+    # Los filtros se reinician al cambiar de pestaña para que la selección
+    # de una vista no quede aplicada en las demás.
+    previous_page = st.session_state.get("commercial_active_pdf_page")
+    if previous_page != page:
+        _clear_global_scope()
+        st.session_state["commercial_active_pdf_page"] = page
+
     routes = {
         "Mi Tienda Comercial": _page_radiography,
         "Ventas Comerciales": _page_tiendas_v61,
