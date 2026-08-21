@@ -293,7 +293,11 @@ def _decision_table(frame: pd.DataFrame, *, status_columns=(), height=360) -> No
             return "background-color:#FEE2E2;color:#991B1B;font-weight:700"
         return ""
 
-    styler = display.style
+    styler = display.style.set_table_styles([
+        {"selector": "th", "props": [("background-color", "#173B73"), ("color", "#FFFFFF"), ("font-weight", "800"), ("border-color", "#D8E0EC")]},
+        {"selector": "th:hover", "props": [("background-color", "#173B73"), ("color", "#FFFFFF")]},
+        {"selector": "td", "props": [("border-bottom", "1px solid #E5EAF1")]},
+    ])
     for column in status_columns:
         if column in display:
             styler = styler.map(paint, subset=[column])
@@ -958,56 +962,89 @@ def _render_model_rankings(models: pd.DataFrame, key: str) -> None:
     matrix=_model_matrix(models)
     if matrix.empty:
         st.info("Los PDF no contienen modelos para el alcance seleccionado."); return
-    sections=["Todas","Dama","Caballero","Infantil"]
-    c1,c2=st.columns([1,1])
-    with c1: sec=st.selectbox("Sección",sections,key=f"{key}_sec")
-    with c2: order=st.segmented_control("Ordenar campeones por",["Sug 7","Utilidad"],default="Sug 7",key=f"{key}_order") or "Sug 7"
-    if sec!="Todas": matrix=matrix[matrix["Sección"].astype(str).str.contains(sec,case=False,na=False)]
-    if matrix.empty:
-        st.info("No hay modelos para esa sección."); return
-    sortcol="VPD" if order=="Sug 7" else "% Utilidad"
-    champs=matrix.sort_values([sortcol,"VPD"],ascending=[False,False]).head(50).copy()
-    champs.insert(0,"#",range(1,len(champs)+1))
-    champs_display = champs.rename(columns={"VPD": "Sug 7", "% Part. Sug": "% Part. Sug 7"})
+
+    def section_mask(frame: pd.DataFrame, selected: str | None) -> pd.DataFrame:
+        if not selected:
+            return frame
+        values = frame.get("Sección", pd.Series("", index=frame.index)).astype(str).str.upper()
+        if selected == "Infantil":
+            return frame[values.str.contains("NIÑ|NIN|BEB|INFANT", regex=True, na=False)]
+        return frame[values.str.contains(selected.upper(), regex=False, na=False)]
+
     st.markdown('<div class="ac-section">Modelos campeones · Top 50</div>',unsafe_allow_html=True)
-    cols=["#","ID_ART","Modelo","Marca","Sección","Rubro","Sug 7","% Part. Sug 7","% Utilidad","Existencia","Piso","Bodega","DDI","Inversión"]
-    _decision_table(champs_display[[c for c in cols if c in champs_display]],height=620)
-    st.markdown('<div class="ac-section">Modelos lentos · bajo sugerido con inversión priorizada</div>',unsafe_allow_html=True)
-    slow=matrix.sort_values(["VPD","Inversión"],ascending=[True,False]).head(20).copy()
+    c1,c2=st.columns([1.15,1])
+    with c1:
+        sec_champ=st.segmented_control("Filtrar campeones por sección",["Dama","Caballero","Infantil"],default=None,key=f"{key}_champ_sec")
+    with c2:
+        order=st.segmented_control("Ordenar campeones por",["Sug 7","Utilidad"],default="Sug 7",key=f"{key}_order") or "Sug 7"
+    champs_base=section_mask(matrix,sec_champ)
+    if champs_base.empty:
+        st.info("No hay modelos campeones para la sección seleccionada.")
+    else:
+        sortcol="VPD" if order=="Sug 7" else "% Utilidad"
+        champs=champs_base.sort_values([sortcol,"VPD"],ascending=[False,False]).head(50).copy()
+        champs.insert(0,"#",range(1,len(champs)+1))
+        champs_display = champs.rename(columns={"VPD": "Sug 7", "% Part. Sug": "% Part. Sug 7"})
+        cols=["#","ID_ART","Modelo","Marca","Sección","Rubro","Sug 7","% Part. Sug 7","% Utilidad","Existencia","Piso","Bodega","DDI","Inversión"]
+        _decision_table(champs_display[[c for c in cols if c in champs_display]],height=620)
+
+    st.markdown('<div class="ac-section">Modelos lentos · bajo Sug 7 con inversión priorizada</div>',unsafe_allow_html=True)
+    c1,c2=st.columns([1.15,1])
+    with c1:
+        sec_slow=st.segmented_control("Filtrar lentos por sección",["Dama","Caballero","Infantil"],default=None,key=f"{key}_slow_sec")
+    with c2:
+        slow_order=st.segmented_control("Priorizar lentos por",["Sug 7 menor","Inversión mayor"],default="Sug 7 menor",key=f"{key}_slow_order") or "Sug 7 menor"
+    slow_base=section_mask(matrix,sec_slow)
+    if slow_base.empty:
+        st.info("No hay modelos lentos para la sección seleccionada.")
+        return
+    if slow_order=="Inversión mayor":
+        slow=slow_base.sort_values(["Inversión","VPD"],ascending=[False,True]).head(20).copy()
+    else:
+        slow=slow_base.sort_values(["VPD","Inversión"],ascending=[True,False]).head(20).copy()
     slow["Capital de atención"] = np.select([slow["Inversión"].rank(pct=True).ge(.67),slow["Inversión"].rank(pct=True).ge(.34)],["Alta","Media"],default="Baja")
     slow.insert(0,"#",range(1,len(slow)+1))
     slow_display = slow.rename(columns={"VPD": "Sug 7"})
     cols=["#","Capital de atención","ID_ART","Modelo","Marca","Sección","Rubro","Sug 7","Existencia","DDI","Inversión","% Utilidad","Piso","Bodega"]
     _decision_table(slow_display[[c for c in cols if c in slow_display]],status_columns=("Capital de atención",),height=470)
 
-
 def _render_company_level(bundle: dict, scope: dict, stores: pd.DataFrame, breakdowns: pd.DataFrame, models: pd.DataFrame) -> None:
     if stores.empty:
         _no_data(); return
-    total=_totals(stores); existence=float(total.get("Existencia",0)); floor=float(total.get("Piso",0)); warehouse=float(total.get("Bodega",0)); curve=float(total.get("Curva",0)); sug=float(total.get("VPD",0)); ddi=existence/sug if sug else 0
+    total=_totals(stores)
+    existence=float(total.get("Existencia",0)); floor=float(total.get("Piso",0)); warehouse=float(total.get("Bodega",0))
+    curve=float(total.get("Curva",0)); sug=float(total.get("VPD",0)); ddi=existence/sug if sug else 0
     floor_pct=floor/existence*100 if existence else 0; wh_pct=warehouse/existence*100 if existence else 0
     sections=_section_macro(breakdowns)
-    util=float(np.average(sections["% Utilidad"],weights=sections["VPD"])) if not sections.empty and "% Utilidad" in sections and sections["VPD"].sum() else 0
-    pieces=100.0 if not sections.empty else 0; invpart=100.0 if existence else 0
+    investment_models=_scenario_models(models,"Inversión")
+    identified_investment=float(pd.to_numeric(investment_models.get("Inversión",pd.Series(dtype=float)),errors="coerce").fillna(0).sum()) if not investment_models.empty else 0
+
     st.markdown('<div class="ac-section">Macro · Compañía</div>',unsafe_allow_html=True)
     _kpis([
-      ("Existencia",_number(existence),f"Piso {floor_pct:.1f}% · Bodega {wh_pct:.1f}% · Curva {_number(curve)}",PURPLE),
-      ("Cía. Sug 7",_number(sug),f"DDI {ddi:.0f} días · Existencia / Sug 7",CYAN),
-      ("% Utilidad",_percent(util),"Ponderada con los porcentajes publicados",GREEN),
-      ("% Piezas",_percent(pieces),"Total compañía",BLUE),
-      ("% Part. inventario",_percent(invpart),"Total compañía",ORANGE),
-    ],5)
-    st.caption("Curva se muestra como dato independiente; la ocupación se expresa con Piso/Existencia y Bodega/Existencia para no mezclar unidades distintas.")
-    st.markdown('<div class="ac-section">Participación por sección</div>',unsafe_allow_html=True)
+      ("Existencia total",_number(existence),f"Piso {floor_pct:.1f}% · Bodega {wh_pct:.1f}%",PURPLE),
+      ("Sug 7 compañía",_number(sug),"Movimiento diario publicado",CYAN),
+      ("DDI compañía",f"{ddi:.0f} días","Existencia / Sug 7",ORANGE),
+      ("Curva",_number(curve),"Indicador publicado en PDF",BLUE),
+      ("Part. piezas","100%","Composición por sección abajo",GREEN),
+      ("Part. inventario","100%","Composición por sección abajo",PINK),
+      ("Part. utilidad","100%","Participación publicada, no margen",CYAN),
+      ("Inversión identificada",_money(identified_investment),"Sólo modelos del ranking Inversión",PURPLE),
+    ],4)
+    st.caption("La inversión mostrada corresponde únicamente a los modelos publicados en el ranking de Inversión del PDF; no se presenta como inversión total de la compañía.")
+
+    st.markdown('<div class="ac-section">Dama · Caballero · Infantil</div>',unsafe_allow_html=True)
     if not sections.empty:
-        blocks=[]
+        cards=[]
         for _,r in sections.iterrows():
-            blocks += [(f"{r['Sección macro']} · Sug 7",_number(r['VPD']),f"{r['% Sug Cía.']:.1f}% del total",CYAN),
-                       (f"{r['Sección macro']} · Utilidad",_percent(r.get('% Utilidad',0)),f"Inventario {r['% Part. inventario']:.1f}%",GREEN),
-                       (f"{r['Sección macro']} · Piezas",_percent(r.get('% Piezas',0)),f"DDI {r['DDI']:.0f} días",BLUE)]
-        _kpis(blocks,3)
-        display=sections.rename(columns={"Sección macro":"Sección","VPD":"Sug 7","% Sug Cía.":"% Sug Cía","% Part. inventario":"% Part Inventario"})
-        _decision_table(display[[c for c in ["Sección","Sug 7","% Sug Cía","Existencia","Piso","Bodega","DDI","% Utilidad","% Piezas","% Part Inventario"] if c in display]],height=260)
+            title=str(r['Sección macro'])
+            subtitle=(f"Sug 7 {_number(r.get('VPD',0))} · {r.get('% Sug Cía.',0):.1f}% Cía. · "
+                      f"Exist. {_number(r.get('Existencia',0))} · DDI {r.get('DDI',0):.0f} · "
+                      f"Inv. {r.get('% Part. inventario',0):.1f}% · Util. {r.get('% Utilidad',0):.1f}%")
+            cards.append((title,_percent(r.get('% Piezas',0)),subtitle,BLUE if title=='Dama' else (GREEN if title=='Caballero' else ORANGE)))
+        _kpis(cards,3)
+        display=sections.rename(columns={"Sección macro":"Sección","VPD":"Sug 7","% Sug Cía.":"% Sug Cía","% Part. inventario":"% Part Inventario","% Utilidad":"% Part Utilidad","% Piezas":"% Part Piezas"})
+        _decision_table(display[[c for c in ["Sección","Curva","Piso","Bodega","Existencia","Sug 7","DDI","% Sug Cía","% Part Inventario","% Part Utilidad","% Part Piezas"] if c in display]],height=260)
+
     st.markdown('<div class="ac-section">Comparativo de tiendas</div>',unsafe_allow_html=True)
     metric_label=st.segmented_control("Métrica",["Sug 7","Existencia","Piso","Bodega","DDI"],default="Sug 7",key="macro_store_metric") or "Sug 7"
     metric="VPD" if metric_label=="Sug 7" else metric_label
@@ -1530,36 +1567,35 @@ def _page_models_focus(bundle: dict) -> None:
 
 
 def _page_profit_focus(bundle: dict) -> None:
-    _header("Dinero y utilidad", "Dónde participa la venta y qué elementos sostienen la utilidad", bundle)
+    _header("Dinero y utilidad", "Participación publicada e inversión identificada", bundle)
     scope = _global_scope(bundle)
     _breadcrumb(scope)
     _, breakdowns, models = _scope_frames(bundle, scope)
     dimension = st.segmented_control("Ver por", ["Sección", "Ubicación", "Línea"], default="Sección", key="profit_dimension") or "Sección"
     data = _dimension_summary(breakdowns, dimension)
     if data.empty:
-        st.info("No existe desglose monetario en el PDF para los filtros seleccionados."); return
+        st.info("No existe desglose de participación para los filtros seleccionados."); return
     investment_models = _scenario_models(models, "Inversión")
     investment = investment_models["Inversión"].sum() if not investment_models.empty else 0
     sale_leader = data.nlargest(1, "% Part. venta $").iloc[0]
     utility_leader = data.nlargest(1, "% Part. utilidad").iloc[0]
+    pieces_leader = data.nlargest(1, "% Part. piezas").iloc[0] if "% Part. piezas" in data else sale_leader
     _kpis([
-        ("Venta en pesos", "Información no disponible", "El PDF sólo publica participación", PINK),
-        ("Margen de utilidad", "Información no disponible", "No viene venta y costo total", ORANGE),
-        ("Mayor participación venta $", sale_leader["Elemento"], _percent(sale_leader["% Part. venta $"]), BLUE),
-        ("Mayor participación utilidad", utility_leader["Elemento"], _percent(utility_leader["% Part. utilidad"]), GREEN),
-        ("Inversión publicada", _money(investment), "Modelos del ranking Inversión", PURPLE),
-    ], 5)
+        ("Mayor part. venta $", sale_leader["Elemento"], _percent(sale_leader["% Part. venta $"]), BLUE),
+        ("Mayor part. utilidad", utility_leader["Elemento"], _percent(utility_leader["% Part. utilidad"]), GREEN),
+        ("Mayor part. piezas", pieces_leader["Elemento"], _percent(pieces_leader.get("% Part. piezas",0)), CYAN),
+        ("Inversión identificada", _money(investment), "Sólo ranking Inversión publicado", PURPLE),
+    ], 4)
     chart = data.head(16).sort_values("% Part. utilidad")
     fig = go.Figure()
     fig.add_bar(y=chart["Elemento"], x=chart["% Part. venta $"], orientation="h", name="Participación venta $", marker_color=BLUE, text=chart["% Part. venta $"].map(lambda value: f"{value:.1f}%"), textposition="outside")
     fig.add_bar(y=chart["Elemento"], x=chart["% Part. utilidad"], orientation="h", name="Participación utilidad", marker_color=PINK, text=chart["% Part. utilidad"].map(lambda value: f"{value:.1f}%"), textposition="outside")
-    fig.update_layout(title=f"Venta y utilidad por {dimension.lower()}", barmode="group", xaxis_title="Participación (%)", yaxis_title="")
+    fig.update_layout(title=f"Participación por {dimension.lower()}", barmode="group", xaxis_title="Participación (%)", yaxis_title="")
     _plot(fig, max(390, len(chart) * 36 + 120))
-    display = data.rename(columns={"VPD": "Sugerido / VPD", "DDI": "Días inventario", "Inversión": "Inversión $"})
-    columns = ["Elemento", "% Part. venta $", "% Part. utilidad", "% Part. piezas", "Sugerido / VPD", "Existencia", "Inversión $", "Días inventario", "Acción"]
+    display = data.rename(columns={"VPD": "Sug 7", "DDI": "DDI", "Inversión": "Inversión $"})
+    columns = [c for c in ["Elemento", "% Part. venta $", "% Part. utilidad", "% Part. piezas", "Sug 7", "Existencia", "Inversión $", "DDI", "Acción"] if c in display]
     _decision_table(display[columns], status_columns=("Acción",), height=490)
-    st.info("La vista separa participación de monto: el PDF permite saber qué porcentaje aporta cada elemento, pero no contiene la venta total en pesos ni el margen total. Esos campos permanecerán como Información no disponible hasta integrar la fuente de ventas.", icon=":material/info:")
-
+    st.caption("Los PDF publican participaciones porcentuales; por eso esta vista no muestra tarjetas vacías de venta total o margen que la fuente no contiene.")
 
 def _page_store_evolution(bundle: dict) -> None:
     _header("Mi evolución", "Cómo cambia el sugerido, el inventario y la cobertura semana a semana", bundle)
@@ -1811,39 +1847,61 @@ def _page_section_rubro_v61(bundle: dict) -> None:
 
 def _area_name(text: str) -> str:
     t=str(text).upper()
-    if 'LENCER' in t:return 'Colgado Lencería'
-    if 'JEAN' in t or 'MEZCL' in t:return 'Jeans / Doblado Mezclilla'
-    if 'DOBL' in t or 'MESA' in t:return 'Doblado'
-    if 'COLG' in t or 'RACK' in t or 'PONY' in t:return 'Colgado'
-    return 'Otras ubicaciones'
+    if 'LENC' in t:return 'Colgado Lencería'
+    if 'MEZ' in t or 'JEAN' in t:return 'Jeans / Doblado Mezclilla'
+    if 'DOBL' in t:return 'Doblado'
+    if 'COLG' in t:return 'Colgado'
+    return ''
 
 
 def _page_location_v61(bundle: dict) -> None:
-    _header("Ubicación / Área", "Doblado · Colgado · Jeans / Mezclilla · Colgado Lencería", bundle)
+    _header("Ubicación / Área", "Áreas comerciales → mesas, racks y pasillos", bundle)
     scope=_global_scope(bundle); _breadcrumb(scope)
     _,breakdowns,models=_scope_frames(bundle,scope)
-    loc=breakdowns[breakdowns['Tipo'].isin(['location','rubro'])].copy()
-    if loc.empty: st.info('El PDF no contiene ubicaciones para este alcance.'); return
-    loc['Área']=loc['Etiqueta'].map(_area_name)
-    areas=['Todas','Doblado','Colgado','Jeans / Doblado Mezclilla','Colgado Lencería','Otras ubicaciones']
-    area=st.segmented_control('Área',areas,default='Todas',key='v61_area') or 'Todas'
-    if area!='Todas':loc=loc[loc['Área'].eq(area)]
-    if loc.empty:
-        st.info(f"No hay registros clasificados como {area} para el alcance seleccionado.")
-        return
-    area_summary=aggregate_pdf(loc,'Área')
-    if area_summary.empty or 'VPD' not in area_summary.columns:
-        st.info("No hay datos de Sug 7 disponibles para el área seleccionada.")
-        return
-    area_summary=area_summary.rename(columns={'VPD':'Sug 7'}).sort_values('Sug 7',ascending=False)
-    _kpis([('Sug 7',_number(area_summary.get('Sug 7',pd.Series(dtype=float)).sum()),'Área seleccionada',CYAN),('Existencia',_number(area_summary.get('Existencia',pd.Series(dtype=float)).sum()),'Piezas',PURPLE),('Piso',_number(area_summary.get('Piso',pd.Series(dtype=float)).sum()),'Piezas',GREEN),('Bodega',_number(area_summary.get('Bodega',pd.Series(dtype=float)).sum()),'Piezas',ORANGE)],4)
-    detail=aggregate_pdf(loc,'Etiqueta')
-    if detail.empty or 'VPD' not in detail.columns:
-        st.info("No hay detalle disponible para el área seleccionada.")
-        return
-    detail=detail.rename(columns={'Etiqueta':'Ubicación / Rubro','VPD':'Sug 7'}).sort_values('Sug 7',ascending=False); detail.insert(0,'#',range(1,len(detail)+1))
-    _decision_table(detail[[c for c in ['#','Ubicación / Rubro','Sug 7','Existencia','Piso','Bodega','DDI','Posiciones','Inversión'] if c in detail]],height=560)
-    st.caption('Al filtrar una tienda, toda esta pestaña cambia a esa sucursal y mantiene el orden de mayor a menor Sug 7 por área.')
+    if breakdowns.empty:
+        st.info('El PDF no contiene ubicaciones para este alcance.'); return
+
+    # Áreas publicadas directamente en la tabla Ventas por Ubicación de la página 1.
+    loc=breakdowns[breakdowns['Tipo'].eq('location')].copy()
+    if not loc.empty:
+        loc['Área']=loc['Etiqueta'].map(_area_name)
+        loc=loc[loc['Área'].ne('')]
+    areas=['Todas','Doblado','Colgado','Jeans / Doblado Mezclilla','Colgado Lencería']
+    area=st.segmented_control('Área',areas,default='Todas',key='v64_area') or 'Todas'
+    area_filtered=loc if area=='Todas' else loc[loc['Área'].eq(area)]
+    if area_filtered.empty:
+        st.info(f"No hay información publicada para {area} en el alcance seleccionado.")
+    else:
+        area_summary=aggregate_pdf(area_filtered,'Área').rename(columns={'VPD':'Sug 7'}).sort_values('Sug 7',ascending=False)
+        total_ex=float(pd.to_numeric(area_summary.get('Existencia',0),errors='coerce').sum())
+        total_sug=float(pd.to_numeric(area_summary.get('Sug 7',0),errors='coerce').sum())
+        total_floor=float(pd.to_numeric(area_summary.get('Piso',0),errors='coerce').sum())
+        total_wh=float(pd.to_numeric(area_summary.get('Bodega',0),errors='coerce').sum())
+        _kpis([('Sug 7',_number(total_sug),'Área seleccionada',CYAN),('Existencia',_number(total_ex),'Piezas',PURPLE),('Piso',_number(total_floor),f"{(total_floor/total_ex*100 if total_ex else 0):.1f}% existencia",GREEN),('Bodega',_number(total_wh),f"{(total_wh/total_ex*100 if total_ex else 0):.1f}% existencia",ORANGE)],4)
+        area_summary.insert(0,'#',range(1,len(area_summary)+1))
+        _decision_table(area_summary[[c for c in ['#','Área','Sug 7','Existencia','Piso','Bodega','DDI','Posiciones'] if c in area_summary]],height=300)
+
+    # Tabla física independiente: mesas/racks/pasillos, siempre mayor → menor Sug 7.
+    st.markdown('<div class="ac-section">Mesas, racks y pasillos</div>',unsafe_allow_html=True)
+    physical=breakdowns[breakdowns['Tipo'].eq('physical_location')].copy()
+    if physical.empty:
+        st.info('Este corte no contiene el detalle físico de mesas/racks/pasillos. Los nuevos PDF se extraerán automáticamente al cargarlos.')
+    else:
+        physical['Área']=physical.get('Sección detalle',pd.Series('',index=physical.index)).astype(str)
+        if area!='Todas':
+            target='Jeans / Doblado Mezclilla' if area=='Jeans / Doblado Mezclilla' else area
+            physical=physical[physical['Área'].eq(target)]
+        if physical.empty:
+            st.info(f'No hay mesas/racks/pasillos para {area} en el alcance seleccionado.')
+        else:
+            detail=aggregate_pdf(physical,'Etiqueta').rename(columns={'Etiqueta':'Mesa / Pasillo','VPD':'Sug 7'})
+            detail=detail.sort_values(['Sug 7','Existencia'],ascending=[False,False]).reset_index(drop=True)
+            detail.insert(0,'#',range(1,len(detail)+1))
+            _decision_table(detail[[c for c in ['#','Mesa / Pasillo','Sug 7','Existencia','Piso','Bodega','DDI','Posiciones'] if c in detail]],height=620)
+            st.caption('Ordenado de mayor a menor Sug 7. Al elegir una tienda, sólo se muestran sus mesas/racks/pasillos.')
+
+    # Modelos del alcance se mantienen disponibles debajo para bajar al detalle.
+    _render_model_rankings(models,'area_models')
 
 def render_pdf_page(page: str, bundle: dict, is_admin: bool) -> None:
     routes = {

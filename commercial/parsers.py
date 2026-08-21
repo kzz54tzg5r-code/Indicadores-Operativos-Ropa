@@ -471,6 +471,41 @@ def _parse_metric_table(table: list, kind: str, store: str, label_index=0, secti
     return rows
 
 
+def _parse_physical_location_table(table: list, area: str, store: str) -> list[dict]:
+    """Extrae mesas/racks/pasillos de la página de ubicación física.
+
+    Algunos PDF agrupan dos ubicaciones dentro de una misma celda separadas por
+    saltos de línea. Se expanden a filas individuales para conservar el ranking.
+    """
+    if not table:
+        return []
+    header_index = 0
+    if norm_text(_cell(table[0][0] if table[0] else "")) != "PASILLO":
+        header_index = 1
+    if len(table) <= header_index + 1:
+        return []
+    headers = table[header_index]
+    rows: list[dict] = []
+    for raw in table[header_index + 1:]:
+        if not raw:
+            continue
+        cells = [str(value or "") for value in raw]
+        pieces = [cell.split("\n") for cell in cells]
+        width = max((len(part) for part in pieces), default=1)
+        for idx in range(width):
+            expanded = [part[idx] if idx < len(part) else "" for part in pieces]
+            label = _cell(expanded[0] if expanded else "")
+            if not label or "TOTAL" in norm_text(label):
+                continue
+            record = _metric_record(
+                "physical_location", label, headers[1:], expanded[1:], store,
+                section_detail=area, section=area,
+            )
+            if record["ids"] or record["floor"] or record["warehouse"] or record["vpd"]:
+                rows.append(record)
+    return rows
+
+
 def _parse_brand_table(table: list, store: str, scope: str) -> list[dict]:
     if not table or len(table) < 3:
         return []
@@ -552,11 +587,33 @@ def _extract_structured_pdf(path: Path, store: str) -> tuple[dict, list[dict], l
             if first_tables:
                 wide = first_tables[0]
                 if wide and len(wide) >= 3 and len(wide[1]) >= 19:
-                    left = [row[:19] for row in wide]
-                    breakdowns["catalog"] = _parse_metric_table(left, "catalog", store)
-                table_kinds = ["section", "category", "product_type", "status", "location"]
-                for kind, table in zip(table_kinds, first_tables[1:6]):
+                    # La primera tabla de la página 1 contiene dos bloques
+                    # verticales en sus primeras 19 columnas: Catálogo y, más
+                    # abajo, Ventas por Ubicación. Antes se mezclaban y la vista
+                    # de áreas quedaba vacía.
+                    location_title = next((i for i, row in enumerate(wide) if row and "VENTAS POR UBICACION" in norm_text(row[0])), None)
+                    if location_title is None:
+                        left = [row[:19] for row in wide]
+                        breakdowns["catalog"] = _parse_metric_table(left, "catalog", store)
+                    else:
+                        catalog_left = [row[:19] for row in wide[:location_title]]
+                        breakdowns["catalog"] = _parse_metric_table(catalog_left, "catalog", store)
+                        header_index = next((i for i in range(location_title + 1, len(wide)) if wide[i] and norm_text(wide[i][0]) == "UBICACION"), None)
+                        if header_index is not None:
+                            location_left = [wide[location_title][:19], wide[header_index][:19]] + [row[:19] for row in wide[header_index + 1:]]
+                            breakdowns["location"] = _parse_metric_table(location_left, "location", store)
+                table_kinds = ["section", "category", "product_type", "status"]
+                for kind, table in zip(table_kinds, first_tables[1:5]):
                     breakdowns[kind] = _parse_metric_table(table, kind, store)
+
+            # Página 13: detalle físico por Mesa / Rack / Pasillo.
+            # Se guarda como physical_location para una tabla independiente.
+            breakdowns.setdefault("physical_location", [])
+            if len(document.pages) >= 13:
+                location_tables = document.pages[12].extract_tables() or []
+                area_names = ["Colgado", "Doblado", "Jeans / Doblado Mezclilla"]
+                for area_name, table in zip(area_names, location_tables[:3]):
+                    breakdowns["physical_location"].extend(_parse_physical_location_table(table, area_name, store))
 
             if len(document.pages) >= 3:
                 rubro_tables = document.pages[2].extract_tables() or []
