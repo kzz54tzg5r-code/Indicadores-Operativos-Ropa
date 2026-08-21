@@ -104,18 +104,12 @@ def _kpis(items, columns: int | None = None) -> None:
 
 
 def _plot(fig, height=380):
-    # V66: ejes fijos para impedir zoom/pan accidental en móvil.
     fig.update_layout(
         height=height, margin=dict(l=24, r=20, t=50, b=35), paper_bgcolor="white", plot_bgcolor="white",
         font=dict(family="Arial", color=NAVY, size=11), legend=dict(orientation="h", y=1.13, x=0),
-        dragmode=False, autosize=True,
     )
-    fig.update_xaxes(fixedrange=True, automargin=True)
-    fig.update_yaxes(fixedrange=True, automargin=True)
-    st.plotly_chart(
-        fig, width="stretch",
-        config={"displayModeBar": False, "responsive": True, "scrollZoom": False, "doubleClick": False, "editable": False, "showTips": False},
-    )
+    fig.update_xaxes(fixedrange=True); fig.update_yaxes(fixedrange=True)
+    st.plotly_chart(fig, width="stretch", config={"displayModeBar": False, "responsive": True, "scrollZoom": False, "doubleClick": False})
 
 
 def _weeks(bundle: dict) -> list[str]:
@@ -1027,16 +1021,17 @@ def _render_company_level(bundle: dict, scope: dict, stores: pd.DataFrame, break
     existence=float(total.get("Existencia",0)); floor=float(total.get("Piso",0)); warehouse=float(total.get("Bodega",0))
     curve=float(total.get("Curva",0)); sug=float(total.get("VPD",0)); ddi=existence/sug if sug else 0
     floor_pct=floor/existence*100 if existence else 0; wh_pct=warehouse/existence*100 if existence else 0
+    occupancy_pct=curve/existence*100 if existence else 0
     sections=_section_macro(breakdowns)
     investment_models=_scenario_models(models,"Inversión")
     identified_investment=float(pd.to_numeric(investment_models.get("Inversión",pd.Series(dtype=float)),errors="coerce").fillna(0).sum()) if not investment_models.empty else 0
 
     st.markdown('<div class="ac-section">Macro · Compañía</div>',unsafe_allow_html=True)
     _kpis([
-      ("Existencia total",_number(existence),f"Piso {floor_pct:.1f}% · Bodega {wh_pct:.1f}%",PURPLE),
+      ("Existencia total",_number(existence),f"Ocupación {occupancy_pct:.1f}% · Piso {floor_pct:.1f}% · Bodega {wh_pct:.1f}%",PURPLE),
       ("Sug 7 compañía",_number(sug),"Movimiento diario publicado",CYAN),
       ("DDI compañía",f"{ddi:.0f} días","Existencia / Sug 7",ORANGE),
-      ("Curva",_number(curve),"Indicador publicado en PDF",BLUE),
+      ("Capacidad (Curva)",_number(curve),"Capacidad publicada en el PDF",BLUE),
       ("Part. piezas","100%","Composición por sección abajo",GREEN),
       ("Part. inventario","100%","Composición por sección abajo",PINK),
       ("Part. utilidad","100%","Participación publicada, no margen",CYAN),
@@ -1065,19 +1060,55 @@ def _render_company_level(bundle: dict, scope: dict, stores: pd.DataFrame, break
     fig.update_layout(title=f"Tiendas · {metric_label}",xaxis_title=metric_label,yaxis_title="",showlegend=False); _plot(fig,max(390,len(chart)*28+100))
     _render_model_rankings(models,"macro_models")
 
+
+def _area_capacity_note(breakdowns: pd.DataFrame) -> str:
+    """Ocupación por área usando la definición aprobada: Curva / Existencia."""
+    if breakdowns is None or breakdowns.empty:
+        return "Sin detalle de áreas"
+    loc = breakdowns[breakdowns.get("Tipo", pd.Series("", index=breakdowns.index)).eq("location")].copy()
+    if loc.empty:
+        return "Sin detalle de áreas"
+    loc["Área"] = loc.get("Etiqueta", pd.Series("", index=loc.index)).map(_area_name)
+    loc = loc[loc["Área"].ne("")]
+    if loc.empty:
+        return "Sin detalle de áreas"
+    summary = aggregate_pdf(loc, "Área")
+    parts = []
+    specs = [
+        ("Doblado", "Dob"),
+        ("Colgado", "Col"),
+        ("Jeans / Doblado Mezclilla", "Jeans"),
+        ("Colgado Lencería", "Lenc"),
+    ]
+    for area, short in specs:
+        row = summary[summary["Área"].eq(area)]
+        if row.empty:
+            parts.append(f"{short} —")
+            continue
+        capacity = float(pd.to_numeric(row.get("Curva", pd.Series(dtype=float)), errors="coerce").fillna(0).sum())
+        existence = float(pd.to_numeric(row.get("Existencia", pd.Series(dtype=float)), errors="coerce").fillna(0).sum())
+        pct = capacity / existence * 100 if existence else 0
+        parts.append(f"{short} {pct:.1f}%")
+    return " · ".join(parts)
+
+
 def _render_store_level(scope: dict, stores: pd.DataFrame, breakdowns: pd.DataFrame, models: pd.DataFrame) -> None:
     if stores.empty:
         _no_data(); return
     total = _totals(stores)
+    existence = float(total.get("Existencia", 0))
+    capacity = float(total.get("Curva", 0))
+    occupancy = capacity / existence * 100 if existence else 0
+    area_note = _area_capacity_note(breakdowns)
     _kpis([
-        ("Inventario", _number(total["Existencia"]), "Piezas", PURPLE),
+        ("Inventario", _number(existence), "Piezas", PURPLE),
         ("Piso", _number(total["Piso"]), "Exhibición", GREEN),
         ("Bodega", _number(total["Bodega"]), "Reserva", ORANGE),
-        ("Venta diaria sugerida", _number(total["VPD"]), "Dato del PDF", CYAN),
-        ("Días de inventario", f'{total["DDI"]:.0f}', _coverage_meaning(total["DDI"]), PINK),
+        ("Sug 7", _number(total["VPD"]), "Venta diaria sugerida", CYAN),
+        ("DDI", f'{total["DDI"]:.0f} días', _coverage_meaning(total["DDI"]), PINK),
         ("Posiciones", _number(total["Posiciones"]), "Espacio reportado", BLUE),
-        ("Capacidad", "Información no disponible", "Pendiente de fuente", RED),
-        ("Ocupación", "Información no disponible", "Pendiente de capacidad", RED),
+        ("Capacidad (Curva)", _number(capacity), "Curva publicada en el PDF", BLUE),
+        ("Ocupación", f"{occupancy:.1f}%", area_note, RED if occupancy > 100 else GREEN),
     ], 8)
     categories = _category_summary(breakdowns)
     st.markdown('<div class="ac-section">Radiografía por categoría</div>', unsafe_allow_html=True)
@@ -1178,7 +1209,7 @@ def _render_model_level(bundle: dict, scope: dict, models: pd.DataFrame) -> None
 
 def _page_radiography(bundle: dict) -> None:
     _header("Planeación Comercial · Macro Compañía", "Compañía → Sección → Catálogo → Rubro → Modelo", bundle)
-    st.markdown('<div class="ac-source-note">La vista muestra exclusivamente información publicada en los PDF. Los campos que requieren ventas, capacidad o existencias futuras se identifican como <b>Información no disponible</b>.</div>', unsafe_allow_html=True)
+    st.markdown('<div class="ac-source-note">La vista usa exclusivamente información publicada en los PDF. <b>Capacidad = Curva</b> y <b>Ocupación = Capacidad / Existencia × 100</b>. Los campos que requieren ventas en pesos o existencias futuras se identifican como Información no disponible.</div>', unsafe_allow_html=True)
     scope = _global_scope(bundle)
     _breadcrumb(scope)
     stores, breakdowns, models = _scope_frames(bundle, scope)

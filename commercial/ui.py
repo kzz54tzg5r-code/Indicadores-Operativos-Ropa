@@ -138,7 +138,7 @@ def _inject_styles() -> None:
         .ac-header{{display:flex;align-items:center;justify-content:space-between;gap:16px;background:linear-gradient(135deg,#0C2E63 0%,#173F78 100%);border:0;border-radius:15px;padding:17px 19px;margin:0 0 10px;box-shadow:0 8px 24px rgba(12,46,99,.16)}}
         .ac-title{{font-size:25px;font-weight:900;color:#fff;line-height:1.08}}.ac-subtitle{{font-size:12px;color:#C6D7F2;margin-top:5px}}
         .ac-status{{display:flex;gap:7px;align-items:center;flex-wrap:wrap;justify-content:flex-end}}.ac-pill{{border:1px solid rgba(255,255,255,.16);border-radius:9px;padding:7px 10px;font-size:10.5px;font-weight:800;background:rgba(12,163,91,.22);color:#D8FFEB}}.ac-pill-blue{{background:rgba(72,137,255,.24);color:#E7F0FF}}.ac-updated{{font-size:10px;color:#C6D7F2;white-space:nowrap}}
-        .ac-kpis{{display:grid;grid-template-columns:repeat(var(--columns,6),minmax(0,1fr));gap:8px;margin:10px 0 12px}}.ac-kpi{{background:#fff;border:1px solid #E1E7F0;border-radius:12px;padding:12px 11px;min-height:98px;box-shadow:0 3px 11px rgba(23,59,115,.04);position:relative;overflow:hidden}}.ac-kpi:before{{content:"";position:absolute;left:0;top:0;bottom:0;width:4px;background:var(--accent)}}.ac-kpi-label{{font-size:9px;text-transform:uppercase;letter-spacing:.35px;color:{MUTED};font-weight:850;white-space:normal;line-height:1.15}}.ac-kpi-value{{font-size:clamp(18px,1.8vw,22px);font-weight:900;color:{NAVY};margin-top:8px;white-space:nowrap;overflow:visible;letter-spacing:-.2px}}.ac-kpi-note{{font-size:9.5px;color:{MUTED};margin-top:6px;white-space:normal;overflow:visible;text-overflow:clip;line-height:1.22}}
+        .ac-kpis{{display:grid;grid-template-columns:repeat(var(--columns,6),minmax(0,1fr));gap:8px;margin:10px 0 12px}}.ac-kpi{{background:#fff;border:1px solid #E1E7F0;border-radius:12px;padding:12px 11px;min-height:98px;box-shadow:0 3px 11px rgba(23,59,115,.04);position:relative;overflow:hidden}}.ac-kpi:before{{content:"";position:absolute;left:0;top:0;bottom:0;width:4px;background:var(--accent)}}.ac-kpi-label{{font-size:9px;text-transform:uppercase;letter-spacing:.35px;color:{MUTED};font-weight:850;white-space:nowrap}}.ac-kpi-value{{font-size:22px;font-weight:900;color:{NAVY};margin-top:9px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}}.ac-kpi-note{{font-size:9.5px;color:{MUTED};margin-top:6px;white-space:normal;overflow:visible;text-overflow:clip;line-height:1.24}}
         .ac-alert{{display:flex;align-items:center;gap:10px;border:1px solid #F8B8D2;background:#FFF4F8;color:{PINK};border-radius:11px;padding:11px 14px;margin:8px 0 14px;font-size:12px;font-weight:800}}.ac-section{{font-size:17px;font-weight:900;color:{NAVY};margin:8px 0 9px}}
         .ac-source-note{{background:#EAF2FF;border:1px solid #CADBFA;border-radius:10px;padding:10px 13px;color:{NAVY};font-size:11px;margin:8px 0 12px}}
         .ac-breadcrumb{{display:flex;align-items:center;gap:8px;flex-wrap:wrap;background:#fff;border:1px solid #DDE5F0;border-radius:10px;padding:9px 12px;margin:8px 0 11px;box-shadow:0 2px 8px rgba(23,59,115,.04)}}
@@ -193,35 +193,7 @@ def _inject_styles() -> None:
         }}
         body [data-testid="stAppViewContainer"]:has(.ac-shell-marker) section[data-testid="stSidebar"] .stButton>button[kind="primary"]{{background:#E9F1FF!important;color:{BLUE}!important;border-left:4px solid {BLUE}!important;box-shadow:none!important;}}
         body [data-testid="stAppViewContainer"]:has(.ac-shell-marker) section[data-testid="stSidebar"] .stButton>button:hover{{background:#F0F5FF!important;color:{BLUE}!important;}}
-        @media(max-width:1350px){{.ac-kpis{{grid-template-columns:repeat(4,minmax(0,1fr))!important}}}}
-        /* V66 · Mobile-first: densidad tipo app nativa, sin perder datos. */
-        @media(max-width:700px){{
-          body [data-testid="stAppViewContainer"]:has(.ac-shell-marker) [data-testid="stMainBlockContainer"],
-          body [data-testid="stAppViewContainer"]:has(.ac-shell-marker) .block-container{{padding:.35rem .55rem 1.25rem!important;}}
-          body [data-testid="stAppViewContainer"]:has(.ac-shell-marker) [data-testid="stVerticalBlock"]{{gap:.62rem!important;}}
-          .ac-header{{align-items:flex-start;flex-direction:column;gap:7px;border-radius:12px;padding:10px 11px;margin-bottom:6px;box-shadow:0 4px 14px rgba(12,46,99,.12)}}
-          .ac-title{{font-size:18px;line-height:1.05}}.ac-subtitle{{font-size:9.5px;margin-top:3px;line-height:1.2}}.ac-status{{justify-content:flex-start;gap:5px}}.ac-pill{{padding:5px 7px;font-size:8.5px;border-radius:7px}}.ac-updated{{font-size:8.5px;white-space:normal}}
-          .ac-section{{font-size:15px;margin:5px 0 6px;line-height:1.15}}
-          .ac-breadcrumb{{gap:5px;padding:6px 8px;margin:5px 0 7px;border-radius:9px}}.ac-crumb{{font-size:9.5px}}.ac-crumb:last-child{{padding:3px 6px}}
-          .ac-source-note,.ac-alert{{font-size:9.5px;padding:8px 9px;margin:6px 0 8px;border-radius:9px;line-height:1.25}}
-          .ac-kpis{{grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:6px;margin:6px 0 8px}}
-          .ac-kpi{{min-height:79px;padding:8px 8px 7px;border-radius:10px;box-shadow:0 2px 7px rgba(23,59,115,.035)}}.ac-kpi:before{{width:3px}}
-          .ac-kpi-label{{font-size:7.5px;letter-spacing:.22px;line-height:1.1;min-height:17px}}.ac-kpi-value{{font-size:clamp(16px,5vw,19px);margin-top:4px;line-height:1.05;letter-spacing:-.35px}}.ac-kpi-note{{font-size:7.9px;margin-top:4px;line-height:1.18}}
-          .ac-filter-caption{{font-size:8.5px;margin:0 0 2px}}
-          div[data-testid="stRadio"] [role="radiogroup"]{{gap:4px!important;flex-wrap:nowrap!important;overflow-x:auto!important;padding-bottom:2px!important;-webkit-overflow-scrolling:touch}}
-          div[data-testid="stRadio"] [role="radiogroup"] label{{padding:5px 9px!important;font-size:10px!important;white-space:nowrap!important;flex:0 0 auto!important}}
-          [data-testid="stSegmentedControl"]{{overflow-x:auto!important;-webkit-overflow-scrolling:touch!important}}
-          [data-testid="stSegmentedControl"] button{{min-height:32px!important;padding:4px 9px!important;font-size:10px!important;white-space:nowrap!important}}
-          [data-testid="stSelectbox"] label,[data-testid="stMultiSelect"] label{{font-size:9px!important;margin-bottom:1px!important}}
-          [data-testid="stSelectbox"] [data-baseweb="select"]>div,[data-testid="stMultiSelect"] [data-baseweb="select"]>div{{min-height:38px!important;font-size:11px!important}}
-          .ac-table-scroll{{border-radius:9px;margin:3px 0 8px;-webkit-overflow-scrolling:touch;overscroll-behavior-x:contain;scrollbar-width:thin}}
-          .ac-decision-table{{font-size:10px}}.ac-decision-table thead th{{padding:7px 8px;font-size:9.5px}}.ac-decision-table tbody td{{padding:7px 8px}}
-          .ac-decision-table thead th:first-child{{position:sticky;left:0;z-index:5;background:#173B73!important}}.ac-decision-table tbody td:first-child{{position:sticky;left:0;z-index:2;background:#fff;box-shadow:1px 0 0 #E5EAF1}}.ac-decision-table tbody tr:nth-child(even) td:first-child{{background:#F8FAFD}}
-          .stPlotlyChart{{border-radius:10px!important;touch-action:pan-y!important;overscroll-behavior:contain!important}}.stPlotlyChart .js-plotly-plot,.stPlotlyChart .plot-container{{touch-action:pan-y!important}}
-          .stCaptionContainer p,[data-testid="stCaptionContainer"] p{{font-size:8.5px!important;line-height:1.2!important}}
-          .stButton>button{{min-height:36px!important;font-size:10.5px!important;padding:5px 9px!important}}
-        }}
-        @media(max-width:300px){{.ac-kpis{{grid-template-columns:1fr!important}}}}
+        @media(max-width:1350px){{.ac-kpis{{grid-template-columns:repeat(4,minmax(0,1fr))!important}}}}@media(max-width:700px){{.ac-header{{align-items:flex-start;flex-direction:column}}.ac-title{{font-size:22px}}.ac-status{{justify-content:flex-start}}.ac-kpis{{grid-template-columns:repeat(2,minmax(0,1fr))!important}}}}@media(max-width:330px){{.ac-kpis{{grid-template-columns:1fr!important}}}}
         @media(max-width:900px){{
           body [data-testid="stAppViewContainer"]:has(.ac-shell-marker) section[data-testid="stSidebar"]{{
             width:286px!important;min-width:286px!important;max-width:82vw!important;
@@ -285,6 +257,38 @@ def render_commercial_sidebar(active_page: str, is_admin: bool = False) -> None:
             st.session_state["active_app"] = None
             st.session_state["nav_page"] = "Inicio"
             st.rerun()
+
+
+
+def render_commercial_mobile_nav(active_page: str, is_admin: bool = False) -> None:
+    """Navegación principal visible en móvil, independiente del sidebar nativo."""
+    options = list(COMMERCIAL_PAGES) + ([ADMIN_PAGE] if is_admin else [])
+    labels = {
+        "Mi Tienda Comercial": "🏢 Macro compañía",
+        "Ventas Comerciales": "🏬 Tiendas",
+        "Sugeridos Comerciales": "📦 Sección / Rubro",
+        "Modelos Comerciales": "📍 Ubicación / Área",
+        "Utilidad Comercial": "💰 Dinero y utilidad",
+        "Histórico Comercial": "↻ Mi evolución",
+        ADMIN_PAGE: "⬆ Carga PDF",
+    }
+    state_key = "commercial_mobile_nav_select"
+    # Sincronizar cuando la navegación se produjo desde escritorio/sidebar.
+    if st.session_state.get(state_key) != active_page:
+        st.session_state[state_key] = active_page
+    with st.container(key="commercial_mobile_nav"):
+        st.markdown('<div class="ac-mobile-menu-title">☰ Planeación Comercial</div>', unsafe_allow_html=True)
+        selected = st.selectbox(
+            "Menú Planeación Comercial",
+            options,
+            format_func=lambda value: labels.get(value, PAGE_LABELS.get(value, value)),
+            key=state_key,
+            label_visibility="collapsed",
+        )
+    if selected != active_page:
+        st.session_state["nav_page"] = selected
+        st.session_state["nav_request"] = selected
+        st.rerun()
 
 
 def _header(title: str, subtitle: str, bundle: dict) -> None:
@@ -442,19 +446,12 @@ def _filtered_auxiliary(bundle: dict, store: str, section: str, location: str, w
 
 
 def _plot(fig, height=380):
-    # V66: los gráficos son de consulta. Se bloquea zoom/pan para que en móvil
-    # el gesto vertical desplace la página y no "atrape" al usuario dentro del gráfico.
     fig.update_layout(
         height=height, margin=dict(l=24, r=20, t=48, b=35), paper_bgcolor="white", plot_bgcolor="white",
         font=dict(family="Arial", color=NAVY, size=11), legend=dict(orientation="h", y=1.12, x=0),
-        dragmode=False, autosize=True,
     )
-    fig.update_xaxes(fixedrange=True, automargin=True)
-    fig.update_yaxes(fixedrange=True, automargin=True)
-    st.plotly_chart(
-        fig, width="stretch",
-        config={"displayModeBar": False, "responsive": True, "scrollZoom": False, "doubleClick": False, "editable": False, "showTips": False},
-    )
+    fig.update_xaxes(fixedrange=True); fig.update_yaxes(fixedrange=True)
+    st.plotly_chart(fig, width="stretch", config={"displayModeBar": False, "responsive": True, "scrollZoom": False, "doubleClick": False})
 
 
 def _empty_sources(bundle: dict) -> bool:
@@ -938,6 +935,7 @@ def _page_upload(bundle: dict, is_admin: bool) -> None:
 def render_commercial_page(page: str, existing_sales=None, is_admin: bool = False) -> None:
     _inject_styles()
     render_commercial_sidebar(page, is_admin=is_admin)
+    render_commercial_mobile_nav(page, is_admin=is_admin)
     if "commercial_cloud_bootstrap" not in st.session_state:
         st.session_state["commercial_cloud_bootstrap"] = restore_history_from_cloud()
         if st.session_state["commercial_cloud_bootstrap"].get("restored"):
