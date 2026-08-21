@@ -12121,7 +12121,7 @@ h1,h2,h3{color:#172B4D!important}.footer{opacity:.72!important}
 @media(max-width:360px){.v25-kpi-grid{grid-template-columns:1fr!important}}
 </style>
 ''', unsafe_allow_html=True)
-st.caption("PS Operaciones Ropa · V70 · ORION Mobile")
+st.caption("PS Operaciones Ropa · V71 · ORION Mobile")
 
 # V53: shell visual del proyecto comercial. Esta regla es la última capa CSS
 # para neutralizar los estilos heredados que ocultaban el sidebar en V52.
@@ -12164,7 +12164,7 @@ if st.session_state.get("active_app") == "Ventas y Análisis Comercial":
         """
         <style>
         /* La barra inferior es la navegación primaria en teléfonos/tablets. */
-        .st-key-commercial_mobile_nav{display:none!important;}
+        [class*="st-key-commercial_mobile_nav_"]{display:none!important;}
         .ac-more-card{
           min-height:82px;background:#fff;border:1px solid #DCE5F1;border-radius:13px;
           padding:14px 15px;margin:4px 0 7px;box-shadow:0 4px 14px rgba(23,59,115,.05);
@@ -12173,6 +12173,11 @@ if st.session_state.get("active_app") == "Ventas y Análisis Comercial":
         .ac-more-card span{display:block;color:#667085;font-size:11px;line-height:1.35;}
         .ac-more-card-muted{opacity:.68;}
         @media(max-width:900px){
+          html,body,.stApp,[data-testid="stAppViewContainer"],[data-testid="stMain"]{
+            overscroll-behavior-y:none!important;
+            overscroll-behavior-x:none!important;
+          }
+          [data-testid="stAppViewContainer"]{min-height:100dvh!important;}
           [data-testid="stSidebar"],
           [data-testid="stSidebarCollapsedControl"],
           [data-testid="collapsedControl"]{
@@ -12183,7 +12188,7 @@ if st.session_state.get("active_app") == "Ventas y Análisis Comercial":
           [data-testid="stMainBlockContainer"],.block-container{
             padding:.35rem 9px calc(82px + env(safe-area-inset-bottom))!important;
           }
-          .st-key-commercial_mobile_nav{
+          [class*="st-key-commercial_mobile_nav_"]{
             display:block!important;visibility:visible!important;opacity:1!important;
             position:fixed!important;left:0!important;right:0!important;bottom:0!important;top:auto!important;
             z-index:2200!important;background:rgba(255,255,255,.97)!important;
@@ -12191,12 +12196,13 @@ if st.session_state.get("active_app") == "Ventas y Análisis Comercial":
             box-shadow:0 -7px 22px rgba(16,46,99,.10)!important;
             padding:5px 7px calc(5px + env(safe-area-inset-bottom))!important;margin:0!important;
           }
-          .st-key-commercial_mobile_nav [data-testid="stRadio"]{margin:0!important;padding:0!important;}
-          .st-key-commercial_mobile_nav [role="radiogroup"]{
-            display:grid!important;grid-template-columns:repeat(5,minmax(0,1fr))!important;
+          [class*="st-key-commercial_mobile_nav_"][data-testid="stRadio"],
+          [class*="st-key-commercial_mobile_nav_"] [data-testid="stRadio"]{margin:0!important;padding:0!important;}
+          [class*="st-key-commercial_mobile_nav_"] [role="radiogroup"]{
+            display:grid!important;grid-template-columns:repeat(6,minmax(0,1fr))!important;
             width:100%!important;gap:3px!important;align-items:stretch!important;
           }
-          .st-key-commercial_mobile_nav [role="radiogroup"] label{
+          [class*="st-key-commercial_mobile_nav_"] [role="radiogroup"] label{
             display:flex!important;align-items:center!important;justify-content:center!important;
             min-width:0!important;width:100%!important;min-height:50px!important;margin:0!important;
             padding:5px 2px!important;border:0!important;border-radius:10px!important;
@@ -12204,14 +12210,14 @@ if st.session_state.get("active_app") == "Ventas y Análisis Comercial":
             font-size:10px!important;line-height:1!important;font-weight:800!important;white-space:nowrap!important;
             overflow:hidden!important;text-overflow:ellipsis!important;
           }
-          .st-key-commercial_mobile_nav [role="radiogroup"] label>div:first-child,
-          .st-key-commercial_mobile_nav [data-baseweb="radio"]>div:first-child,
-          .st-key-commercial_mobile_nav [data-baseweb="radio"] input,
-          .st-key-commercial_mobile_nav [role="radiogroup"] input{display:none!important;width:0!important;margin:0!important;}
-          .st-key-commercial_mobile_nav [role="radiogroup"] label:has(input:checked){
+          [class*="st-key-commercial_mobile_nav_"] [role="radiogroup"] label>div:first-child,
+          [class*="st-key-commercial_mobile_nav_"] [data-baseweb="radio"]>div:first-child,
+          [class*="st-key-commercial_mobile_nav_"] [data-baseweb="radio"] input,
+          [class*="st-key-commercial_mobile_nav_"] [role="radiogroup"] input{display:none!important;width:0!important;margin:0!important;}
+          [class*="st-key-commercial_mobile_nav_"] [role="radiogroup"] label:has(input:checked){
             background:#EAF2FF!important;color:#155BEF!important;box-shadow:inset 0 3px 0 #155BEF!important;
           }
-          .st-key-commercial_mobile_nav [role="radiogroup"] label *{
+          [class*="st-key-commercial_mobile_nav_"] [role="radiogroup"] label *{
             color:inherit!important;font-size:inherit!important;font-weight:inherit!important;white-space:nowrap!important;
           }
           .ac-header{padding:10px 11px!important;border-radius:12px!important;margin-bottom:7px!important;gap:7px!important;}
