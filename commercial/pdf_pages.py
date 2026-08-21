@@ -1119,11 +1119,11 @@ def _render_company_level(bundle: dict, scope: dict, stores: pd.DataFrame, break
             title=str(r['Sección macro'])
             subtitle=(f"Sugerido {_number(r.get('VPD',0))} · {r.get('% Sug Cía.',0):.1f}% Cía. · "
                       f"Exist. {_number(r.get('Existencia',0))} · DDI {r.get('DDI',0):.0f} · "
-                      f"Inv. {r.get('% Part. inventario',0):.1f}% · Util. {r.get('% Utilidad',0):.1f}%")
+                      f"Util. {r.get('% Utilidad',0):.1f}%")
             cards.append((title,_percent(r.get('% Piezas',0)),subtitle,BLUE if title=='Dama' else (GREEN if title=='Caballero' else ORANGE)))
         _kpis(cards,3)
         display=sections.rename(columns={"Sección macro":"Sección","VPD":"Sugerido","% Sug Cía.":"% Sug Cía","% Part. inventario":"% Part Inventario","% Piezas":"% Part Piezas"})
-        _decision_table(display[[c for c in ["Sección","Curva","Piso","Bodega","Existencia","Sugerido","DDI","% Sug Cía","% Part Inventario","% Utilidad","% Part Piezas"] if c in display]],height=260)
+        _decision_table(display[[c for c in ["Sección","Curva","Piso","Bodega","Existencia","Sugerido","DDI","% Sug Cía","% Utilidad","% Part Piezas"] if c in display]],height=260)
 
     st.markdown('<div class="ac-section">Comparativo de tiendas</div>',unsafe_allow_html=True)
     metric_label=st.segmented_control("Métrica",["Sugerido","Existencia","Piso","Bodega","DDI"],default="Sugerido",key="macro_store_metric") or "Sugerido"

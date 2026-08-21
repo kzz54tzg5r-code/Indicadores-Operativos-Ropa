@@ -274,35 +274,50 @@ def render_commercial_sidebar(active_page: str, is_admin: bool = False) -> None:
 
 
 
+def _mobile_nav_change(state_key: str) -> None:
+    """Aplica la navegación desde móvil antes del rerun automático del widget.
+
+    Se usa una llave distinta por pantalla para no sobrescribir la selección
+    del usuario al comenzar el siguiente ciclo de Streamlit.
+    """
+    selected = st.session_state.get(state_key)
+    if selected == "__MAIN_MENU__":
+        st.session_state["active_app"] = None
+        st.session_state["nav_page"] = "Inicio"
+        st.session_state.pop("nav_request", None)
+        st.session_state.pop("project_nav_selector", None)
+        return
+    if selected:
+        st.session_state["nav_page"] = selected
+        st.session_state["nav_request"] = selected
+
+
 def render_commercial_mobile_nav(active_page: str, is_admin: bool = False) -> None:
-    """Barra inferior móvil con las cinco decisiones principales de ORION."""
-    options = list(COMMERCIAL_PRIMARY_PAGES)
+    """Barra inferior móvil estable y con salida directa al menú principal."""
+    options = list(COMMERCIAL_PRIMARY_PAGES) + ["__MAIN_MENU__"]
     labels = {
         "Mi Tienda Comercial": "Inicio",
         "Ventas Comerciales": "Tiendas",
-        "Sugeridos Comerciales": "Sección",
+        "Sugeridos Comerciales": "Secciones",
         "Modelos Comerciales": "Modelos",
         MORE_PAGE: "Más",
+        "__MAIN_MENU__": "Menú",
     }
-    state_key = "commercial_mobile_bottom_nav"
-    active_option = active_page if active_page in options else MORE_PAGE
-    # La llave sólo se sincroniza antes de crear el widget, por lo que no se
-    # repite el error de session_state que presentaba project_nav_selector.
-    if st.session_state.get(state_key) != active_option:
-        st.session_state[state_key] = active_option
-    with st.container(key="commercial_mobile_nav"):
-        selected = st.radio(
-            "Navegación principal",
-            options,
-            format_func=lambda value: labels.get(value, PAGE_LABELS.get(value, value)),
-            key=state_key,
-            horizontal=True,
-            label_visibility="collapsed",
-        )
-    if selected != active_option:
-        st.session_state["nav_page"] = selected
-        st.session_state["nav_request"] = selected
-        st.rerun()
+    active_option = active_page if active_page in COMMERCIAL_PRIMARY_PAGES else MORE_PAGE
+    safe_page = re.sub(r"[^a-z0-9]+", "_", str(active_page).lower()).strip("_") or "home"
+    state_key = f"commercial_mobile_nav_{safe_page}"
+
+    st.radio(
+        "Navegación móvil ORION",
+        options,
+        index=options.index(active_option),
+        format_func=lambda value: labels.get(value, PAGE_LABELS.get(value, value)),
+        key=state_key,
+        horizontal=True,
+        label_visibility="collapsed",
+        on_change=_mobile_nav_change,
+        args=(state_key,),
+    )
 
 
 def _header(title: str, subtitle: str, bundle: dict) -> None:
@@ -949,6 +964,10 @@ def _page_upload(bundle: dict, is_admin: bool) -> None:
 def render_commercial_page(page: str, existing_sales=None, is_admin: bool = False) -> None:
     _inject_styles()
     render_commercial_sidebar(page, is_admin=is_admin)
+    # La navegación móvil se crea antes del contenido. Al quedar fuera del flujo
+    # mediante CSS no reserva un bloque vacío en Safari y permanece disponible
+    # aunque el reporte sea largo.
+    render_commercial_mobile_nav(page, is_admin=is_admin)
     if "commercial_cloud_bootstrap" not in st.session_state:
         st.session_state["commercial_cloud_bootstrap"] = restore_history_from_cloud()
         if st.session_state["commercial_cloud_bootstrap"].get("restored"):
@@ -957,6 +976,3 @@ def render_commercial_page(page: str, existing_sales=None, is_admin: bool = Fals
         bundle = _load_bundle(existing_sales)
     from .pdf_pages import render_pdf_page
     render_pdf_page(page, bundle, is_admin)
-    # Se crea al final para que el contenedor fijado no reserve un espacio
-    # vacío antes del contenido en Safari móvil.
-    render_commercial_mobile_nav(page, is_admin=is_admin)

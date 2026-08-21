@@ -15,9 +15,9 @@ SNAPSHOTS_FILE = DATA_ROOT / "snapshots.json"
 
 MORE_PAGE = "Más Comercial"
 
-# Las cinco opciones que permanecen visibles en la barra inferior móvil.
-# Utilidad, histórico y carga continúan siendo páginas independientes, pero se
-# abren desde ``Más`` para no saturar una pantalla de teléfono.
+# Las cinco vistas comerciales permanecen en la barra inferior móvil; la UI
+# agrega además un sexto acceso directo a Menú principal. Utilidad, histórico y
+# carga continúan abriéndose desde ``Más`` para no saturar el teléfono.
 COMMERCIAL_PRIMARY_PAGES = (
     "Mi Tienda Comercial",
     "Ventas Comerciales",
