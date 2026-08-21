@@ -12121,7 +12121,7 @@ h1,h2,h3{color:#172B4D!important}.footer{opacity:.72!important}
 @media(max-width:360px){.v25-kpi-grid{grid-template-columns:1fr!important}}
 </style>
 ''', unsafe_allow_html=True)
-st.caption("PS Operaciones Ropa · V65 · Planeación Comercial Macro → Micro")
+st.caption("PS Operaciones Ropa · V66 · Planeación Comercial Mobile First")
 
 # V53: shell visual del proyecto comercial. Esta regla es la última capa CSS
 # para neutralizar los estilos heredados que ocultaban el sidebar en V52.
