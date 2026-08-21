@@ -12121,7 +12121,7 @@ h1,h2,h3{color:#172B4D!important}.footer{opacity:.72!important}
 @media(max-width:360px){.v25-kpi-grid{grid-template-columns:1fr!important}}
 </style>
 ''', unsafe_allow_html=True)
-st.caption("PS Operaciones Ropa · V69 · ORION Mobile")
+st.caption("PS Operaciones Ropa · V70 · ORION Mobile")
 
 # V53: shell visual del proyecto comercial. Esta regla es la última capa CSS
 # para neutralizar los estilos heredados que ocultaban el sidebar en V52.
@@ -12158,7 +12158,7 @@ if st.session_state.get("active_app") == "Ventas y Análisis Comercial":
         unsafe_allow_html=True,
     )
 
-# V69: navegación inferior tipo app + densidad de KPIs y tablas móviles.
+# V70: navegación inferior móvil compacta, sin iconos ni espacio fantasma.
 if st.session_state.get("active_app") == "Ventas y Análisis Comercial":
     st.markdown(
         """
@@ -12201,15 +12201,18 @@ if st.session_state.get("active_app") == "Ventas y Análisis Comercial":
             min-width:0!important;width:100%!important;min-height:50px!important;margin:0!important;
             padding:5px 2px!important;border:0!important;border-radius:10px!important;
             background:transparent!important;color:#667085!important;text-align:center!important;
-            font-size:9px!important;line-height:1.15!important;font-weight:800!important;white-space:normal!important;
+            font-size:10px!important;line-height:1!important;font-weight:800!important;white-space:nowrap!important;
+            overflow:hidden!important;text-overflow:ellipsis!important;
           }
           .st-key-commercial_mobile_nav [role="radiogroup"] label>div:first-child,
-          .st-key-commercial_mobile_nav [role="radiogroup"] input{display:none!important;}
+          .st-key-commercial_mobile_nav [data-baseweb="radio"]>div:first-child,
+          .st-key-commercial_mobile_nav [data-baseweb="radio"] input,
+          .st-key-commercial_mobile_nav [role="radiogroup"] input{display:none!important;width:0!important;margin:0!important;}
           .st-key-commercial_mobile_nav [role="radiogroup"] label:has(input:checked){
             background:#EAF2FF!important;color:#155BEF!important;box-shadow:inset 0 3px 0 #155BEF!important;
           }
           .st-key-commercial_mobile_nav [role="radiogroup"] label *{
-            color:inherit!important;font-size:inherit!important;font-weight:inherit!important;white-space:normal!important;
+            color:inherit!important;font-size:inherit!important;font-weight:inherit!important;white-space:nowrap!important;
           }
           .ac-header{padding:10px 11px!important;border-radius:12px!important;margin-bottom:7px!important;gap:7px!important;}
           .ac-title{font-size:18px!important;line-height:1.05!important;}
