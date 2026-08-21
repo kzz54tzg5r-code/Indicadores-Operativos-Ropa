@@ -4,7 +4,7 @@ Plataforma Integral de Gestión Operativa del área de Operaciones Ropa.
 
 ## Versión
 
-- Versión: `V66`
+- Versión: `V59`
 - Build: `Planeación Comercial · vistas operativas de tienda`
 
 ## Ejecutar localmente

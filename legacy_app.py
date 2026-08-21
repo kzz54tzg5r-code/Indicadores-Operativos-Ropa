@@ -12121,7 +12121,7 @@ h1,h2,h3{color:#172B4D!important}.footer{opacity:.72!important}
 @media(max-width:360px){.v25-kpi-grid{grid-template-columns:1fr!important}}
 </style>
 ''', unsafe_allow_html=True)
-st.caption("PS Operaciones Ropa · V66 · Planeación Comercial Mobile First")
+st.caption("PS Operaciones Ropa · V67 · Planeación Comercial Mobile")
 
 # V53: shell visual del proyecto comercial. Esta regla es la última capa CSS
 # para neutralizar los estilos heredados que ocultaban el sidebar en V52.
@@ -12157,3 +12157,52 @@ if st.session_state.get("active_app") == "Ventas y Análisis Comercial":
         """,
         unsafe_allow_html=True,
     )
+
+# V67: navegación móvil comercial autoritativa + densidad de KPIs.
+if st.session_state.get("active_app") == "Ventas y Análisis Comercial":
+    st.markdown(
+        """
+        <style>
+        /* El selector móvil es la navegación primaria en teléfonos/tablets. */
+        .st-key-commercial_mobile_nav{display:none!important;}
+        @media(max-width:900px){
+          [data-testid="stSidebar"],
+          [data-testid="stSidebarCollapsedControl"],
+          [data-testid="collapsedControl"]{
+            display:none!important;visibility:hidden!important;opacity:0!important;
+            width:0!important;min-width:0!important;max-width:0!important;
+          }
+          [data-testid="stMain"]{margin-left:0!important;width:100%!important;max-width:100%!important;}
+          .st-key-commercial_mobile_nav{
+            display:block!important;visibility:visible!important;opacity:1!important;
+            position:sticky!important;top:4px!important;z-index:2200!important;
+            background:rgba(244,247,251,.96)!important;backdrop-filter:blur(10px)!important;
+            padding:5px 0 7px!important;margin:0 0 5px!important;
+          }
+          .st-key-commercial_mobile_nav .ac-mobile-menu-title{
+            font-size:10px!important;font-weight:900!important;letter-spacing:.45px!important;
+            text-transform:uppercase!important;color:#173B73!important;margin:0 0 4px 2px!important;
+          }
+          .st-key-commercial_mobile_nav [data-testid="stSelectbox"]{min-width:0!important;width:100%!important;}
+          .st-key-commercial_mobile_nav [data-baseweb="select"]>div{
+            min-height:42px!important;height:42px!important;border:1px solid #C9D8EE!important;
+            border-radius:11px!important;background:#fff!important;box-shadow:0 3px 10px rgba(23,59,115,.06)!important;
+          }
+        }
+        @media(max-width:700px){
+          /* Siempre dos KPIs por fila en móviles comunes. */
+          .ac-kpis{grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:7px!important;margin:7px 0 10px!important;}
+          .ac-kpi{min-height:92px!important;padding:9px 8px 8px 11px!important;border-radius:11px!important;}
+          .ac-kpi-label{font-size:8px!important;line-height:1.1!important;white-space:normal!important;}
+          .ac-kpi-value{font-size:19px!important;line-height:1.02!important;margin-top:6px!important;white-space:normal!important;overflow:visible!important;text-overflow:clip!important;}
+          .ac-kpi-note{font-size:8px!important;line-height:1.22!important;margin-top:6px!important;white-space:normal!important;overflow:visible!important;text-overflow:clip!important;}
+          .ac-section{font-size:15px!important;margin:7px 0 7px!important;}
+          .ac-breadcrumb{padding:6px 8px!important;margin:5px 0 7px!important;gap:5px!important;}
+          .ac-crumb{font-size:9px!important;}
+        }
+        @media(max-width:330px){.ac-kpis{grid-template-columns:1fr!important;}}
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
