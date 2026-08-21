@@ -13,7 +13,7 @@ import plotly.express as px
 import plotly.graph_objects as go
 import streamlit as st
 
-from .config import ADMIN_PAGE, COMMERCIAL_PAGES, PAGE_LABELS, PROJECT_STORES
+from .config import ADMIN_PAGE, COMMERCIAL_PAGES, MORE_PAGE, PAGE_LABELS, PROJECT_STORES
 from .parsers import PDF_PARSER_VERSION, extract_pdf_snapshot
 from .pdf_analytics import (
     aggregate_pdf,
@@ -129,7 +129,7 @@ def _scope(bundle: dict, prefix: str, *, scenario=False, section=False):
     weeks = _weeks(bundle)
     stores = sorted(bundle["stores_pdf"].get("Tienda", pd.Series(dtype=str)).dropna().astype(str).unique())
     columns = 4 if scenario or section else 3
-    with st.container(border=True):
+    with st.container(border=True, key=f"commercial_report_filters_{prefix}"):
         st.markdown('<div class="ac-filter-caption">FILTROS DEL REPORTE PDF</div>', unsafe_allow_html=True)
         layout = st.columns(columns, vertical_alignment="bottom")
         with layout[0]:
@@ -262,7 +262,7 @@ def _table_style(frame: pd.DataFrame, status_columns=()):
 
 
 def _decision_table(frame: pd.DataFrame, *, status_columns=(), height=360) -> None:
-    """Tabla comercial con encabezado azul corporativo garantizado."""
+    """Tabla corporativa en escritorio y tarjetas de decisión en móvil."""
     if frame is None or frame.empty:
         st.info("No hay registros para el alcance seleccionado.")
         return
@@ -295,6 +295,31 @@ def _decision_table(frame: pd.DataFrame, *, status_columns=(), height=360) -> No
     headers = "".join(f"<th>{html.escape(str(c))}</th>" for c in display.columns)
     body = []
     status_set = set(status_columns or ())
+    mobile_cards = []
+    title_candidates = (
+        "Modelo", "Tienda", "Ubicación", "Rubro", "Sección", "Categoría",
+        "Elemento", "Línea", "Semana", "ID_ART",
+    )
+    metric_priority = (
+        "Sug 7", "Sugerido / VPD", "Venta diaria sugerida", "VPD",
+        "Existencia", "Piso", "Bodega", "DDI", "Días de inventario",
+        "Días inventario", "Ocupación", "Capacidad", "Curva", "Inversión",
+        "Inversión $", "% Utilidad", "% Part. utilidad", "Estado", "Acción",
+    )
+    title_column = next((column for column in title_candidates if column in display.columns), display.columns[0])
+    subtitle_columns = [
+        column for column in ("ID_ART", "Marca", "Sección", "Rubro", "Categoría", "Línea")
+        if column in display.columns and column != title_column
+    ][:2]
+    metric_columns = [
+        column for column in metric_priority
+        if column in display.columns and column != title_column and column not in subtitle_columns
+    ]
+    for column in display.columns:
+        if column not in metric_columns and column != title_column and column not in subtitle_columns and column != "#":
+            metric_columns.append(column)
+    metric_columns = metric_columns[:8]
+
     for _, row in display.iterrows():
         cells = []
         for col in display.columns:
@@ -303,10 +328,44 @@ def _decision_table(frame: pd.DataFrame, *, status_columns=(), height=360) -> No
             cells.append(f'<td style="{style}">{html.escape(text)}</td>')
         body.append("<tr>" + "".join(cells) + "</tr>")
 
+        title = fmt_value(title_column, row[title_column]) or "Detalle"
+        subtitle = " · ".join(
+            f"{column}: {fmt_value(column, row[column])}"
+            for column in subtitle_columns if fmt_value(column, row[column])
+        )
+        badge_column = next(
+            (column for column in (status_columns or ()) if column in display.columns and fmt_value(column, row[column])),
+            None,
+        )
+        badge = ""
+        if badge_column:
+            badge_text = fmt_value(badge_column, row[badge_column])
+            badge = f'<span class="ac-mobile-badge" style="{status_style(badge_text)}">{html.escape(badge_text)}</span>'
+        rank = fmt_value("#", row["#"]) if "#" in display.columns else ""
+        rank_html = f'<span class="ac-mobile-rank">#{html.escape(rank)}</span>' if rank else ""
+        metrics = []
+        for column in metric_columns:
+            if column == badge_column:
+                continue
+            value = fmt_value(column, row[column])
+            if not value:
+                continue
+            metrics.append(
+                f'<div class="ac-mobile-field"><span>{html.escape(str(column))}</span>'
+                f'<strong>{html.escape(value)}</strong></div>'
+            )
+        subtitle_html = f'<small>{html.escape(subtitle)}</small>' if subtitle else ""
+        mobile_cards.append(
+            '<article class="ac-mobile-card"><div class="ac-mobile-card-head"><div>'
+            f'{rank_html}<strong class="ac-mobile-card-title">{html.escape(title)}</strong>{subtitle_html}'
+            f'</div>{badge}</div><div class="ac-mobile-card-grid">{"".join(metrics)}</div></article>'
+        )
+
     table_html = (
         f'<div class="ac-table-scroll" style="max-height:{int(height)}px">'
         f'<table class="ac-decision-table"><thead><tr>{headers}</tr></thead>'
         f'<tbody>{"".join(body)}</tbody></table></div>'
+        f'<div class="ac-mobile-cards">{"".join(mobile_cards)}</div>'
     )
     st.markdown("".join(table_html), unsafe_allow_html=True)
 
@@ -723,7 +782,7 @@ def _global_scope(bundle: dict) -> dict:
         ]
     _valid_options("commercial_model", model_options)
 
-    with st.container(border=True):
+    with st.container(border=True, key="commercial_global_filters"):
         st.markdown('<div class="ac-filter-caption">FILTROS GLOBALES · SE CONSERVAN DURANTE TODA LA NAVEGACIÓN</div>', unsafe_allow_html=True)
         c1, c2, c3, c4, c5, c6 = st.columns([1, 1.1, 1, 1.25, 1.6, .55], vertical_alignment="bottom")
         with c1:
@@ -1625,6 +1684,8 @@ def _page_models_focus(bundle: dict) -> None:
 
 def _page_profit_focus(bundle: dict) -> None:
     _header("Dinero y utilidad", "Participación publicada e inversión identificada", bundle)
+    if st.button("← Más opciones", key="profit_back_more"):
+        _open_commercial_page(MORE_PAGE); st.rerun()
     scope = _global_scope(bundle)
     _breadcrumb(scope)
     _, breakdowns, models = _scope_frames(bundle, scope)
@@ -1656,6 +1717,8 @@ def _page_profit_focus(bundle: dict) -> None:
 
 def _page_store_evolution(bundle: dict) -> None:
     _header("Mi evolución", "Cómo cambia el sugerido, el inventario y la cobertura semana a semana", bundle)
+    if st.button("← Más opciones", key="history_back_more"):
+        _open_commercial_page(MORE_PAGE); st.rerun()
     scope = _global_scope(bundle)
     _breadcrumb(scope)
     stores, _, _ = _scope_frames(bundle, scope, use_selected_week=False)
@@ -1761,6 +1824,8 @@ def _process_pdf_entries(entries: list[tuple[dict, Path]], week_key: str, progre
 
 def _page_upload(bundle: dict, is_admin: bool) -> None:
     _header("Carga Semanal de PDF", "Tres pasos claros para publicar información confiable", bundle)
+    if st.button("← Más opciones", key="upload_back_more"):
+        _open_commercial_page(MORE_PAGE); st.rerun()
     if not is_admin:
         st.error("Esta pestaña está disponible únicamente para Administrador o Propietario."); return
     flash = st.session_state.pop("commercial_upload_flash", None)
@@ -1991,19 +2056,75 @@ def _page_location_v61(bundle: dict) -> None:
     # Modelos del alcance se mantienen disponibles debajo para bajar al detalle.
     _render_model_rankings(models,'area_models')
 
+
+def _open_commercial_page(page: str) -> None:
+    """Solicita navegación sin escribir sobre un widget ya creado."""
+    st.session_state["nav_page"] = page
+    st.session_state["nav_request"] = page
+
+
+def _page_more(bundle: dict, is_admin: bool) -> None:
+    """Centro compacto para las vistas secundarias de Planeación Comercial."""
+    _header("Más opciones", "Utilidad, evolución, carga y acceso al portafolio", bundle)
+    st.markdown(
+        '<div class="ac-source-note">Las consultas principales permanecen en la barra inferior. '
+        'Aquí se concentran las funciones de seguimiento y administración.</div>',
+        unsafe_allow_html=True,
+    )
+    with st.container(key="commercial_more_actions"):
+        left, right = st.columns(2, gap="medium")
+        with left:
+            st.markdown(
+                '<div class="ac-more-card"><b>Dinero y utilidad</b><span>Participación, inversión identificada y comparativos.</span></div>',
+                unsafe_allow_html=True,
+            )
+            if st.button("Abrir dinero y utilidad", key="more_profit", width="stretch", type="primary"):
+                _open_commercial_page("Utilidad Comercial"); st.rerun()
+        with right:
+            st.markdown(
+                '<div class="ac-more-card"><b>Mi evolución</b><span>Sugerido, inventario y DDI semana contra semana.</span></div>',
+                unsafe_allow_html=True,
+            )
+            if st.button("Abrir mi evolución", key="more_history", width="stretch"):
+                _open_commercial_page("Histórico Comercial"); st.rerun()
+
+        admin_col, portfolio_col = st.columns(2, gap="medium")
+        with admin_col:
+            if is_admin:
+                st.markdown(
+                    '<div class="ac-more-card"><b>Carga semanal</b><span>Publica los PDF y valida las 17 tiendas.</span></div>',
+                    unsafe_allow_html=True,
+                )
+                if st.button("Abrir carga PDF", key="more_upload", width="stretch"):
+                    _open_commercial_page(ADMIN_PAGE); st.rerun()
+            else:
+                st.markdown(
+                    '<div class="ac-more-card ac-more-card-muted"><b>Carga semanal</b><span>Disponible para Administrador.</span></div>',
+                    unsafe_allow_html=True,
+                )
+        with portfolio_col:
+            st.markdown(
+                '<div class="ac-more-card"><b>Menú principal</b><span>Cambia entre Planeación Comercial y Muertos y Cambios.</span></div>',
+                unsafe_allow_html=True,
+            )
+            if st.button("Volver al menú principal", key="more_portfolio", width="stretch"):
+                st.session_state["active_app"] = None
+                st.session_state["nav_page"] = "Inicio"
+                st.session_state.pop("project_nav_selector", None)
+                st.rerun()
+
 def render_pdf_page(page: str, bundle: dict, is_admin: bool) -> None:
-    # Los filtros se reinician al cambiar de pestaña para que la selección
-    # de una vista no quede aplicada en las demás.
-    previous_page = st.session_state.get("commercial_active_pdf_page")
-    if previous_page != page:
-        _clear_global_scope()
-        st.session_state["commercial_active_pdf_page"] = page
+    # El alcance se conserva durante la navegación. Cada pantalla se renderiza
+    # de forma exclusiva mediante su ruta, sin arrastrar contenido visual de la
+    # pantalla anterior.
+    st.session_state["commercial_active_pdf_page"] = page
 
     routes = {
         "Mi Tienda Comercial": _page_radiography,
         "Ventas Comerciales": _page_tiendas_v61,
         "Sugeridos Comerciales": _page_section_rubro_v61,
         "Modelos Comerciales": _page_location_v61,
+        MORE_PAGE: lambda data: _page_more(data, is_admin),
         "Utilidad Comercial": _page_profit_focus,
         "Histórico Comercial": _page_store_evolution,
     }

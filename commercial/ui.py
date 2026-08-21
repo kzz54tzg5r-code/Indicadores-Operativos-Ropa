@@ -15,7 +15,16 @@ import plotly.graph_objects as go
 import streamlit as st
 
 from .analytics import snapshots_to_frames
-from .config import ADMIN_PAGE, COMMERCIAL_PAGES, PAGE_LABELS, PROJECT_STORES, ensure_directories
+from .config import (
+    ADMIN_PAGE,
+    COMMERCIAL_MORE_PAGES,
+    COMMERCIAL_PAGES,
+    COMMERCIAL_PRIMARY_PAGES,
+    MORE_PAGE,
+    PAGE_LABELS,
+    PROJECT_STORES,
+    ensure_directories,
+)
 from .parsers import PDF_PARSER_VERSION, extract_pdf_snapshot
 from .pdf_analytics import (
     aggregate_pdf,
@@ -152,6 +161,7 @@ def _inject_styles() -> None:
         .ac-decision-table tbody td{{padding:10px 12px;border-right:1px solid #E5EAF1;border-bottom:1px solid #E5EAF1;white-space:nowrap;background:#fff}}
         .ac-decision-table tbody tr:nth-child(even) td{{background:#F8FAFD}}
         .ac-decision-table tbody tr:hover td{{background:#EEF4FF}}
+        .ac-mobile-cards{{display:none}}
         /* Shell lateral comercial. Los selectores deliberadamente incluyen el
            marcador para superar las reglas globales que usan !important. */
         body [data-testid="stAppViewContainer"]:has(.ac-shell-marker) section[data-testid="stSidebar"]{{
@@ -217,6 +227,7 @@ def render_commercial_sidebar(active_page: str, is_admin: bool = False) -> None:
         "Ventas Comerciales": "Tiendas",
         "Sugeridos Comerciales": "Sección / Rubro",
         "Modelos Comerciales": "Ubicación / Área",
+        MORE_PAGE: "Más opciones",
         "Utilidad Comercial": "Dinero y utilidad",
         "Histórico Comercial": "Mi evolución",
     }
@@ -225,6 +236,7 @@ def render_commercial_sidebar(active_page: str, is_admin: bool = False) -> None:
         "Ventas Comerciales": ":material/bar_chart:",
         "Sugeridos Comerciales": ":material/inventory_2:",
         "Modelos Comerciales": ":material/emoji_events:",
+        MORE_PAGE: ":material/more_horiz:",
         "Utilidad Comercial": ":material/paid:",
         "Histórico Comercial": ":material/history:",
     }
@@ -234,10 +246,12 @@ def render_commercial_sidebar(active_page: str, is_admin: bool = False) -> None:
             st.image(str(logo), width=105)
         st.markdown("### Planeación Comercial")
         st.caption("Venta, sugerido y utilidad")
-        for page_name in COMMERCIAL_PAGES:
+        detail_pages = set(COMMERCIAL_MORE_PAGES)
+        for page_name in COMMERCIAL_PRIMARY_PAGES:
+            is_active = active_page == page_name or (page_name == MORE_PAGE and active_page in detail_pages)
             if st.button(
                 sidebar_labels.get(page_name, PAGE_LABELS[page_name]), key=f"commercial_side_{page_name}",
-                type="primary" if active_page == page_name else "secondary", width="stretch",
+                type="primary" if is_active else "secondary", width="stretch",
                 icon=sidebar_icons.get(page_name),
             ):
                 st.session_state["nav_page"] = page_name
@@ -261,31 +275,31 @@ def render_commercial_sidebar(active_page: str, is_admin: bool = False) -> None:
 
 
 def render_commercial_mobile_nav(active_page: str, is_admin: bool = False) -> None:
-    """Navegación principal visible en móvil, independiente del sidebar nativo."""
-    options = list(COMMERCIAL_PAGES) + ([ADMIN_PAGE] if is_admin else [])
+    """Barra inferior móvil con las cinco decisiones principales de ORION."""
+    options = list(COMMERCIAL_PRIMARY_PAGES)
     labels = {
-        "Mi Tienda Comercial": "🏢 Macro compañía",
-        "Ventas Comerciales": "🏬 Tiendas",
-        "Sugeridos Comerciales": "📦 Sección / Rubro",
-        "Modelos Comerciales": "📍 Ubicación / Área",
-        "Utilidad Comercial": "💰 Dinero y utilidad",
-        "Histórico Comercial": "↻ Mi evolución",
-        ADMIN_PAGE: "⬆ Carga PDF",
+        "Mi Tienda Comercial": "⌂ Inicio",
+        "Ventas Comerciales": "▥ Tiendas",
+        "Sugeridos Comerciales": "◫ Secciones",
+        "Modelos Comerciales": "◇ Modelos",
+        MORE_PAGE: "••• Más",
     }
-    state_key = "commercial_mobile_nav_select"
-    # Sincronizar cuando la navegación se produjo desde escritorio/sidebar.
-    if st.session_state.get(state_key) != active_page:
-        st.session_state[state_key] = active_page
+    state_key = "commercial_mobile_bottom_nav"
+    active_option = active_page if active_page in options else MORE_PAGE
+    # La llave sólo se sincroniza antes de crear el widget, por lo que no se
+    # repite el error de session_state que presentaba project_nav_selector.
+    if st.session_state.get(state_key) != active_option:
+        st.session_state[state_key] = active_option
     with st.container(key="commercial_mobile_nav"):
-        st.markdown('<div class="ac-mobile-menu-title">☰ Planeación Comercial</div>', unsafe_allow_html=True)
-        selected = st.selectbox(
-            "Menú Planeación Comercial",
+        selected = st.radio(
+            "Navegación principal",
             options,
             format_func=lambda value: labels.get(value, PAGE_LABELS.get(value, value)),
             key=state_key,
+            horizontal=True,
             label_visibility="collapsed",
         )
-    if selected != active_page:
+    if selected != active_option:
         st.session_state["nav_page"] = selected
         st.session_state["nav_request"] = selected
         st.rerun()

@@ -13,14 +13,27 @@ MANIFEST_FILE = DATA_ROOT / "manifest.json"
 ACTIONS_FILE = DATA_ROOT / "actions.json"
 SNAPSHOTS_FILE = DATA_ROOT / "snapshots.json"
 
-COMMERCIAL_PAGES = (
+MORE_PAGE = "Más Comercial"
+
+# Las cinco opciones que permanecen visibles en la barra inferior móvil.
+# Utilidad, histórico y carga continúan siendo páginas independientes, pero se
+# abren desde ``Más`` para no saturar una pantalla de teléfono.
+COMMERCIAL_PRIMARY_PAGES = (
     "Mi Tienda Comercial",
     "Ventas Comerciales",
     "Sugeridos Comerciales",
     "Modelos Comerciales",
+    MORE_PAGE,
+)
+
+COMMERCIAL_MORE_PAGES = (
     "Utilidad Comercial",
     "Histórico Comercial",
 )
+
+# Mantiene registradas todas las rutas para navegación directa, permisos y
+# compatibilidad con los enlaces existentes del proyecto.
+COMMERCIAL_PAGES = COMMERCIAL_PRIMARY_PAGES + COMMERCIAL_MORE_PAGES
 
 ADMIN_PAGE = "Carga Comercial"
 
@@ -29,6 +42,7 @@ PAGE_LABELS = {
     "Ventas Comerciales": "Tiendas",
     "Sugeridos Comerciales": "Sección / Rubro",
     "Modelos Comerciales": "Ubicación / Área",
+    "Más Comercial": "Más",
     "Utilidad Comercial": "Dinero y utilidad",
     "Histórico Comercial": "Mi evolución",
     "Carga Comercial": "Carga PDF",
