@@ -104,11 +104,18 @@ def _kpis(items, columns: int | None = None) -> None:
 
 
 def _plot(fig, height=380):
+    # V66: ejes fijos para impedir zoom/pan accidental en móvil.
     fig.update_layout(
         height=height, margin=dict(l=24, r=20, t=50, b=35), paper_bgcolor="white", plot_bgcolor="white",
         font=dict(family="Arial", color=NAVY, size=11), legend=dict(orientation="h", y=1.13, x=0),
+        dragmode=False, autosize=True,
     )
-    st.plotly_chart(fig, width="stretch", config={"displayModeBar": False, "responsive": True})
+    fig.update_xaxes(fixedrange=True, automargin=True)
+    fig.update_yaxes(fixedrange=True, automargin=True)
+    st.plotly_chart(
+        fig, width="stretch",
+        config={"displayModeBar": False, "responsive": True, "scrollZoom": False, "doubleClick": False, "editable": False, "showTips": False},
+    )
 
 
 def _weeks(bundle: dict) -> list[str]:
