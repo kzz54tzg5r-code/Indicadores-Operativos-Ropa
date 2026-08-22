@@ -10027,7 +10027,9 @@ op_all = pd.DataFrame()
 co_all = pd.DataFrame()
 diag_df = pd.DataFrame()
 
-needs_data = page in DATA_PAGES
+# El módulo comercial usa exclusivamente su bundle PDF/snapshots. No debe
+# bloquear la pantalla cargando el Excel operativo heredado antes de renderizar.
+needs_data = page in DATA_PAGES and page not in COMMERCIAL_DATA_PAGES
 
 # V40: restauración remota diferida. Solo se intenta si la página realmente
 # necesita datos y el archivo local no existe. Un origen remoto lento nunca
@@ -12123,40 +12125,9 @@ h1,h2,h3{color:#172B4D!important}.footer{opacity:.72!important}
 ''', unsafe_allow_html=True)
 st.caption("PS Operaciones Ropa · V73 · ORION Mobile")
 
-# V53: shell visual del proyecto comercial. Esta regla es la última capa CSS
-# para neutralizar los estilos heredados que ocultaban el sidebar en V52.
-if st.session_state.get("active_app") == "Ventas y Análisis Comercial":
-    st.markdown(
-        """
-        <style>
-        @media(min-width:901px){
-          [data-testid="stSidebar"]{
-            display:block!important;visibility:visible!important;opacity:1!important;
-            position:fixed!important;left:0!important;top:0!important;bottom:0!important;
-            width:224px!important;min-width:224px!important;max-width:224px!important;
-            transform:none!important;background:linear-gradient(180deg,#0B326D,#102E67)!important;
-            z-index:1200!important;overflow-y:auto!important;
-          }
-          [data-testid="stSidebar"]>div{width:224px!important;padding:14px 10px!important;}
-          [data-testid="stMain"]{margin-left:224px!important;width:calc(100% - 224px)!important;max-width:calc(100% - 224px)!important;}
-          [data-testid="stSidebarCollapsedControl"],[data-testid="collapsedControl"]{display:none!important;}
-        }
-        [data-testid="stSidebar"] h3,[data-testid="stSidebar"] p,[data-testid="stSidebar"] span{color:#fff!important;}
-        [data-testid="stSidebar"] img{background:#fff!important;border-radius:10px!important;padding:6px!important;margin:0 auto 8px!important;}
-        [data-testid="stSidebar"] .stButton>button{color:#fff!important;background:transparent!important;border:0!important;border-radius:10px!important;justify-content:flex-start!important;text-align:left!important;min-height:40px!important;padding:8px 11px!important;}
-        [data-testid="stSidebar"] .stButton>button[kind="primary"]{background:#155BEF!important;box-shadow:0 5px 14px rgba(0,0,0,.15)!important;}
-        [data-testid="stSidebar"] .stButton>button:hover{background:rgba(255,255,255,.12)!important;}
-        .v27-app-header,[data-testid="stHorizontalBlock"]:has([aria-label="Menú de Ventas y Análisis Comercial"]),.v30-project-context{display:none!important;}
-        [data-testid="stMainBlockContainer"],.block-container{max-width:none!important;width:100%!important;padding:.7rem 1.2rem 2.5rem!important;}
-        @media(max-width:900px){
-          [data-testid="stSidebar"]{display:block!important;visibility:visible!important;width:286px!important;max-width:82vw!important;background:linear-gradient(180deg,#0B326D,#102E67)!important;z-index:1600!important;}
-          [data-testid="stMain"]{margin-left:0!important;width:100%!important;max-width:100%!important;}
-          [data-testid="stSidebarCollapsedControl"],[data-testid="collapsedControl"]{display:flex!important;visibility:visible!important;opacity:1!important;z-index:1700!important;}
-        }
-        </style>
-        """,
-        unsafe_allow_html=True,
-    )
+# V74: el shell comercial se controla únicamente desde commercial/ui.py.
+# Se elimina la segunda capa heredada de escritorio porque competía por ancho,
+# margen y visibilidad con el layout comercial y podía dejar el panel central vacío.
 
 # V70: navegación inferior móvil compacta, sin iconos ni espacio fantasma.
 if st.session_state.get("active_app") == "Ventas y Análisis Comercial":
