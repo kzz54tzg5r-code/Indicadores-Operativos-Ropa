@@ -183,13 +183,20 @@ def _inject_styles() -> None:
           overflow:visible!important;box-sizing:border-box!important;
         }}
         body [data-testid="stAppViewContainer"]:has(.ac-shell-marker) [data-testid="stMain"]{{
+          display:block!important;visibility:visible!important;opacity:1!important;
+          position:relative!important;transform:none!important;left:0!important;right:auto!important;
           margin-left:184px!important;width:calc(100% - 184px)!important;
-          max-width:calc(100% - 184px)!important;padding-top:0!important;
+          max-width:calc(100% - 184px)!important;min-width:0!important;
+          min-height:100vh!important;padding-top:0!important;overflow:visible!important;
         }}
         body [data-testid="stAppViewContainer"]:has(.ac-shell-marker) [data-testid="stMainBlockContainer"],
+        body [data-testid="stAppViewContainer"]:has(.ac-shell-marker) [data-testid="stAppViewBlockContainer"],
         body [data-testid="stAppViewContainer"]:has(.ac-shell-marker) .block-container{{
-          width:100%!important;max-width:none!important;margin:0!important;
-          padding:.55rem 1rem 2rem!important;box-sizing:border-box!important;
+          display:block!important;visibility:visible!important;opacity:1!important;
+          position:relative!important;transform:none!important;
+          width:100%!important;max-width:none!important;min-width:0!important;min-height:1px!important;
+          margin:0!important;padding:.55rem 1rem 2rem!important;box-sizing:border-box!important;
+          overflow:visible!important;
         }}
         body [data-testid="stAppViewContainer"]:has(.ac-shell-marker) .v27-app-header,
         body [data-testid="stAppViewContainer"]:has(.ac-shell-marker) .v30-project-context,
@@ -207,6 +214,17 @@ def _inject_styles() -> None:
         body [data-testid="stAppViewContainer"]:has(.ac-shell-marker) section[data-testid="stSidebar"] .stButton>button[kind="primary"]{{background:#E9F1FF!important;color:{BLUE}!important;border-left:4px solid {BLUE}!important;box-shadow:none!important;}}
         body [data-testid="stAppViewContainer"]:has(.ac-shell-marker) section[data-testid="stSidebar"] .stButton>button:hover{{background:#F0F5FF!important;color:{BLUE}!important;}}
         @media(max-width:1350px){{.ac-kpis{{grid-template-columns:repeat(4,minmax(0,1fr))!important}}}}@media(max-width:700px){{.ac-header{{align-items:flex-start;flex-direction:column}}.ac-title{{font-size:22px}}.ac-status{{justify-content:flex-start}}.ac-kpis{{grid-template-columns:repeat(2,minmax(0,1fr))!important}}}}@media(max-width:330px){{.ac-kpis{{grid-template-columns:1fr!important}}}}
+        @media(min-width:901px){{
+          body [data-testid="stAppViewContainer"]:has(.ac-shell-marker) [data-testid="stMain"]{{
+            display:block!important;visibility:visible!important;opacity:1!important;
+            margin-left:184px!important;width:calc(100vw - 184px)!important;max-width:calc(100vw - 184px)!important;
+          }}
+          body [data-testid="stAppViewContainer"]:has(.ac-shell-marker) [data-testid="stMainBlockContainer"],
+          body [data-testid="stAppViewContainer"]:has(.ac-shell-marker) [data-testid="stAppViewBlockContainer"],
+          body [data-testid="stAppViewContainer"]:has(.ac-shell-marker) .block-container{{
+            display:block!important;visibility:visible!important;opacity:1!important;max-width:none!important;
+          }}
+        }}
         @media(max-width:900px){{
           body [data-testid="stAppViewContainer"]:has(.ac-shell-marker) section[data-testid="stSidebar"]{{
             width:286px!important;min-width:286px!important;max-width:82vw!important;
@@ -977,20 +995,31 @@ def render_commercial_page(page: str, existing_sales=None, is_admin: bool = Fals
     # restauración y lanzar un rerun. Si la marca se escribía al final, el rerun
     # volvía a iniciar la restauración y la pantalla quedaba en blanco en un ciclo.
     if "commercial_cloud_bootstrap" not in st.session_state:
-        st.session_state["commercial_cloud_bootstrap"] = {
-            "configured": cloud_enabled(), "restored": 0, "error": "", "status": "running"
-        }
-        try:
-            result = restore_history_from_cloud()
-            result["status"] = "done"
-            st.session_state["commercial_cloud_bootstrap"] = result
-            if result.get("restored"):
-                st.cache_data.clear()
-        except Exception as exc:
+        # Si el despliegue ya trae manifest + snapshots, renderizamos primero con
+        # esos datos. Esto evita que una descarga remota lenta deje el escritorio
+        # con el sidebar visible y el panel central en blanco.
+        local_manifest = load_manifest()
+        local_snapshots = load_snapshots()
+        has_local_history = bool(local_manifest.get("pdfs")) and bool(local_snapshots)
+        if has_local_history:
             st.session_state["commercial_cloud_bootstrap"] = {
-                "configured": cloud_enabled(), "restored": 0,
-                "error": f"{type(exc).__name__}: {exc}", "status": "error"
+                "configured": cloud_enabled(), "restored": 0, "error": "", "status": "local_ready"
             }
+        else:
+            st.session_state["commercial_cloud_bootstrap"] = {
+                "configured": cloud_enabled(), "restored": 0, "error": "", "status": "running"
+            }
+            try:
+                result = restore_history_from_cloud()
+                result["status"] = "done"
+                st.session_state["commercial_cloud_bootstrap"] = result
+                if result.get("restored"):
+                    st.cache_data.clear()
+            except Exception as exc:
+                st.session_state["commercial_cloud_bootstrap"] = {
+                    "configured": cloud_enabled(), "restored": 0,
+                    "error": f"{type(exc).__name__}: {exc}", "status": "error"
+                }
 
     with st.spinner("Actualizando análisis comercial..."):
         bundle = _load_bundle(existing_sales)
