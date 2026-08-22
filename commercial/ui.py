@@ -971,10 +971,27 @@ def render_commercial_page(page: str, existing_sales=None, is_admin: bool = Fals
     # mediante CSS no reserva un bloque vacío en Safari y permanece disponible
     # aunque el reporte sea largo.
     render_commercial_mobile_nav(page, is_admin=is_admin)
+
+    # IMPORTANTE: marcamos el bootstrap ANTES de tocar archivos persistidos.
+    # Streamlit Cloud puede detectar cambios en manifest/snapshots durante una
+    # restauración y lanzar un rerun. Si la marca se escribía al final, el rerun
+    # volvía a iniciar la restauración y la pantalla quedaba en blanco en un ciclo.
     if "commercial_cloud_bootstrap" not in st.session_state:
-        st.session_state["commercial_cloud_bootstrap"] = restore_history_from_cloud()
-        if st.session_state["commercial_cloud_bootstrap"].get("restored"):
-            st.cache_data.clear()
+        st.session_state["commercial_cloud_bootstrap"] = {
+            "configured": cloud_enabled(), "restored": 0, "error": "", "status": "running"
+        }
+        try:
+            result = restore_history_from_cloud()
+            result["status"] = "done"
+            st.session_state["commercial_cloud_bootstrap"] = result
+            if result.get("restored"):
+                st.cache_data.clear()
+        except Exception as exc:
+            st.session_state["commercial_cloud_bootstrap"] = {
+                "configured": cloud_enabled(), "restored": 0,
+                "error": f"{type(exc).__name__}: {exc}", "status": "error"
+            }
+
     with st.spinner("Actualizando análisis comercial..."):
         bundle = _load_bundle(existing_sales)
     from .pdf_pages import render_pdf_page
