@@ -300,7 +300,7 @@ def _decision_table(frame: pd.DataFrame, *, status_columns=(), ddi_columns=(), h
             return "background:#DCFCE7;color:#14532D;font-weight:800;"
         if any(word in text for word in ("atención", "mantener", "revisar", "media")):
             return "background:#FEF3C7;color:#92400E;font-weight:800;"
-        if any(word in text for word in ("crítico", "reducir", "riesgo", "alta")):
+        if any(word in text for word in ("crítico", "reducir", "riesgo", "alta", "exceso", "sin rotación")):
             return "background:#FEE2E2;color:#991B1B;font-weight:800;"
         return ""
 
@@ -1190,20 +1190,25 @@ def _render_company_level(bundle: dict, scope: dict, stores: pd.DataFrame, break
       ("Ocupación",f"{occupancy_pct:.1f}%",section_note("Ocupación",percent=True),RED if occupancy_pct>100 else GREEN),
     ],5)
 
-    # Participaciones por sección en formato compacto; sustituyen las tarjetas
-    # grandes de Dama/Caballero/Infantil y las antiguas tarjetas de participación.
+    # Participaciones por sección en formato tarjeta para que queden visibles
+    # debajo del bloque macro y sin depender de una sola línea de texto.
     if not sections.empty:
-        participation=[]
+        section_cards=[]
+        card_colors={"Dama": BLUE, "Caballero": GREEN, "Infantil": ORANGE}
         for name in ("Dama","Caballero","Infantil"):
             row=sections[sections["Sección macro"].eq(name)]
             if row.empty:
                 continue
             r=row.iloc[0]
-            participation.append(
-                f"{name}: Part. pzas {float(r.get('% Piezas',0)):.1f}% · Part. utilidad {float(r.get('% Utilidad',0)):.1f}% · Part. inventario {float(r.get('% Part. inventario',0)):.1f}%"
-            )
-        if participation:
-            st.caption("  |  ".join(participation))
+            section_cards.append((
+                f"Sección {name}",
+                name,
+                f"Part. pzas {float(r.get('% Piezas',0)):.1f}% · Part. utilidad {float(r.get('% Utilidad',0)):.1f}% · Part. inventario {float(r.get('% Part. inventario',0)):.1f}%",
+                card_colors.get(name, BLUE),
+            ))
+        if section_cards:
+            st.markdown('<div class="ac-section">Participación por sección</div>',unsafe_allow_html=True)
+            _kpis(section_cards, 3)
 
         st.markdown('<div class="ac-section">Detalle por sección</div>',unsafe_allow_html=True)
         display=sections.rename(columns={"Sección macro":"Sección","VPD":"Sugerido","% Sug Cía.":"% Sug Cía","% Part. inventario":"% Part Inventario","% Piezas":"% Part Piezas"})
@@ -1396,7 +1401,7 @@ def _render_model_level(bundle: dict, scope: dict, models: pd.DataFrame) -> None
 
 
 def _page_radiography(bundle: dict) -> None:
-    _header("Planeación Comercial · Macro Compañía", "Compañía → Sección → Catálogo → Rubro → Modelo", bundle)
+    _header("Análisis Comercial · Macro Compañía", "Compañía → Sección → Catálogo → Rubro → Modelo", bundle)
     st.markdown('<div class="ac-source-note">La vista usa exclusivamente información publicada en los PDF. <b>Capacidad = Curva</b> y <b>Ocupación = Existencia / Capacidad × 100</b>. Los campos que requieren ventas en pesos o existencias futuras se identifican como Información no disponible.</div>', unsafe_allow_html=True)
     scope = _global_scope(bundle)
     _breadcrumb(scope)
@@ -1468,7 +1473,7 @@ def _planning_summary(scope: dict, breakdowns: pd.DataFrame, models: pd.DataFram
 
 
 def _page_planning(bundle: dict) -> None:
-    _header("Planeación Comercial", "Diagnóstico → Oportunidad → Decisión → Acción", bundle)
+    _header("Análisis Comercial", "Diagnóstico → Oportunidad → Decisión → Acción", bundle)
     scope = _global_scope(bundle)
     _breadcrumb(scope)
     stores, breakdowns, models = _scope_frames(bundle, scope)
@@ -1799,37 +1804,35 @@ def _page_models_focus(bundle: dict) -> None:
 
 
 def _page_profit_focus(bundle: dict) -> None:
-    _header("Dinero y utilidad", "Participación publicada e inversión identificada", bundle)
+    _header("Dinero y utilidad", "Participación publicada visible y sin saturar la pantalla", bundle)
     if st.button("← Más opciones", key="profit_back_more"):
         _open_commercial_page(MORE_PAGE); st.rerun()
     scope = _global_scope(bundle)
     _breadcrumb(scope)
     _, breakdowns, models = _scope_frames(bundle, scope)
-    dimension = st.segmented_control("Ver por", ["Sección", "Ubicación", "Línea"], default="Sección", key="profit_dimension") or "Sección"
-    data = _dimension_summary(breakdowns, dimension)
+    data = _dimension_summary(breakdowns, "Sección")
     if data.empty:
         st.info("No existe desglose de participación para los filtros seleccionados."); return
-    investment_models = _scenario_models(models, "Inversión")
-    investment = investment_models["Inversión"].sum() if not investment_models.empty else 0
-    sale_leader = data.nlargest(1, "% Part. venta $").iloc[0]
-    utility_leader = data.nlargest(1, "% Part. utilidad").iloc[0]
-    pieces_leader = data.nlargest(1, "% Part. piezas").iloc[0] if "% Part. piezas" in data else sale_leader
-    _kpis([
-        ("Mayor part. venta $", sale_leader["Elemento"], _percent(sale_leader["% Part. venta $"]), BLUE),
-        ("Mayor part. utilidad", utility_leader["Elemento"], _percent(utility_leader["% Part. utilidad"]), GREEN),
-        ("Mayor part. piezas", pieces_leader["Elemento"], _percent(pieces_leader.get("% Part. piezas",0)), CYAN),
-        ("Inversión identificada", _money(investment), "Sólo ranking Inversión publicado", PURPLE),
-    ], 4)
     chart = data.head(16).sort_values("% Part. utilidad")
     fig = go.Figure()
-    fig.add_bar(y=chart["Elemento"], x=chart["% Part. venta $"], orientation="h", name="Participación venta $", marker_color=BLUE, text=chart["% Part. venta $"].map(lambda value: f"{value:.1f}%"), textposition="outside")
-    fig.add_bar(y=chart["Elemento"], x=chart["% Part. utilidad"], orientation="h", name="Participación utilidad", marker_color=PINK, text=chart["% Part. utilidad"].map(lambda value: f"{value:.1f}%"), textposition="outside")
-    fig.update_layout(title=f"Participación por {dimension.lower()}", barmode="group", xaxis_title="Participación (%)", yaxis_title="")
-    _plot(fig, max(390, len(chart) * 36 + 120))
-    display = data.rename(columns={"VPD": "Sugerido", "DDI": "DDI", "Inversión": "Inversión $"})
-    columns = [c for c in ["Elemento", "% Part. venta $", "% Part. utilidad", "% Part. piezas", "Sugerido", "Existencia", "Inversión $", "DDI", "Acción"] if c in display]
-    _decision_table(display[columns], status_columns=("Acción",), height=490)
-    st.caption("Los PDF publican participaciones porcentuales; por eso esta vista no muestra tarjetas vacías de venta total o margen que la fuente no contiene.")
+    fig.add_bar(
+        y=chart["Elemento"], x=chart["% Part. venta $"], orientation="h",
+        name="Participación venta $", marker_color=BLUE,
+        text=chart["% Part. venta $"].map(lambda value: f"{value:.1f}%"), textposition="outside",
+    )
+    fig.add_bar(
+        y=chart["Elemento"], x=chart["% Part. utilidad"], orientation="h",
+        name="Participación utilidad", marker_color=PINK,
+        text=chart["% Part. utilidad"].map(lambda value: f"{value:.1f}%"), textposition="outside",
+    )
+    fig.update_layout(title="Participación por sección", barmode="group", xaxis_title="Participación (%)", yaxis_title="", margin=dict(l=130, r=34, t=56, b=40))
+    fig.update_xaxes(automargin=True)
+    fig.update_yaxes(automargin=True)
+    _plot(fig, max(420, len(chart) * 38 + 140))
+    display = data.rename(columns={"VPD": "Sugerido", "DDI": "DDI", "Inversión": "Inversión $", "Elemento": "Sección"})
+    columns = [c for c in ["Sección", "% Part. venta $", "% Part. utilidad", "% Part. piezas", "Sugerido", "Existencia", "DDI", "Acción"] if c in display]
+    _decision_table(display[columns], status_columns=("Acción",), ddi_columns=("DDI",), height=490)
+    st.caption("La vista se concentra en sección para evitar duplicidad visual. Los porcentajes monetarios provienen del PDF y no representan venta total consolidada.")
 
 def _page_store_evolution(bundle: dict) -> None:
     _header("Mi evolución", "Cómo cambia el sugerido, el inventario y la cobertura semana a semana", bundle)
@@ -2080,8 +2083,8 @@ def _page_tiendas_v61(bundle: dict) -> None:
     ranking=ranking.sort_values('VPD',ascending=False).copy(); ranking.insert(0,'#',range(1,len(ranking)+1))
     ranking = ranking.rename(columns={'VPD':'Sugerido'})
     _decision_table(
-        ranking[[c for c in ['#','Tienda','Sugerido','Existencia','Piso','Bodega','DDI','Bodega %','Posiciones','Estatus'] if c in ranking]],
-        status_columns=('Estatus',),height=480
+        ranking[[c for c in ['#','Tienda','Sugerido','Existencia','Piso','Bodega','DDI','Bodega %','Estatus'] if c in ranking]],
+        status_columns=('Estatus',), ddi_columns=('DDI',), height=480
     )
     st.caption('La primera tabla puede consultarse en General, Dama, Caballero o Infantil. La tabla adicional de secciones fue eliminada.')
 
@@ -2212,7 +2215,7 @@ def _open_commercial_page(page: str) -> None:
 
 
 def _page_more(bundle: dict, is_admin: bool) -> None:
-    """Centro compacto para las vistas secundarias de Planeación Comercial."""
+    """Centro compacto para las vistas secundarias de Análisis Comercial."""
     _header("Más opciones", "Utilidad, evolución, carga y acceso al portafolio", bundle)
     st.markdown(
         '<div class="ac-source-note">Las consultas principales permanecen en la barra inferior. '
@@ -2252,7 +2255,7 @@ def _page_more(bundle: dict, is_admin: bool) -> None:
                 )
         with portfolio_col:
             st.markdown(
-                '<div class="ac-more-card"><b>Menú principal</b><span>Cambia entre Planeación Comercial y Muertos y Cambios.</span></div>',
+                '<div class="ac-more-card"><b>Menú principal</b><span>Cambia entre Análisis Comercial y Muertos y Cambios.</span></div>',
                 unsafe_allow_html=True,
             )
             if st.button("Volver al menú principal", key="more_portfolio", width="stretch"):

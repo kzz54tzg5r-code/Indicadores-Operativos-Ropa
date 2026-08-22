@@ -162,6 +162,9 @@ def _inject_styles() -> None:
         .ac-decision-table tbody tr:nth-child(even) td{{background:#F8FAFD}}
         .ac-decision-table tbody tr:hover td{{background:#EEF4FF}}
         .ac-mobile-cards{{display:none}}
+        html,body,[data-testid="stAppViewContainer"],[data-testid="stApp"],[data-testid="stMain"],[data-testid="stMainBlockContainer"],.main{{background:#F4F7FB!important;overscroll-behavior-y:none!important;overscroll-behavior-x:none!important;}}
+        body{{position:relative!important;}}
+        @supports (-webkit-touch-callout:none){{html,body{{height:100%!important;background:#F4F7FB!important;}}body{{overscroll-behavior:none!important;}}}}
         /* Shell lateral comercial. Los selectores deliberadamente incluyen el
            marcador para superar las reglas globales que usan !important. */
         body [data-testid="stAppViewContainer"]:has(.ac-shell-marker) section[data-testid="stSidebar"]{{
@@ -244,7 +247,7 @@ def render_commercial_sidebar(active_page: str, is_admin: bool = False) -> None:
         logo = Path(__file__).resolve().parents[1] / "assets" / "price_shoes_logo.png"
         if logo.exists():
             st.image(str(logo), width=105)
-        st.markdown("### Planeación Comercial")
+        st.markdown("### Análisis Comercial")
         st.caption("Venta, sugerido y utilidad")
         detail_pages = set(COMMERCIAL_MORE_PAGES)
         for page_name in COMMERCIAL_PRIMARY_PAGES:
