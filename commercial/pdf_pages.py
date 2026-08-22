@@ -41,6 +41,7 @@ BLUE = "#155BEF"
 PINK = "#E6007E"
 GREEN = "#079447"
 ORANGE = "#F28C00"
+YELLOW = "#F2C94C"
 RED = "#E52B50"
 CYAN = "#05A9D6"
 PURPLE = "#7C3AED"
@@ -104,11 +105,16 @@ def _kpis(items, columns: int | None = None) -> None:
 
 
 def _plot(fig, height=380):
-    fig.update_layout(
-        height=height, margin=dict(l=24, r=20, t=50, b=35), paper_bgcolor="white", plot_bgcolor="white",
+    current_margin = fig.layout.margin
+    has_custom_margin = any(getattr(current_margin, side, None) is not None for side in ("l", "r", "t", "b"))
+    layout = dict(
+        height=height, paper_bgcolor="white", plot_bgcolor="white",
         font=dict(family="Arial", color=NAVY, size=11), legend=dict(orientation="h", y=1.13, x=0),
     )
-    fig.update_xaxes(fixedrange=True); fig.update_yaxes(fixedrange=True)
+    if not has_custom_margin:
+        layout["margin"] = dict(l=24, r=20, t=50, b=35)
+    fig.update_layout(**layout)
+    fig.update_xaxes(fixedrange=True, automargin=True); fig.update_yaxes(fixedrange=True, automargin=True)
     st.plotly_chart(fig, width="stretch", config={"displayModeBar": False, "responsive": True, "scrollZoom": False, "doubleClick": False})
 
 
@@ -261,7 +267,7 @@ def _table_style(frame: pd.DataFrame, status_columns=()):
     return styler
 
 
-def _decision_table(frame: pd.DataFrame, *, status_columns=(), height=360) -> None:
+def _decision_table(frame: pd.DataFrame, *, status_columns=(), ddi_columns=(), height=360) -> None:
     """Tabla corporativa en escritorio y tarjetas de decisión en móvil."""
     if frame is None or frame.empty:
         st.info("No hay registros para el alcance seleccionado.")
@@ -298,9 +304,21 @@ def _decision_table(frame: pd.DataFrame, *, status_columns=(), height=360) -> No
             return "background:#FEE2E2;color:#991B1B;font-weight:800;"
         return ""
 
+    def ddi_style(value):
+        try:
+            number = float(value)
+        except (TypeError, ValueError):
+            return ""
+        if number > 120:
+            return "color:#B42318;font-weight:900;"
+        if 91 <= number <= 120:
+            return "color:#B7791F;font-weight:900;"
+        return ""
+
     headers = "".join(f"<th>{html.escape(str(c))}</th>" for c in display.columns)
     body = []
     status_set = set(status_columns or ())
+    ddi_set = set(ddi_columns or ())
     mobile_cards = []
     title_candidates = (
         "Modelo", "Tienda", "Ubicación", "Rubro", "Sección", "Categoría",
@@ -331,6 +349,8 @@ def _decision_table(frame: pd.DataFrame, *, status_columns=(), height=360) -> No
         for col in display.columns:
             text = fmt_value(col, row[col])
             style = status_style(text) if col in status_set else ""
+            if col in ddi_set:
+                style += ddi_style(row[col])
             cells.append(f'<td style="{style}">{html.escape(text)}</td>')
         body.append("<tr>" + "".join(cells) + "</tr>")
 
@@ -356,9 +376,10 @@ def _decision_table(frame: pd.DataFrame, *, status_columns=(), height=360) -> No
             value = fmt_value(column, row[column])
             if not value:
                 continue
+            value_style = ddi_style(row[column]) if column in ddi_set else ""
             metrics.append(
                 f'<div class="ac-mobile-field"><span>{html.escape(str(column))}</span>'
-                f'<strong>{html.escape(value)}</strong></div>'
+                f'<strong style="{value_style}">{html.escape(value)}</strong></div>'
             )
         subtitle_html = f'<small>{html.escape(subtitle)}</small>' if subtitle else ""
         mobile_cards.append(
@@ -1037,8 +1058,43 @@ def _model_matrix(models: pd.DataFrame) -> pd.DataFrame:
     return out
 
 
+def _company_model_matrix(models: pd.DataFrame) -> pd.DataFrame:
+    """Suma el mismo ID_ART entre tiendas para que compañía muestre una sola fila por modelo."""
+    matrix = _model_matrix(models)
+    if matrix.empty:
+        return matrix
+    if "Tienda" not in matrix or matrix["Tienda"].nunique() <= 1:
+        return matrix
+
+    rows = []
+    for article, grp in matrix.groupby("ID_ART", dropna=False):
+        row = {"ID_ART": article}
+        def numeric_series(column: str) -> pd.Series:
+            return pd.to_numeric(grp[column], errors="coerce").fillna(0) if column in grp else pd.Series(0.0, index=grp.index)
+        for column in ("Modelo", "Marca", "Sección", "Rubro"):
+            if column in grp:
+                values = grp[column].fillna("").astype(str)
+                row[column] = next((value for value in values if value.strip()), "")
+        for column in ("VPD", "Existencia", "Piso", "Bodega", "Inversión"):
+            row[column] = float(numeric_series(column).sum())
+        vpd_weights = numeric_series("VPD")
+        utility = numeric_series("% Utilidad")
+        row["% Utilidad"] = float((utility * vpd_weights).sum() / vpd_weights.sum()) if vpd_weights.sum() else float(utility.mean() if len(utility) else 0)
+        row["En baja rotación"] = bool(grp.get("En baja rotación", pd.Series(False, index=grp.index)).fillna(False).any())
+        rows.append(row)
+    out = pd.DataFrame(rows)
+    if out.empty:
+        return out
+    out["DDI"] = out["Existencia"].div(out["VPD"].replace(0, np.nan)).fillna(0)
+    total_vpd = float(out["VPD"].sum())
+    out["% Part. Sug"] = out["VPD"].div(total_vpd or np.nan).mul(100).fillna(0)
+    return out
+
+
 def _render_model_rankings(models: pd.DataFrame, key: str) -> None:
-    matrix=_model_matrix(models)
+    # Esta función sólo se usa en Macro Compañía. El mismo modelo se suma entre
+    # las 17 tiendas y aparece una sola vez en cada ranking.
+    matrix = _company_model_matrix(models)
     if matrix.empty:
         st.info("Los PDF no contienen modelos para el alcance seleccionado."); return
 
@@ -1063,8 +1119,10 @@ def _render_model_rankings(models: pd.DataFrame, key: str) -> None:
         sortcol="VPD" if order=="Sugerido" else "% Utilidad"
         champs=champs_base.sort_values([sortcol,"VPD"],ascending=[False,False]).head(50).copy()
         champs.insert(0,"#",range(1,len(champs)+1))
-        champs_display = champs.rename(columns={"VPD": "Sugerido", "% Part. Sug": "% Part. sugerido"})
-        cols=["#","ID_ART","Modelo","Marca","Sección","Rubro","Sugerido","% Part. sugerido","% Utilidad","Existencia","Piso","Bodega","DDI","Inversión"]
+        champs_display = champs.rename(columns={"VPD": "Sugerido"})
+        # % part sugerido, % utilidad e inversión se usan para cálculo/orden,
+        # pero no se muestran en la tabla de campeones.
+        cols=["#","ID_ART","Modelo","Marca","Sección","Rubro","Sugerido","Existencia","Piso","Bodega","DDI"]
         _decision_table(champs_display[[c for c in cols if c in champs_display]],height=620)
 
     st.markdown('<div class="ac-section">Modelos lentos · bajo sugerido con inversión priorizada</div>',unsafe_allow_html=True)
@@ -1084,7 +1142,9 @@ def _render_model_rankings(models: pd.DataFrame, key: str) -> None:
     slow["Capital de atención"] = np.select([slow["Inversión"].rank(pct=True).ge(.67),slow["Inversión"].rank(pct=True).ge(.34)],["Alta","Media"],default="Baja")
     slow.insert(0,"#",range(1,len(slow)+1))
     slow_display = slow.rename(columns={"VPD": "Sugerido"})
-    cols=["#","Capital de atención","ID_ART","Modelo","Marca","Sección","Rubro","Sugerido","Existencia","DDI","Inversión","% Utilidad","Piso","Bodega"]
+    # En lentos el sugerido conserva dos decimales para distinguir movimientos bajos.
+    slow_display["Sugerido"] = pd.to_numeric(slow_display["Sugerido"], errors="coerce").fillna(0).map(lambda value: f"{value:,.2f}")
+    cols=["#","Capital de atención","ID_ART","Modelo","Marca","Sección","Rubro","Sugerido","Existencia","DDI","Inversión","Piso","Bodega"]
     _decision_table(slow_display[[c for c in cols if c in slow_display]],status_columns=("Capital de atención",),height=470)
 
 def _render_company_level(bundle: dict, scope: dict, stores: pd.DataFrame, breakdowns: pd.DataFrame, models: pd.DataFrame) -> None:
@@ -1096,43 +1156,84 @@ def _render_company_level(bundle: dict, scope: dict, stores: pd.DataFrame, break
     floor_pct=floor/existence*100 if existence else 0; wh_pct=warehouse/existence*100 if existence else 0
     occupancy_pct=existence/curve*100 if curve else 0
     sections=_section_macro(breakdowns)
-    investment_models=_scenario_models(models,"Inversión")
-    identified_investment=float(pd.to_numeric(investment_models.get("Inversión",pd.Series(dtype=float)),errors="coerce").fillna(0).sum()) if not investment_models.empty else 0
+
+    def section_note(metric: str, *, percent: bool = False, days: bool = False) -> str:
+        if sections.empty:
+            return "Sin detalle por sección"
+        pieces=[]
+        aliases={"Dama":"Dama","Caballero":"Cab.","Infantil":"Inf."}
+        for name in ("Dama","Caballero","Infantil"):
+            row=sections[sections["Sección macro"].eq(name)]
+            if row.empty:
+                pieces.append(f"{aliases[name]} —"); continue
+            r=row.iloc[0]
+            if metric == "Ocupación":
+                cap=float(r.get("Curva",0) or 0); ex=float(r.get("Existencia",0) or 0)
+                value=ex/cap*100 if cap else 0
+            else:
+                value=float(r.get(metric,0) or 0)
+            if percent:
+                text=f"{value:.1f}%"
+            elif days:
+                text=f"{value:.0f}d"
+            else:
+                text=_number(value)
+            pieces.append(f"{aliases[name]} {text}")
+        return " · ".join(pieces)
 
     st.markdown('<div class="ac-section">Macro · Compañía</div>',unsafe_allow_html=True)
     _kpis([
-      ("Existencia total",_number(existence),f"Ocupación {occupancy_pct:.1f}% · Piso {floor_pct:.1f}% · Bodega {wh_pct:.1f}%",PURPLE),
-      ("Sugerido compañía",_number(sug),"Movimiento diario publicado",CYAN),
-      ("DDI compañía",f"{ddi:.0f} días","Existencia / Sugerido",ORANGE),
-      ("Capacidad (Curva)",_number(curve),"Capacidad publicada en el PDF",BLUE),
-      ("Part. piezas","100%","Composición por sección abajo",GREEN),
-      ("Part. inventario","100%","Composición por sección abajo",PINK),
-      ("Part. utilidad","100%","Participación publicada, no margen",CYAN),
-      ("Inversión identificada",_money(identified_investment),"Sólo modelos del ranking Inversión",PURPLE),
-    ],4)
-    st.caption("La inversión mostrada corresponde únicamente a los modelos publicados en el ranking de Inversión del PDF; no se presenta como inversión total de la compañía.")
+      ("Existencia total",_number(existence),f"Piso {floor_pct:.1f}% · Bodega {wh_pct:.1f}%",PURPLE),
+      ("Sugerido compañía",_number(sug),section_note("VPD"),CYAN),
+      ("DDI compañía",f"{ddi:.0f} días",section_note("DDI",days=True),ORANGE),
+      ("Capacidad (Curva)",_number(curve),section_note("Curva"),BLUE),
+      ("Ocupación",f"{occupancy_pct:.1f}%",section_note("Ocupación",percent=True),RED if occupancy_pct>100 else GREEN),
+    ],5)
 
-    st.markdown('<div class="ac-section">Dama · Caballero · Infantil</div>',unsafe_allow_html=True)
+    # Participaciones por sección en formato compacto; sustituyen las tarjetas
+    # grandes de Dama/Caballero/Infantil y las antiguas tarjetas de participación.
     if not sections.empty:
-        cards=[]
-        for _,r in sections.iterrows():
-            title=str(r['Sección macro'])
-            subtitle=(f"Sugerido {_number(r.get('VPD',0))} · {r.get('% Sug Cía.',0):.1f}% Cía. · "
-                      f"Exist. {_number(r.get('Existencia',0))} · DDI {r.get('DDI',0):.0f} · "
-                      f"Util. {r.get('% Utilidad',0):.1f}%")
-            cards.append((title,_percent(r.get('% Piezas',0)),subtitle,BLUE if title=='Dama' else (GREEN if title=='Caballero' else ORANGE)))
-        _kpis(cards,3)
+        participation=[]
+        for name in ("Dama","Caballero","Infantil"):
+            row=sections[sections["Sección macro"].eq(name)]
+            if row.empty:
+                continue
+            r=row.iloc[0]
+            participation.append(
+                f"{name}: Part. pzas {float(r.get('% Piezas',0)):.1f}% · Part. utilidad {float(r.get('% Utilidad',0)):.1f}% · Part. inventario {float(r.get('% Part. inventario',0)):.1f}%"
+            )
+        if participation:
+            st.caption("  |  ".join(participation))
+
+        st.markdown('<div class="ac-section">Detalle por sección</div>',unsafe_allow_html=True)
         display=sections.rename(columns={"Sección macro":"Sección","VPD":"Sugerido","% Sug Cía.":"% Sug Cía","% Part. inventario":"% Part Inventario","% Piezas":"% Part Piezas"})
-        _decision_table(display[[c for c in ["Sección","Curva","Piso","Bodega","Existencia","Sugerido","DDI","% Sug Cía","% Utilidad","% Part Piezas"] if c in display]],height=260)
+        _decision_table(display[[c for c in ["Sección","Curva","Piso","Bodega","Existencia","Sugerido","DDI","% Sug Cía","% Utilidad","% Part Piezas","% Part Inventario"] if c in display]],height=260)
 
     st.markdown('<div class="ac-section">Comparativo de tiendas</div>',unsafe_allow_html=True)
     metric_label=st.segmented_control("Métrica",["Sugerido","Existencia","Piso","Bodega","DDI"],default="Sugerido",key="macro_store_metric") or "Sugerido"
     metric="VPD" if metric_label=="Sugerido" else metric_label
-    chart=stores.sort_values(metric)
-    fig=go.Figure(go.Bar(y=chart["Tienda"],x=chart[metric],orientation="h",text=chart[metric].map(lambda x:f"{x:,.0f}"),textposition="outside"))
-    fig.update_layout(title=f"Tiendas · {metric_label}",xaxis_title=metric_label,yaxis_title="",showlegend=False); _plot(fig,max(390,len(chart)*28+100))
+    chart=stores.sort_values(metric).copy()
+    values=pd.to_numeric(chart[metric],errors="coerce").fillna(0)
+    if metric_label=="DDI":
+        colors=np.select([values.le(90),values.le(120)],[GREEN,YELLOW],default=RED)
+    else:
+        colors=BLUE
+    fig=go.Figure(go.Bar(
+        y=chart["Tienda"],x=values,orientation="h",marker_color=colors,
+        text=values.map(lambda x:f"{x:,.0f}"),textposition="auto",cliponaxis=False
+    ))
+    max_value=float(values.max()) if len(values) else 0
+    if max_value>0:
+        fig.update_xaxes(range=[0,max_value*1.22],automargin=True)
+    fig.update_yaxes(automargin=True)
+    fig.update_layout(
+        title=f"Tiendas · {metric_label}",xaxis_title=metric_label,yaxis_title="",showlegend=False,
+        margin=dict(l=92,r=42,t=52,b=38)
+    )
+    _plot(fig,max(390,len(chart)*30+110))
+    if metric_label=="DDI":
+        st.caption("Semáforo DDI: 0–90 verde · 91–120 amarillo · 121 o más rojo.")
     _render_model_rankings(models,"macro_models")
-
 
 def _area_summary(breakdowns: pd.DataFrame) -> pd.DataFrame:
     """Consolida las cuatro áreas comerciales publicadas en el PDF."""
@@ -1952,35 +2053,68 @@ def _page_tiendas_v61(bundle: dict) -> None:
     if stores.empty:_no_data();return
     total=_totals(stores); ex=total['Existencia']; sug=total['VPD']
     _kpis([("Existencia",_number(ex),f"Piso {_percent(total['Piso']/ex*100 if ex else 0)} · Bodega {_percent(total['Bodega']/ex*100 if ex else 0)}",PURPLE),("Sugerido",_number(sug),f"DDI {ex/sug:.0f}" if sug else "Sin sugerido",CYAN),("Piso",_number(total['Piso']),"Disponibilidad en venta",GREEN),("Bodega",_number(total['Bodega']),"Reserva",ORANGE)],4)
-    ranking=stores.sort_values('VPD',ascending=False).copy(); ranking.insert(0,'#',range(1,len(ranking)+1))
-    ranking = ranking.rename(columns={'VPD':'Sugerido'})
-    _decision_table(ranking[[c for c in ['#','Tienda','Sugerido','Existencia','Piso','Bodega','DDI','Bodega %','Posiciones','Estatus'] if c in ranking]],status_columns=('Estatus',),height=480)
-    st.markdown('<div class="ac-section">Secciones de la tienda / alcance</div>',unsafe_allow_html=True)
-    sec=_section_macro(breakdowns)
-    if not sec.empty:_decision_table(sec.rename(columns={'Sección macro':'Sección','VPD':'Sugerido'}),height=280)
-    _render_model_rankings(models,'stores_models')
 
+    st.markdown('<div class="ac-section">Ranking de tiendas</div>',unsafe_allow_html=True)
+    section_choice=st.segmented_control(
+        'Filtrar primera tabla por sección',
+        ['General','Dama','Caballero','Infantil'],
+        default='General',
+        key='v72_store_section_filter'
+    ) or 'General'
+
+    if section_choice == 'General':
+        ranking=stores.copy()
+    else:
+        source=filter_period(bundle['breakdowns'],scope['week'],scope['store'])
+        source=source[source.get('Tipo',pd.Series('',index=source.index)).eq('section')].copy() if not source.empty else source
+        if not source.empty:
+            source['Sección macro']=_section_values(source)
+            source=source[source['Sección macro'].eq(section_choice)]
+        ranking=aggregate_pdf(source,'Tienda') if not source.empty else pd.DataFrame()
+        if not ranking.empty:
+            ranking['Estatus']=ranking['DDI'].map(_coverage_status)
+
+    if ranking.empty:
+        st.info(f'No hay información de {section_choice} para el alcance seleccionado.')
+        return
+    ranking=ranking.sort_values('VPD',ascending=False).copy(); ranking.insert(0,'#',range(1,len(ranking)+1))
+    ranking = ranking.rename(columns={'VPD':'Sugerido'})
+    _decision_table(
+        ranking[[c for c in ['#','Tienda','Sugerido','Existencia','Piso','Bodega','DDI','Bodega %','Posiciones','Estatus'] if c in ranking]],
+        status_columns=('Estatus',),height=480
+    )
+    st.caption('La primera tabla puede consultarse en General, Dama, Caballero o Infantil. La tabla adicional de secciones fue eliminada.')
 
 def _page_section_rubro_v61(bundle: dict) -> None:
-    _header("Sección / Rubro", "Dama · Caballero · Infantil → rubro → modelos", bundle)
+    _header("Sección / Rubro", "Dama · Caballero · Infantil → rubro", bundle)
     scope=_global_scope(bundle); _breadcrumb(scope)
     _,breakdowns,models=_scope_frames(bundle,scope)
     if breakdowns.empty:_no_data();return
-    sec=_section_macro(breakdowns)
-    if not sec.empty:
-        st.markdown('<div class="ac-section">Macro por sección</div>',unsafe_allow_html=True)
-        _decision_table(sec.rename(columns={'Sección macro':'Sección','VPD':'Sugerido'}),height=270)
     rub=breakdowns[breakdowns['Tipo'].eq('rubro')].copy()
     if rub.empty: st.info('Los PDF no contienen rubros para este alcance.'); return
     rub['Sección macro']=_section_values(rub)
     chosen=st.segmented_control('Sección',['Todas','Dama','Caballero','Infantil'],default='Todas',key='v61_rubro_sec') or 'Todas'
-    if chosen!='Todas':rub=rub[rub['Sección macro'].eq(chosen)]
-    summary=aggregate_pdf(rub,'Etiqueta').rename(columns={'Etiqueta':'Rubro','VPD':'Sugerido'})
-    summary=summary.sort_values('Sugerido',ascending=False); summary.insert(0,'#',range(1,len(summary)+1))
-    _decision_table(summary[[c for c in ['#','Rubro','Sugerido','Existencia','Piso','Bodega','DDI','Posiciones','Inversión','% Utilidad'] if c in summary]],height=520)
-    st.caption('Los rubros se ordenan siempre de mayor a menor sugerido para facilitar la lectura comercial.')
-    _render_model_rankings(models,'rubro_models')
+    if chosen!='Todas':
+        rub=rub[rub['Sección macro'].eq(chosen)]
+    if rub.empty:
+        st.info(f'No hay rubros publicados para {chosen}.'); return
 
+    summary=aggregate_pdf(rub,'Etiqueta').rename(columns={'Etiqueta':'Rubro','VPD':'Sugerido','Curva':'Capacidad (Curva)'})
+    # En General, % Utilidad es el promedio simple de los valores publicados
+    # por los PDF de las tiendas, no una suma ni una ponderación.
+    if chosen=='Todas' and '% Utilidad' in rub:
+        utility_source=rub.copy()
+        utility_source['% Utilidad']=pd.to_numeric(utility_source['% Utilidad'],errors='coerce')
+        utility_avg=utility_source.groupby('Etiqueta')['% Utilidad'].mean()
+        summary['% Utilidad']=summary['Rubro'].map(utility_avg).fillna(0)
+
+    summary=summary.sort_values('Sugerido',ascending=False); summary.insert(0,'#',range(1,len(summary)+1))
+    cols=['#','Rubro','Sugerido','Existencia','Piso','Bodega','DDI','Capacidad (Curva)','% Utilidad']
+    _decision_table(
+        summary[[c for c in cols if c in summary]],
+        ddi_columns=('DDI',),height=520
+    )
+    st.caption('DDI: 91–120 se muestra en amarillo y arriba de 120 en rojo. General promedia % utilidad entre los PDF disponibles.')
 
 def _area_name(text: str) -> str:
     t=str(text).upper()
@@ -2068,8 +2202,7 @@ def _page_location_v61(bundle: dict) -> None:
         _decision_table(detail[[c for c in ['#','Ubicación','Sugerido','Existencia','Piso','Bodega','DDI','Posiciones','% Utilidad'] if c in detail]],height=620)
         st.caption('Ordenado de mayor a menor sugerido. Mesa, Pasillo, Jeans y Lencería se consultan por separado.')
 
-    # Modelos del alcance se mantienen disponibles debajo para bajar al detalle.
-    _render_model_rankings(models,'area_models')
+    # Los rankings de campeones/lentos se muestran únicamente en Macro Compañía.
 
 
 def _open_commercial_page(page: str) -> None:
