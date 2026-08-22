@@ -8171,15 +8171,15 @@ def page_inicio():
             <div class="v30-project-card v30-project-live v53-commercial-card">
               <div class="v30-project-icon">$</div>
               <div class="v30-project-copy">
-                <div class="v30-project-name">Planeación Comercial</div>
-                <div class="v30-project-desc">Radiografía conectada de compañía, tienda, categoría, línea y modelo con planeación e histórico semanal.</div>
+                <div class="v30-project-name">Análisis Comercial</div>
+                <div class="v30-project-desc">Radiografía conectada de compañía, tienda, categoría, línea y modelo con análisis e histórico semanal.</div>
                 <div class="v30-project-status">Proyecto activo</div>
               </div>
             </div>
             """,
             unsafe_allow_html=True,
         )
-        if st.button("Abrir Planeación Comercial", key="v53_open_commercial", type="primary", width="stretch"):
+        if st.button("Abrir Análisis Comercial", key="v53_open_commercial", type="primary", width="stretch"):
             st.session_state["active_app"] = "Ventas y Análisis Comercial"
             st.session_state["nav_page"] = "Mi Tienda Comercial"
             st.session_state["project_nav_selector"] = "Mi Tienda Comercial"
