@@ -15,11 +15,12 @@ SNAPSHOTS_FILE = DATA_ROOT / "snapshots.json"
 
 MORE_PAGE = "Más Comercial"
 
-# Las cinco vistas comerciales permanecen en la barra inferior móvil; la UI
-# agrega además un sexto acceso directo a Menú principal. Utilidad, histórico y
+# Las seis vistas comerciales permanecen en la navegación principal; la UI
+# agrega además un acceso directo a Menú principal en móvil. Utilidad, histórico y
 # carga continúan abriéndose desde ``Más`` para no saturar el teléfono.
 COMMERCIAL_PRIMARY_PAGES = (
     "Mi Tienda Comercial",
+    "Acordeón Comercial",
     "Ventas Comerciales",
     "Sugeridos Comerciales",
     "Modelos Comerciales",
@@ -39,13 +40,14 @@ ADMIN_PAGE = "Carga Comercial"
 
 PAGE_LABELS = {
     "Mi Tienda Comercial": "Macro compañía",
+    "Acordeón Comercial": "Acordeón comercial",
     "Ventas Comerciales": "Tiendas",
     "Sugeridos Comerciales": "Sección / Rubro",
     "Modelos Comerciales": "Ubicación / Área",
     "Más Comercial": "Más",
     "Utilidad Comercial": "Dinero y utilidad",
     "Histórico Comercial": "Mi evolución",
-    "Carga Comercial": "Carga PDF",
+    "Carga Comercial": "Carga comercial",
 }
 
 STORE_ALIASES = {

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import date, datetime
 from pathlib import Path
+from zoneinfo import ZoneInfo
 import html
 import re
 
@@ -45,6 +46,7 @@ YELLOW = "#F2C94C"
 RED = "#E52B50"
 CYAN = "#05A9D6"
 PURPLE = "#7C3AED"
+MX_TZ = ZoneInfo("America/Mexico_City")
 
 
 def _number(value) -> str:
@@ -2049,6 +2051,375 @@ def _page_upload(bundle: dict, is_admin: bool) -> None:
             st.rerun()
 
 
+
+
+def _accordion_metric_box(title: str, rows: list[tuple[str, object]], *, accent: str = NAVY) -> None:
+    body = []
+    for label, value in rows:
+        body.append(
+            '<div class="ac-accordion-row">'
+            f'<span>{html.escape(str(label))}</span><strong>{html.escape(str(value))}</strong>'
+            '</div>'
+        )
+    st.markdown(
+        f'<section class="ac-accordion-box" style="--accordion-accent:{accent}">'
+        f'<div class="ac-accordion-box-title">{html.escape(title)}</div>'
+        f'<div class="ac-accordion-box-body">{"".join(body)}</div></section>',
+        unsafe_allow_html=True,
+    )
+
+
+def _accordion_period_options(bundle: dict) -> list[str]:
+    sales = bundle.get("sales", pd.DataFrame())
+    values = []
+    if sales is not None and not sales.empty and "Periodo" in sales:
+        values = [str(value) for value in sales["Periodo"].dropna().astype(str).unique() if re.fullmatch(r"\d{4}-\d{2}", str(value))]
+    today = datetime.now(MX_TZ).date()
+    current = f"{today.year:04d}-{today.month:02d}"
+    values.append(current)
+    return sorted(set(values), reverse=True)
+
+
+def _accordion_period_label(period: str) -> str:
+    months = ("Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre")
+    try:
+        year, month = (int(piece) for piece in str(period).split("-", 1))
+        return f"{months[month - 1]} {year}"
+    except Exception:
+        return str(period)
+
+
+def _accordion_cut_status(period: str, sales: pd.DataFrame) -> str:
+    saved_state = ""
+    if sales is not None and not sales.empty and "Periodo" in sales:
+        rows = sales[sales["Periodo"].astype(str).eq(period)]
+        if not rows.empty and "Estado corte" in rows:
+            states = rows["Estado corte"].dropna().astype(str)
+            if not states.empty:
+                saved_state = states.iloc[-1]
+    try:
+        year, month = (int(piece) for piece in period.split("-", 1))
+        today = datetime.now(MX_TZ).date()
+        current = (today.year, today.month)
+        selected = (year, month)
+        if saved_state:
+            if saved_state == "Acumulado en curso" and selected < current:
+                return "Cierre pendiente"
+            return saved_state
+        if selected == current:
+            return "Acumulado en curso"
+        if selected < current:
+            return "Sin archivo de cierre"
+    except Exception:
+        if saved_state:
+            return saved_state
+    return "Sin archivo de ventas"
+
+
+def _accordion_sales_scope(bundle: dict, period: str, scope: dict) -> pd.DataFrame:
+    sales = bundle.get("sales", pd.DataFrame())
+    if sales is None or sales.empty or "Periodo" not in sales:
+        return pd.DataFrame()
+    out = sales[sales["Periodo"].astype(str).eq(period)].copy()
+    if scope.get("store") != "Compañía" and "Tienda" in out:
+        out = out[out["Tienda"].astype(str).eq(scope["store"])]
+    if scope.get("category") != "Todas" and "Sección" in out:
+        out = out[out["Sección"].astype(str).eq(scope["category"])]
+    return out.reset_index(drop=True)
+
+
+def _accordion_sales_ranks(bundle: dict, period: str, store: str) -> tuple[str, str]:
+    sales = bundle.get("sales", pd.DataFrame())
+    if sales is None or sales.empty or "Periodo" not in sales or store == "Compañía":
+        return "—", "—"
+    current = sales[sales["Periodo"].astype(str).eq(period)].copy()
+    if current.empty or "Tienda" not in current:
+        return "—", "—"
+    by_store = current.groupby("Tienda", as_index=False)[["Venta $", "Venta pzas"]].sum()
+    by_store = by_store.sort_values("Venta $", ascending=False).reset_index(drop=True)
+    by_store["Rank"] = np.arange(1, len(by_store) + 1)
+    match = by_store[by_store["Tienda"].astype(str).eq(store)]
+    rank_sales = str(int(match["Rank"].iloc[0])) if not match.empty else "—"
+
+    try:
+        year, month = (int(piece) for piece in period.split("-", 1))
+        ly_period = f"{year - 1:04d}-{month:02d}"
+    except Exception:
+        return rank_sales, "—"
+    prior = sales[sales["Periodo"].astype(str).eq(ly_period)].copy()
+    if prior.empty:
+        return rank_sales, "—"
+    ly = prior.groupby("Tienda", as_index=False)["Venta $"].sum().rename(columns={"Venta $": "Venta LY"})
+    growth = by_store[["Tienda", "Venta $"]].merge(ly, on="Tienda", how="left")
+    growth["Crec"] = growth["Venta $"].sub(growth["Venta LY"]).div(growth["Venta LY"].replace(0, np.nan)).mul(100)
+    growth = growth.dropna(subset=["Crec"]).sort_values("Crec", ascending=False).reset_index(drop=True)
+    growth["Rank Crec"] = np.arange(1, len(growth) + 1)
+    row = growth[growth["Tienda"].astype(str).eq(store)]
+    rank_growth = str(int(row["Rank Crec"].iloc[0])) if not row.empty else "—"
+    return rank_sales, rank_growth
+
+
+def _accordion_location_map(bundle: dict, scope: dict) -> pd.DataFrame:
+    capacity = bundle.get("capacity", pd.DataFrame())
+    if capacity is None or capacity.empty or "ID_ART" not in capacity:
+        return pd.DataFrame()
+    out = capacity.copy()
+    if scope.get("store") != "Compañía" and "Tienda" in out:
+        out = out[out["Tienda"].astype(str).eq(scope["store"])]
+    if scope.get("category") != "Todas" and "Sección" in out:
+        out = out[out["Sección"].astype(str).eq(scope["category"])]
+    if out.empty:
+        return pd.DataFrame()
+    out["ID_ART"] = out["ID_ART"].astype(str)
+    def first_mode(series: pd.Series):
+        values = series.dropna().astype(str)
+        values = values[values.str.strip().ne("")]
+        if values.empty:
+            return ""
+        mode = values.mode()
+        return mode.iloc[0] if not mode.empty else values.iloc[0]
+    grouped = out.groupby("ID_ART", as_index=False).agg({
+        "Ubicación": first_mode,
+        "Pasillo": first_mode,
+    })
+    return grouped
+
+
+def _accordion_model_matrix(bundle: dict, scope: dict, models: pd.DataFrame) -> pd.DataFrame:
+    matrix = _company_model_matrix(models) if scope.get("store") == "Compañía" else _model_matrix(models)
+    if matrix.empty:
+        return matrix
+    matrix = matrix.copy()
+    matrix["ID_ART"] = matrix.get("ID_ART", pd.Series("", index=matrix.index)).astype(str)
+    matrix["Categoría"] = _section_values(matrix)
+    location_map = _accordion_location_map(bundle, scope)
+    if not location_map.empty:
+        matrix = matrix.merge(location_map, on="ID_ART", how="left")
+    else:
+        matrix["Ubicación"] = ""
+        matrix["Pasillo"] = ""
+    return matrix
+
+
+def _accordion_models_table(matrix: pd.DataFrame, location: str, *, slow: bool = False, rows_per_section: int = 3) -> pd.DataFrame:
+    columns = ["SECCIÓN", "ID", "MODELO", "SUG 7", "EXIST", "ENTALLADO", "SURTIDO", "EXHIBIDO"]
+    if matrix is None or matrix.empty:
+        return pd.DataFrame(columns=columns)
+    data = matrix.copy()
+    if "Ubicación" in data and data["Ubicación"].fillna("").astype(str).str.strip().ne("").any():
+        mask = data["Ubicación"].astype(str).str.casefold().eq(location.casefold())
+        data = data[mask]
+    else:
+        return pd.DataFrame(columns=columns)
+    if data.empty:
+        return pd.DataFrame(columns=columns)
+    if slow and "En baja rotación" in data and data["En baja rotación"].fillna(False).any():
+        data = data[data["En baja rotación"].fillna(False)]
+    data["VPD"] = pd.to_numeric(data.get("VPD", 0), errors="coerce").fillna(0)
+    data["Existencia"] = pd.to_numeric(data.get("Existencia", 0), errors="coerce").fillna(0)
+    data = data.sort_values(["VPD", "Existencia"], ascending=[slow, False])
+    rows = []
+    for section in ("Dama", "Caballero", "Infantil"):
+        section_rows = data[data["Categoría"].eq(section)].head(rows_per_section)
+        for _, row in section_rows.iterrows():
+            rows.append({
+                "SECCIÓN": section,
+                "ID": row.get("ID_ART", ""),
+                "MODELO": row.get("Modelo", ""),
+                "SUG 7": float(row.get("VPD", 0) or 0),
+                "EXIST": float(row.get("Existencia", 0) or 0),
+                "ENTALLADO": "—",
+                "SURTIDO": "—",
+                "EXHIBIDO": "—",
+            })
+    return pd.DataFrame(rows, columns=columns)
+
+
+def _page_commercial_accordion(bundle: dict) -> None:
+    _header("Acordeón Comercial", "Resumen semanal de ejecución + venta mensual acumulada", bundle)
+    scope = _global_scope(bundle)
+    _breadcrumb(scope)
+    stores, breakdowns, models = _scope_frames(bundle, scope)
+
+    st.markdown(
+        """
+        <style>
+        .ac-accordion-banner{background:#173B73;color:#fff;border-radius:11px;padding:9px 14px;margin:7px 0 10px;text-align:center;font-size:12px;font-weight:850;line-height:1.35}
+        .ac-accordion-banner small{display:block;font-size:9px;font-weight:650;opacity:.88;margin-top:3px}
+        .ac-accordion-meta{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;background:#EAF2FF;border:1px solid #CADBFA;border-radius:9px;padding:7px 10px;margin:0 0 10px;font-size:9.5px;color:#344054}.ac-accordion-meta b{color:#173B73}
+        .ac-accordion-box{background:#fff;border:1px solid #D9E2EF;border-radius:10px;overflow:hidden;margin:0 0 10px;box-shadow:0 2px 8px rgba(23,59,115,.035)}
+        .ac-accordion-box-title{background:var(--accordion-accent,#173B73);color:#fff;font-size:10px;font-weight:900;text-transform:uppercase;padding:7px 9px;text-align:center;letter-spacing:.2px}
+        .ac-accordion-box-body{padding:0}
+        .ac-accordion-row{display:grid;grid-template-columns:minmax(0,1.35fr) minmax(0,.85fr);gap:7px;align-items:center;padding:6px 8px;border-bottom:1px solid #E9EDF3;font-size:9.5px}
+        .ac-accordion-row:last-child{border-bottom:0}.ac-accordion-row span{color:#344054}.ac-accordion-row strong{color:#173B73;text-align:right;overflow-wrap:anywhere}
+        .ac-accordion-source{font-size:9px;color:#667085;line-height:1.3;margin:-4px 0 8px}
+        .ac-accordion-panel-title{background:#173B73;color:#fff;border-radius:8px 8px 0 0;padding:7px 9px;font-size:10px;font-weight:900;text-transform:uppercase;margin-top:2px}
+        @media(max-width:900px){.ac-accordion-row{font-size:9px}.ac-accordion-panel-title{font-size:9px}.ac-accordion-meta{grid-template-columns:1fr}}
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    sales = bundle.get("sales", pd.DataFrame())
+    periods = _accordion_period_options(bundle)
+    period = st.selectbox(
+        "Mes de ventas del acordeón",
+        periods,
+        format_func=_accordion_period_label,
+        key="accordion_sales_period",
+    )
+    cut_status = _accordion_cut_status(period, sales)
+    cut_color = GREEN if cut_status == "Cierre mensual" else (ORANGE if cut_status == "Acumulado en curso" else RED)
+    st.markdown(
+        f'<div class="ac-accordion-banner">ACORDEÓN DE INFORMACIÓN ROPA · {html.escape(scope["store"])} · {html.escape(scope["week"])}'
+        f'<small>Frecuencia: semanal, lunes · Ventas: {html.escape(_accordion_period_label(period))} · '
+        f'<span style="color:{cut_color}">{html.escape(cut_status)}</span></small></div>',
+        unsafe_allow_html=True,
+    )
+    st.markdown(
+        f'<div class="ac-accordion-meta"><span>Tienda: <b>{html.escape(scope["store"])}</b></span>'
+        f'<span>Semana: <b>{html.escape(scope["week"])}</b></span>'
+        f'<span>Gerente/Supervisor: <b>Pendiente fuente</b></span></div>',
+        unsafe_allow_html=True,
+    )
+    if cut_status == "Acumulado en curso":
+        st.info("El mes en curso usa siempre la última carga disponible. El cierre definitivo del mes se carga a partir del día 1 del mes siguiente; por ejemplo, agosto cierra con el archivo cargado el 1 de septiembre.")
+    elif cut_status == "Cierre pendiente":
+        st.warning("Este periodo todavía conserva una carga acumulada. Ya inició el mes siguiente: falta subir el archivo definitivo del cierre para sustituir ese acumulado.")
+    elif cut_status in ("Sin archivo de ventas", "Sin archivo de cierre"):
+        st.warning("Todavía no hay un archivo mensual definitivo para este periodo. Los bloques del PDF sí se muestran; las métricas de venta quedan identificadas como pendientes.")
+
+    current_sales = _accordion_sales_scope(bundle, period, scope)
+    try:
+        year, month = (int(piece) for piece in period.split("-", 1))
+        ly_period = f"{year - 1:04d}-{month:02d}"
+    except Exception:
+        today = datetime.now(MX_TZ).date()
+        year, month, ly_period = today.year, today.month, ""
+    ly_sales = _accordion_sales_scope(bundle, ly_period, scope) if ly_period else pd.DataFrame()
+    current_amount = float(pd.to_numeric(current_sales.get("Venta $", 0), errors="coerce").fillna(0).sum()) if not current_sales.empty else 0.0
+    current_pieces = float(pd.to_numeric(current_sales.get("Venta pzas", 0), errors="coerce").fillna(0).sum()) if not current_sales.empty else 0.0
+    ly_amount = float(pd.to_numeric(ly_sales.get("Venta $", 0), errors="coerce").fillna(0).sum()) if not ly_sales.empty else 0.0
+    ly_pieces = float(pd.to_numeric(ly_sales.get("Venta pzas", 0), errors="coerce").fillna(0).sum()) if not ly_sales.empty else 0.0
+    var_amount = (current_amount / ly_amount - 1) * 100 if ly_amount else None
+    var_pieces = (current_pieces / ly_pieces - 1) * 100 if ly_pieces else None
+    rank_sales, rank_growth = _accordion_sales_ranks(bundle, period, scope["store"])
+
+    total = _totals(stores) if not stores.empty else {name: 0.0 for name in ("Curva", "Piso", "Bodega", "Existencia", "VPD", "DDI", "DDC")}
+    brand_data = filter_period(bundle.get("brands", pd.DataFrame()), scope["week"], scope["store"])
+    brand_summary = aggregate_pdf(brand_data, "Marca") if not brand_data.empty else pd.DataFrame()
+    brand_sug = brand_summary.sort_values("VPD", ascending=False).head(4) if not brand_summary.empty else pd.DataFrame()
+    brand_util = brand_summary.sort_values("% Utilidad", ascending=False).head(4) if not brand_summary.empty and "% Utilidad" in brand_summary else pd.DataFrame()
+
+    left, middle, right = st.columns([1.0, 1.05, 2.15], gap="medium")
+    with left:
+        _accordion_metric_box("Metas venta", [
+            ("Presupuesto mes", "Pendiente fuente"),
+            (f"Vta {year} $ mes acum", _money(current_amount) if not current_sales.empty else "Sin carga"),
+            ("Meta $ acum", "Pendiente fuente"),
+            (f"Vta {year-1} $ mes acum", _money(ly_amount) if not ly_sales.empty else "Sin carga LY"),
+            ("Pos. ranking tiendas $", rank_sales),
+            ("Pos. acum vs LY", rank_growth),
+            ("% Var vs meta", "Pendiente fuente"),
+            (f"% Var $ vs {year-1}", f"{var_amount:+.1f}%" if var_amount is not None else "Sin LY"),
+            (f"% Var pzas vs {year-1}", f"{var_pieces:+.1f}%" if var_pieces is not None else "Sin LY"),
+        ], accent=BLUE)
+
+        sug_rows = [(str(row.get("Marca", "")), _number(row.get("VPD", 0))) for _, row in brand_sug.iterrows()] if not brand_sug.empty else [("Sin datos", "—")]
+        _accordion_metric_box("Marca campeona x SUG", sug_rows, accent=NAVY)
+        util_rows = [(str(row.get("Marca", "")), _percent(row.get("% Utilidad", 0))) for _, row in brand_util.iterrows()] if not brand_util.empty else [("Sin datos", "—")]
+        _accordion_metric_box("Marca campeona x utilidad", util_rows, accent=NAVY)
+        _accordion_metric_box("General", [
+            ("Capacidad (Curva)", _number(total.get("Curva", 0))),
+            ("Sugerido SUG7", _number(total.get("VPD", 0))),
+            ("Existencias PV", _number(total.get("Piso", 0))),
+            ("Existencias Bod", _number(total.get("Bodega", 0))),
+            ("DDI", f"{float(total.get('DDI', 0)):.0f}"),
+            ("DDC", f"{float(total.get('DDC', 0)):.0f}"),
+        ], accent=NAVY)
+
+    with middle:
+        _accordion_metric_box("Resultado FINDE", [
+            ("% Crec Pzas", "Pendiente fuente FINDE"),
+            ("Rank Vta $", "Pendiente fuente FINDE"),
+            ("Rank Vta Pzas", "Pendiente fuente FINDE"),
+        ], accent=NAVY)
+        _accordion_metric_box("Resultado 10 Pagos", [
+            ("% Crec Pzas", "Pendiente fuente 10 Pagos"),
+            ("Rank Vta $", "Pendiente fuente 10 Pagos"),
+            ("Rank Vta Pzas", "Pendiente fuente 10 Pagos"),
+        ], accent=NAVY)
+
+        st.markdown('<div class="ac-accordion-panel-title">Modelos con mayor devolución semanal</div>', unsafe_allow_html=True)
+        returns = pd.DataFrame({"ID": ["—"], "MODELO": ["Pendiente base de cambios/devoluciones"], "MOTIVO": ["—"]})
+        _decision_table(returns, height=185)
+
+        physical = breakdowns[breakdowns.get("Tipo", pd.Series("", index=breakdowns.index)).eq("physical_location")].copy() if not breakdowns.empty else pd.DataFrame()
+        if not physical.empty:
+            physical["Área"] = np.select(
+                [
+                    physical["Etiqueta"].astype(str).str.upper().str.contains("COLG"),
+                    physical["Etiqueta"].astype(str).str.upper().str.contains("JEAN|MEZ", regex=True),
+                    physical["Etiqueta"].astype(str).str.upper().str.contains("DOBL"),
+                ],
+                ["Colgado", "Jeans", "Doblado"],
+                default="Otra",
+            )
+            physical["Pasillo"] = physical["Etiqueta"].astype(str).str.extract(r"(\d+)\s*$", expand=False).fillna(physical["Etiqueta"].astype(str))
+            locations = physical.sort_values(["Área", "VPD"], ascending=[True, False]).groupby("Área", as_index=False, group_keys=False).head(4)
+            locations = locations.rename(columns={"VPD": "SUG"})[[column for column in ("Área", "Pasillo", "SUG") if column in locations]]
+        else:
+            locations = pd.DataFrame(columns=["Área", "Pasillo", "SUG"])
+        st.markdown('<div class="ac-accordion-panel-title">Ubicaciones campeonas</div>', unsafe_allow_html=True)
+        _decision_table(locations if not locations.empty else pd.DataFrame({"Área": ["Sin datos"], "Pasillo": ["—"], "SUG": [0]}), height=245)
+
+    with right:
+        matrix = _accordion_model_matrix(bundle, scope, models)
+        for title, location, slow in (
+            ("Modelos campeones x SUG 7 · Colgado", "Colgado", False),
+            ("Modelos lentos x SUG 7 · Colgado", "Colgado", True),
+            ("Modelos lentos x SUG 7 · Doblado", "Doblado", True),
+        ):
+            st.markdown(f'<div class="ac-accordion-panel-title">{html.escape(title)}</div>', unsafe_allow_html=True)
+            model_table = _accordion_models_table(matrix, location, slow=slow, rows_per_section=3)
+            if model_table.empty:
+                st.caption("La ubicación a nivel modelo no está disponible para este alcance en la fuente de capacidades activa; no se asignan modelos por inferencia.")
+                model_table = pd.DataFrame({
+                    "SECCIÓN": ["Dama", "Caballero", "Infantil"], "ID": ["—"] * 3, "MODELO": ["Sin fuente de ubicación"] * 3,
+                    "SUG 7": [0] * 3, "EXIST": [0] * 3, "ENTALLADO": ["—"] * 3, "SURTIDO": ["—"] * 3, "EXHIBIDO": ["—"] * 3,
+                })
+            _decision_table(model_table, height=235)
+
+        rub = breakdowns[breakdowns.get("Tipo", pd.Series("", index=breakdowns.index)).eq("rubro")].copy() if not breakdowns.empty else pd.DataFrame()
+        rubro_summary = aggregate_pdf(rub, "Etiqueta").rename(columns={"Etiqueta": "Rubro", "VPD": "Sug 7", "% Piezas": "% Part pzas", "% Utilidad": "% Util"}) if not rub.empty else pd.DataFrame()
+        if not rubro_summary.empty:
+            champs = rubro_summary.sort_values("Sug 7", ascending=False).head(5).copy(); champs.insert(0, "Grupo", "Campeones")
+            slow = rubro_summary.sort_values(["Sug 7", "Existencia"], ascending=[True, False]).head(5).copy(); slow.insert(0, "Grupo", "Lentos")
+            rubro_display = pd.concat([champs, slow], ignore_index=True)
+            rubro_cols = [column for column in ("Grupo", "Rubro", "Sug 7", "Existencia", "% Util", "% Part pzas", "Bodega", "DDI") if column in rubro_display]
+            rubro_display = rubro_display[rubro_cols]
+        else:
+            rubro_display = pd.DataFrame({"Grupo": ["Sin datos"], "Rubro": ["—"], "Sug 7": [0], "Existencia": [0], "% Util": [0], "% Part pzas": [0], "Bodega": [0], "DDI": [0]})
+        st.markdown('<div class="ac-accordion-panel-title">Análisis por rubro</div>', unsafe_allow_html=True)
+        _decision_table(rubro_display, ddi_columns=("DDI",), height=320)
+
+    slow_models = matrix.sort_values(["VPD", "Existencia"], ascending=[True, False]).head(3) if matrix is not None and not matrix.empty else pd.DataFrame()
+    investment_models = matrix.sort_values("Inversión", ascending=False).head(3) if matrix is not None and not matrix.empty and "Inversión" in matrix else pd.DataFrame()
+    discontinued = breakdowns[
+        breakdowns.get("Tipo", pd.Series("", index=breakdowns.index)).eq("catalog")
+        & breakdowns.get("Etiqueta", pd.Series("", index=breakdowns.index)).astype(str).str.upper().str.contains("DESCONT", na=False)
+    ] if not breakdowns.empty else pd.DataFrame()
+    slow_text = ", ".join(f"{row.get('ID_ART','')} {row.get('Modelo','')}".strip() for _, row in slow_models.iterrows()) or "Sin modelos publicados"
+    inv_text = ", ".join(f"{row.get('ID_ART','')} {row.get('Modelo','')}".strip() for _, row in investment_models.iterrows() if float(row.get("Inversión", 0) or 0) > 0) or "Sin inversión publicada"
+    desc_text = f"{_number(discontinued.get('Existencia', pd.Series(dtype=float)).sum())} pzas en catálogo descontinuado" if not discontinued.empty else "Sin dato publicado"
+    st.markdown('<div class="ac-section">Plan de acción</div>', unsafe_allow_html=True)
+    action_table = pd.DataFrame({
+        "Prioridad": ["Rubros / Modelos lentos", "Modelos de mayor inversión", "Modelos más devueltos", "Modelos descatalogados"],
+        "Acción / foco": [slow_text, inv_text, "Pendiente base de cambios/devoluciones", desc_text],
+    })
+    _decision_table(action_table, height=250)
+    st.caption("Los campos Entallado, Surtido, Exhibido, FINDE, 10 Pagos, presupuesto/meta y devoluciones se mantienen visibles como parte del formato, pero no se inventan: se activarán cuando se conecte su fuente correspondiente.")
+
 def _page_tiendas_v61(bundle: dict) -> None:
     _header("Tiendas", "Radiografía comercial por tienda · de mayor a menor sugerido", bundle)
     scope=_global_scope(bundle); _breadcrumb(scope)
@@ -2243,14 +2614,14 @@ def _page_more(bundle: dict, is_admin: bool) -> None:
         with admin_col:
             if is_admin:
                 st.markdown(
-                    '<div class="ac-more-card"><b>Carga semanal</b><span>Publica los PDF y valida las 17 tiendas.</span></div>',
+                    '<div class="ac-more-card"><b>Carga comercial</b><span>Ventas mensuales, capacidades y PDF semanales.</span></div>',
                     unsafe_allow_html=True,
                 )
-                if st.button("Abrir carga PDF", key="more_upload", width="stretch"):
+                if st.button("Abrir carga comercial", key="more_upload", width="stretch"):
                     _open_commercial_page(ADMIN_PAGE); st.rerun()
             else:
                 st.markdown(
-                    '<div class="ac-more-card ac-more-card-muted"><b>Carga semanal</b><span>Disponible para Administrador.</span></div>',
+                    '<div class="ac-more-card ac-more-card-muted"><b>Carga comercial</b><span>Disponible para Administrador.</span></div>',
                     unsafe_allow_html=True,
                 )
         with portfolio_col:
@@ -2272,6 +2643,7 @@ def render_pdf_page(page: str, bundle: dict, is_admin: bool) -> None:
 
     routes = {
         "Mi Tienda Comercial": _page_radiography,
+        "Acordeón Comercial": _page_commercial_accordion,
         "Ventas Comerciales": _page_tiendas_v61,
         "Sugeridos Comerciales": _page_section_rubro_v61,
         "Modelos Comerciales": _page_location_v61,

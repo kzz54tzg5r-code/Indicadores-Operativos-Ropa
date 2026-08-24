@@ -286,7 +286,7 @@ def read_sales_file(path: str | Path) -> pd.DataFrame:
         if pieces_col is None and amount_col is None:
             continue
         out = pd.DataFrame(index=source.index)
-        out["Fecha"] = pd.to_datetime(_series(source, ["FECHA", "DIA", "DÍA"]), errors="coerce", dayfirst=True)
+        out["Fecha"] = pd.to_datetime(_series(source, ["FECHA", "DIA", "DÍA"]), errors="coerce", format="mixed", dayfirst=True)
         inferred = _infer_sheet_date(str(sheet_name))
         if pd.notna(inferred):
             out["Fecha"] = out["Fecha"].fillna(inferred)
@@ -315,7 +315,7 @@ def normalize_existing_sales(source: pd.DataFrame | None) -> pd.DataFrame:
     if source is None or source.empty:
         return pd.DataFrame()
     out = pd.DataFrame(index=source.index)
-    out["Fecha"] = pd.to_datetime(source.get("Fecha"), errors="coerce")
+    out["Fecha"] = pd.to_datetime(source.get("Fecha"), errors="coerce", format="mixed", dayfirst=True)
     out["Tienda"] = source.get("Tienda", pd.Series("", index=source.index)).map(canon_store)
     model = source.get("ID/Modelo", source.get("Modelo", pd.Series("", index=source.index)))
     out["Modelo"] = model.astype(str).str.replace(r"\.0$", "", regex=True).str.strip()

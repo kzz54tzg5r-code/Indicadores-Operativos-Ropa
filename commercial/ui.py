@@ -4,7 +4,9 @@ from __future__ import annotations
 
 from datetime import date, datetime
 from pathlib import Path
+from zoneinfo import ZoneInfo
 from concurrent.futures import ThreadPoolExecutor, as_completed
+import base64
 import html
 import re
 
@@ -25,7 +27,7 @@ from .config import (
     PROJECT_STORES,
     ensure_directories,
 )
-from .parsers import PDF_PARSER_VERSION, extract_pdf_snapshot
+from .parsers import PDF_PARSER_VERSION, extract_pdf_snapshot, read_sales_file, read_capacity_file
 from .pdf_analytics import (
     aggregate_pdf,
     business_location_summary,
@@ -44,6 +46,9 @@ from .storage import (
     restore_history_from_cloud,
     restore_history_backup,
     save_pdf_upload,
+    save_sales_upload,
+    save_capacity_upload,
+    latest_entry,
     save_snapshot,
     sync_history_to_cloud,
     update_entry,
@@ -57,6 +62,7 @@ ORANGE = "#F28C00"
 RED = "#E52B50"
 CYAN = "#05A9D6"
 MUTED = "#667085"
+MX_TZ = ZoneInfo("America/Mexico_City")
 
 
 def _money(value) -> str:
@@ -90,7 +96,100 @@ def _cached_pdf(path_text: str, mtime: float) -> dict:
     return extract_pdf_snapshot(path_text)
 
 
-def _load_bundle(existing_sales=None) -> dict:
+@st.cache_data(show_spinner=False)
+def _cached_sales(path_text: str, mtime: float) -> pd.DataFrame:
+    return read_sales_file(path_text)
+
+
+@st.cache_data(show_spinner=False)
+def _cached_capacity(path_text: str, mtime: float) -> pd.DataFrame:
+    return read_capacity_file(path_text)
+
+
+_MONTHS_ES = (
+    "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
+    "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre",
+)
+
+
+def _sales_cut_status(period: str, today: date | None = None) -> str:
+    today = today or datetime.now(MX_TZ).date()
+    try:
+        year, month = (int(piece) for piece in str(period).split("-", 1))
+    except Exception:
+        return "Sin clasificar"
+    current = (today.year, today.month)
+    selected = (year, month)
+    if selected == current:
+        return "Acumulado en curso"
+    if selected < current:
+        return "Cierre mensual"
+    return "Periodo futuro"
+
+
+def _month_label(period: str) -> str:
+    try:
+        year, month = (int(piece) for piece in str(period).split("-", 1))
+        return f"{_MONTHS_ES[month-1]} {year}"
+    except Exception:
+        return str(period)
+
+
+def _load_sales_history(manifest: dict) -> pd.DataFrame:
+    """Carga una sola versión activa por mes para evitar duplicar acumulados.
+
+    Durante el mes puede subirse el archivo tantas veces como sea necesario;
+    para ese periodo se utiliza siempre la carga más reciente. Al iniciar el
+    mes siguiente, el archivo del mes anterior se clasifica como cierre.
+    """
+    entries = [dict(item) for item in manifest.get("sales", []) if isinstance(item, dict)]
+    if not entries:
+        return pd.DataFrame()
+
+    by_period: dict[str, dict] = {}
+    untagged: list[dict] = []
+    for entry in entries:
+        period = str(entry.get("period", "")).strip()
+        if not period:
+            untagged.append(entry)
+            continue
+        previous = by_period.get(period)
+        if previous is None or str(entry.get("uploaded_at", "")) >= str(previous.get("uploaded_at", "")):
+            by_period[period] = entry
+
+    selected_entries = list(by_period.values()) + untagged
+    explicit_periods = set(by_period)
+    frames = []
+    for entry in selected_entries:
+        path = resolve_entry_path(entry)
+        if not path.exists() or not path.is_file():
+            continue
+        try:
+            frame = _cached_sales(str(path), path.stat().st_mtime).copy()
+        except Exception:
+            continue
+        if frame.empty:
+            continue
+        period = str(entry.get("period", "")).strip()
+        if period:
+            frame["Periodo"] = period
+        else:
+            dates = pd.to_datetime(frame.get("Fecha"), errors="coerce")
+            frame["Periodo"] = dates.dt.to_period("M").astype(str)
+            if explicit_periods:
+                frame = frame[~frame["Periodo"].isin(explicit_periods)]
+        frame["Estado corte"] = entry.get("cut_status") or frame["Periodo"].map(_sales_cut_status)
+        frame["Archivo ventas"] = entry.get("name", path.name)
+        frame["Cargado"] = entry.get("uploaded_at", "")
+        frames.append(frame)
+    if not frames:
+        return pd.DataFrame()
+    out = pd.concat(frames, ignore_index=True)
+    out = out[out.get("Periodo", pd.Series("", index=out.index)).astype(str).str.match(r"^\d{4}-\d{2}$", na=False)]
+    return out.reset_index(drop=True)
+
+
+def _load_bundle(existing_sales=None, *, load_sales: bool = False, load_capacity: bool = False) -> dict:
     """Carga exclusivamente la información persistida de los PDF semanales."""
     ensure_directories()
     manifest = load_manifest()
@@ -128,8 +227,21 @@ def _load_bundle(existing_sales=None) -> dict:
     stores_pdf, sections_pdf, locations_pdf = snapshots_to_frames(snapshots)
     breakdowns, brands, models_pdf = snapshots_to_pdf_frames(snapshots)
     stores = store_pdf_summary(stores_pdf)
+    current_manifest = load_manifest()
+    sales = _load_sales_history(current_manifest) if load_sales else pd.DataFrame()
+    capacity = pd.DataFrame()
+    if load_capacity:
+        capacity_entries = [dict(item) for item in current_manifest.get("capacities", []) if isinstance(item, dict)]
+        if capacity_entries:
+            active_capacity = max(capacity_entries, key=lambda item: str(item.get("uploaded_at", "")))
+            capacity_path = resolve_entry_path(active_capacity)
+            if capacity_path.exists() and capacity_path.is_file():
+                try:
+                    capacity = _cached_capacity(str(capacity_path), capacity_path.stat().st_mtime).copy()
+                except Exception:
+                    capacity = pd.DataFrame()
     return {
-        "manifest": load_manifest(), "capacity": pd.DataFrame(), "sales": pd.DataFrame(), "models": models_pdf,
+        "manifest": current_manifest, "capacity": capacity, "sales": sales, "models": models_pdf,
         "snapshots": snapshots, "stores_pdf": stores_pdf, "sections_pdf": sections_pdf,
         "locations_pdf": locations_pdf, "stores": stores, "breakdowns": breakdowns,
         "brands": brands, "models_pdf": models_pdf,
@@ -162,6 +274,9 @@ def _inject_styles() -> None:
         .ac-decision-table tbody tr:nth-child(even) td{{background:#F8FAFD}}
         .ac-decision-table tbody tr:hover td{{background:#EEF4FF}}
         .ac-mobile-cards{{display:none}}
+        .ac-sidebar-logo{{display:flex;align-items:center;justify-content:center;width:100%;padding:4px 0 10px}}
+        .ac-sidebar-logo img{{display:block;width:105px;max-width:100%;height:auto;object-fit:contain;pointer-events:none;user-select:none}}
+        body [data-testid="stAppViewContainer"]:has(.ac-shell-marker) [data-testid="stImage"] button{{display:none!important}}
         html,body,[data-testid="stAppViewContainer"],[data-testid="stApp"],[data-testid="stMain"],[data-testid="stMainBlockContainer"],.main{{background:#F4F7FB!important;overscroll-behavior-y:none!important;overscroll-behavior-x:none!important;}}
         body{{position:relative!important;}}
         @supports (-webkit-touch-callout:none){{html,body{{height:100%!important;background:#F4F7FB!important;}}body{{overscroll-behavior:none!important;}}}}
@@ -236,6 +351,46 @@ def _inject_styles() -> None:
           body [data-testid="stAppViewContainer"]:has(.ac-shell-marker) [data-testid="stSidebarCollapsedControl"],
           body [data-testid="stAppViewContainer"]:has(.ac-shell-marker) [data-testid="collapsedControl"]{{display:flex!important;visibility:visible!important;opacity:1!important;z-index:1900!important;}}
         }}
+        [class*="st-key-commercial_mobile_nav_"]{{display:none!important;}}
+        @media(max-width:900px){{
+          body [data-testid="stAppViewContainer"]:has(.ac-shell-marker) section[data-testid="stSidebar"],
+          body [data-testid="stAppViewContainer"]:has(.ac-shell-marker) [data-testid="stSidebarCollapsedControl"],
+          body [data-testid="stAppViewContainer"]:has(.ac-shell-marker) [data-testid="collapsedControl"]{{
+            display:none!important;visibility:hidden!important;opacity:0!important;width:0!important;min-width:0!important;max-width:0!important;
+          }}
+          body [data-testid="stAppViewContainer"]:has(.ac-shell-marker) [data-testid="stMain"]{{margin-left:0!important;width:100%!important;max-width:100%!important;}}
+          body [data-testid="stAppViewContainer"]:has(.ac-shell-marker) [data-testid="stMainBlockContainer"],
+          body [data-testid="stAppViewContainer"]:has(.ac-shell-marker) .block-container{{padding:.35rem 9px calc(82px + env(safe-area-inset-bottom))!important;}}
+          [class*="st-key-commercial_mobile_nav_"]{{
+            display:block!important;visibility:visible!important;opacity:1!important;position:fixed!important;left:0!important;right:0!important;bottom:0!important;top:auto!important;
+            z-index:2200!important;background:rgba(255,255,255,.98)!important;border-top:1px solid #D8E1EE!important;box-shadow:0 -7px 22px rgba(16,46,99,.10)!important;
+            padding:5px 5px calc(5px + env(safe-area-inset-bottom))!important;margin:0!important;
+          }}
+          [class*="st-key-commercial_mobile_nav_"] [role="radiogroup"]{{display:grid!important;grid-template-columns:repeat(7,minmax(0,1fr))!important;width:100%!important;gap:2px!important;}}
+          [class*="st-key-commercial_mobile_nav_"] [role="radiogroup"] label{{
+            display:flex!important;align-items:center!important;justify-content:center!important;min-width:0!important;width:100%!important;min-height:50px!important;margin:0!important;
+            padding:5px 1px!important;border:0!important;border-radius:9px!important;background:transparent!important;color:#667085!important;text-align:center!important;
+            font-size:9px!important;line-height:1!important;font-weight:800!important;white-space:nowrap!important;overflow:hidden!important;text-overflow:ellipsis!important;
+          }}
+          [class*="st-key-commercial_mobile_nav_"] [role="radiogroup"] label>div:first-child,
+          [class*="st-key-commercial_mobile_nav_"] [data-baseweb="radio"]>div:first-child,
+          [class*="st-key-commercial_mobile_nav_"] [role="radiogroup"] input{{display:none!important;width:0!important;margin:0!important;}}
+          [class*="st-key-commercial_mobile_nav_"] [role="radiogroup"] label:has(input:checked){{background:#EAF2FF!important;color:#155BEF!important;box-shadow:inset 0 3px 0 #155BEF!important;}}
+          [class*="st-key-commercial_mobile_nav_"] [role="radiogroup"] label *{{color:inherit!important;font-size:inherit!important;font-weight:inherit!important;white-space:nowrap!important;}}
+          .ac-header{{padding:10px 11px!important;border-radius:12px!important;margin-bottom:7px!important;gap:7px!important;}}
+          .ac-title{{font-size:18px!important;line-height:1.05!important;}}
+          .ac-subtitle{{font-size:9px!important;line-height:1.25!important;margin-top:4px!important;}}
+          .ac-updated{{display:none!important;}}
+          .ac-table-scroll{{display:none!important;}}
+          .ac-mobile-cards{{display:grid!important;grid-template-columns:1fr!important;gap:8px!important;margin:5px 0 12px!important;}}
+          .ac-mobile-card{{background:#fff;border:1px solid #DCE5F1;border-radius:12px;padding:10px;}}
+          .ac-mobile-card-head{{display:flex;justify-content:space-between;align-items:flex-start;gap:8px;padding-bottom:8px;border-bottom:1px solid #EDF1F6;}}
+          .ac-mobile-card-title{{display:block;color:#173B73;font-size:13px;line-height:1.2;overflow-wrap:anywhere;}}
+          .ac-mobile-card-grid{{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px;margin-top:8px;}}
+          .ac-mobile-field{{min-width:0;background:#F7F9FC;border-radius:8px;padding:6px 7px;}}
+          .ac-mobile-field span{{display:block;color:#7B8794;font-size:7.5px;line-height:1.15;text-transform:uppercase;font-weight:800;overflow-wrap:anywhere;}}
+          .ac-mobile-field strong{{display:block;color:#173B73;font-size:11px;line-height:1.15;margin-top:4px;overflow-wrap:anywhere;}}
+        }}
         </style>
         """,
         unsafe_allow_html=True,
@@ -245,6 +400,7 @@ def _inject_styles() -> None:
 def render_commercial_sidebar(active_page: str, is_admin: bool = False) -> None:
     sidebar_labels = {
         "Mi Tienda Comercial": "Macro compañía",
+        "Acordeón Comercial": "Acordeón comercial",
         "Ventas Comerciales": "Tiendas",
         "Sugeridos Comerciales": "Sección / Rubro",
         "Modelos Comerciales": "Ubicación / Área",
@@ -254,6 +410,7 @@ def render_commercial_sidebar(active_page: str, is_admin: bool = False) -> None:
     }
     sidebar_icons = {
         "Mi Tienda Comercial": ":material/store:",
+        "Acordeón Comercial": ":material/dashboard:",
         "Ventas Comerciales": ":material/bar_chart:",
         "Sugeridos Comerciales": ":material/inventory_2:",
         "Modelos Comerciales": ":material/emoji_events:",
@@ -264,7 +421,11 @@ def render_commercial_sidebar(active_page: str, is_admin: bool = False) -> None:
     with st.sidebar:
         logo = Path(__file__).resolve().parents[1] / "assets" / "price_shoes_logo.png"
         if logo.exists():
-            st.image(str(logo), width=105)
+            encoded_logo = base64.b64encode(logo.read_bytes()).decode("ascii")
+            st.markdown(
+                f'<div class="ac-sidebar-logo"><img src="data:image/png;base64,{encoded_logo}" alt="Price Shoes"></div>',
+                unsafe_allow_html=True,
+            )
         st.markdown("### Análisis Comercial")
         st.caption("Venta, sugerido y utilidad")
         detail_pages = set(COMMERCIAL_MORE_PAGES)
@@ -283,7 +444,7 @@ def render_commercial_sidebar(active_page: str, is_admin: bool = False) -> None:
                 st.rerun()
         if is_admin:
             st.divider()
-            if st.button("Carga PDF", key="commercial_side_upload", type="primary" if active_page == ADMIN_PAGE else "secondary", width="stretch", icon=":material/upload_file:"):
+            if st.button("Carga comercial", key="commercial_side_upload", type="primary" if active_page == ADMIN_PAGE else "secondary", width="stretch", icon=":material/upload_file:"):
                 st.session_state["nav_page"] = ADMIN_PAGE
                 st.session_state["nav_request"] = ADMIN_PAGE
                 st.rerun()
@@ -318,6 +479,7 @@ def render_commercial_mobile_nav(active_page: str, is_admin: bool = False) -> No
     options = list(COMMERCIAL_PRIMARY_PAGES) + ["__MAIN_MENU__"]
     labels = {
         "Mi Tienda Comercial": "Inicio",
+        "Acordeón Comercial": "Acordeón",
         "Ventas Comerciales": "Tiendas",
         "Sugeridos Comerciales": "Secciones",
         "Modelos Comerciales": "Modelos",
@@ -887,21 +1049,50 @@ def _page_upload(bundle: dict, is_admin: bool) -> None:
     c1, c2, c3 = st.columns(3, gap="large")
     with c1:
         st.markdown("### 1. Ventas mensuales")
-        sales_upload = st.file_uploader("Excel de ventas", type=["xlsx", "xls", "csv"], key="commercial_sales_upload")
-        if st.button("Guardar ventas", disabled=sales_upload is None, type="primary", width="stretch"):
+        today = datetime.now(MX_TZ).date()
+        year_options = list(range(today.year, max(today.year - 4, 2023) - 1, -1))
+        sales_year = st.selectbox("Año de ventas", year_options, index=0, key="commercial_sales_year")
+        sales_month = st.selectbox(
+            "Mes de ventas", list(range(1, 13)), index=today.month - 1,
+            format_func=lambda value: _MONTHS_ES[value - 1], key="commercial_sales_month",
+        )
+        sales_period = f"{int(sales_year):04d}-{int(sales_month):02d}"
+        cut_status = _sales_cut_status(sales_period, today)
+        if cut_status == "Acumulado en curso":
+            st.info(f"{_month_label(sales_period)} se manejará como acumulado. El cierre definitivo se carga a partir del 1 del mes siguiente.")
+        elif cut_status == "Cierre mensual":
+            st.caption(f"{_month_label(sales_period)} se registrará como cierre mensual.")
+        else:
+            st.warning("No se recomienda cargar ventas de un periodo futuro.")
+        sales_upload = st.file_uploader("Excel de ventas del mes", type=["xlsx", "xls", "csv"], key="commercial_sales_upload")
+        if st.button("Guardar ventas", disabled=sales_upload is None or cut_status == "Periodo futuro", type="primary", width="stretch"):
             entry = save_sales_upload(sales_upload)
+            update_entry(
+                "sales", entry["id"], period=sales_period, cut_status=cut_status,
+                cut_date=today.isoformat(), status="Procesado para análisis",
+            )
+            entry = {**entry, "period": sales_period, "cut_status": cut_status}
             sync = sync_history_to_cloud([resolve_entry_path(entry)])
             st.cache_data.clear()
-            message = "Archivo duplicado; se conservó el existente." if entry.get("duplicate") else "Ventas guardadas para validación."
+            message = (
+                f"Ventas de {_month_label(sales_period)} actualizadas como {cut_status.lower()}."
+                if not entry.get("duplicate") else
+                f"El archivo ya existía; se actualizó su periodo a {_month_label(sales_period)}."
+            )
             if sync.get("error"):
                 st.session_state["commercial_upload_flash"] = ("error", f"{message} No se pudo sincronizar: {sync['error']}")
             elif not sync.get("configured"):
-                st.session_state["commercial_upload_flash"] = ("warning", f"{message} Aún están sólo en el servidor temporal.")
+                st.session_state["commercial_upload_flash"] = ("warning", f"{message} Aún está sólo en el servidor temporal.")
             else:
                 st.session_state["commercial_upload_flash"] = ("success", f"{message} Respaldo privado actualizado.")
             st.rerun()
-        latest = latest_entry("sales")
-        st.caption(f"Activo: {latest['name']}" if latest else "Sin archivo cargado")
+        sales_entries = [item for item in load_manifest().get("sales", []) if item.get("period")]
+        if sales_entries:
+            sales_entries = sorted(sales_entries, key=lambda item: str(item.get("uploaded_at", "")), reverse=True)
+            latest_sales = sales_entries[0]
+            st.caption(f"Última carga: {latest_sales.get('period','')} · {latest_sales.get('cut_status','Sin estado')} · {latest_sales.get('name','')}")
+        else:
+            st.caption("Sin archivo mensual cargado")
     with c2:
         st.markdown("### 2. Capacidades y existencias")
         capacity_upload = st.file_uploader("XLS / XLSX de capacidades", type=["xlsx", "xls", "csv"], key="commercial_capacity_upload")
@@ -1021,7 +1212,27 @@ def render_commercial_page(page: str, existing_sales=None, is_admin: bool = Fals
                     "error": f"{type(exc).__name__}: {exc}", "status": "error"
                 }
 
+    # Los PDF ya vienen incluidos en el despliegue, pero los Excel de ventas
+    # mensuales se cargan durante la operación. En Acordeón/Carga se recuperan
+    # del respaldo privado cuando el despliegue local todavía no los contiene.
+    if page in ("Acordeón Comercial", ADMIN_PAGE) and cloud_enabled() and not st.session_state.get("commercial_sales_cloud_restore_attempted"):
+        local_manifest = load_manifest()
+        if not local_manifest.get("sales"):
+            st.session_state["commercial_sales_cloud_restore_attempted"] = True
+            try:
+                result = restore_history_from_cloud()
+                if result.get("restored"):
+                    st.cache_data.clear()
+            except Exception:
+                pass
+        else:
+            st.session_state["commercial_sales_cloud_restore_attempted"] = True
+
     with st.spinner("Actualizando análisis comercial..."):
-        bundle = _load_bundle(existing_sales)
+        bundle = _load_bundle(
+            existing_sales,
+            load_sales=page == "Acordeón Comercial",
+            load_capacity=page == "Acordeón Comercial",
+        )
     from .pdf_pages import render_pdf_page
     render_pdf_page(page, bundle, is_admin)
