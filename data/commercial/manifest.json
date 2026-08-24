@@ -42,7 +42,7 @@
       "week": "2026-W34",
       "store": "Aguascalientes",
       "report_date": "2026-08-17",
-      "records": 480,
+      "records": 7869,
       "pages": 23,
       "parser_version": 3
     },
@@ -57,7 +57,7 @@
       "week": "2026-W34",
       "store": "Arco Norte",
       "report_date": "2026-08-17",
-      "records": 480,
+      "records": 8633,
       "pages": 23,
       "parser_version": 3
     },
@@ -72,7 +72,7 @@
       "week": "2026-W34",
       "store": "Atemajac",
       "report_date": "2026-08-17",
-      "records": 480,
+      "records": 10249,
       "pages": 23,
       "parser_version": 3
     },
@@ -87,7 +87,7 @@
       "week": "2026-W34",
       "store": "Centro",
       "report_date": "2026-08-17",
-      "records": 480,
+      "records": 6665,
       "pages": 23,
       "parser_version": 3
     },
@@ -102,7 +102,7 @@
       "week": "2026-W34",
       "store": "Ecatepec",
       "report_date": "2026-08-17",
-      "records": 480,
+      "records": 7505,
       "pages": 23,
       "parser_version": 3
     },
@@ -117,7 +117,7 @@
       "week": "2026-W34",
       "store": "Ixtapaluca",
       "report_date": "2026-08-17",
-      "records": 320,
+      "records": 8739,
       "pages": 23,
       "parser_version": 3
     },
@@ -132,7 +132,7 @@
       "week": "2026-W34",
       "store": "Iztapalapa",
       "report_date": "2026-08-17",
-      "records": 480,
+      "records": 9878,
       "pages": 23,
       "parser_version": 3
     },
@@ -147,7 +147,7 @@
       "week": "2026-W34",
       "store": "León",
       "report_date": "2026-08-17",
-      "records": 480,
+      "records": 9837,
       "pages": 23,
       "parser_version": 3
     },
@@ -162,7 +162,7 @@
       "week": "2026-W34",
       "store": "Miravalle",
       "report_date": "2026-08-17",
-      "records": 480,
+      "records": 9614,
       "pages": 23,
       "parser_version": 3
     },
@@ -177,7 +177,7 @@
       "week": "2026-W34",
       "store": "Naucalpan",
       "report_date": "2026-08-17",
-      "records": 480,
+      "records": 8829,
       "pages": 23,
       "parser_version": 3
     },
@@ -192,7 +192,7 @@
       "week": "2026-W34",
       "store": "Olivar",
       "report_date": "2026-08-17",
-      "records": 480,
+      "records": 6565,
       "pages": 23,
       "parser_version": 3
     },
@@ -207,7 +207,7 @@
       "week": "2026-W34",
       "store": "Puebla",
       "report_date": "2026-08-17",
-      "records": 480,
+      "records": 8073,
       "pages": 23,
       "parser_version": 3
     },
@@ -222,7 +222,7 @@
       "week": "2026-W34",
       "store": "Puebla Sur",
       "report_date": "2026-08-17",
-      "records": 480,
+      "records": 6819,
       "pages": 23,
       "parser_version": 3
     },
@@ -237,7 +237,7 @@
       "week": "2026-W34",
       "store": "Querétaro",
       "report_date": "2026-08-17",
-      "records": 480,
+      "records": 8064,
       "pages": 23,
       "parser_version": 3
     },
@@ -252,7 +252,7 @@
       "week": "2026-W34",
       "store": "Toluca",
       "report_date": "2026-08-17",
-      "records": 480,
+      "records": 10133,
       "pages": 23,
       "parser_version": 3
     },
@@ -267,7 +267,7 @@
       "week": "2026-W34",
       "store": "Vallejo",
       "report_date": "2026-08-17",
-      "records": 480,
+      "records": 8711,
       "pages": 23,
       "parser_version": 3
     },
@@ -282,10 +282,10 @@
       "week": "2026-W34",
       "store": "Veracruz",
       "report_date": "2026-08-17",
-      "records": 480,
+      "records": 6175,
       "pages": 23,
       "parser_version": 3
     }
   ],
-  "updated_at": "2026-08-21T16:22:14+00:00"
+  "updated_at": "2026-08-24T17:47:59+00:00"
 }
