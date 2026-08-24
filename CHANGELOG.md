@@ -65,3 +65,9 @@
 - Macro por tiendas filtrable por semana ISO.
 - Reporte semanal: tabla antes de gráfica operativa y tendencia sin series vacías.
 - Ajustes de layout en gráficas mensuales y semanales.
+
+## V75 · Acordeón + desktop
+- Nueva pestaña Acordeón Comercial.
+- Carga de ventas mensual con estado acumulado/cierre.
+- Render comercial directo para corregir panel central blanco en escritorio.
+- Logo HTML sin control de ampliación de imagen.

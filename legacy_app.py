@@ -10006,6 +10006,21 @@ print(f"[PAGE] {page}", flush=True)
 
 from commercial.config import COMMERCIAL_PAGES as V53_COMMERCIAL_PAGES, ADMIN_PAGE as V53_COMMERCIAL_ADMIN_PAGE
 
+# V75: las páginas de Análisis Comercial se renderizan inmediatamente y se
+# detiene la capa operativa heredada. Esto evita que los estilos y cargas de
+# datos que se ejecutaban después oculten o desplacazen el contenido en escritorio.
+if st.session_state.get("active_app") == "Ventas y Análisis Comercial" and (page in V53_COMMERCIAL_PAGES or page == V53_COMMERCIAL_ADMIN_PAGE):
+    try:
+        print(f"[COMMERCIAL] render directo: {page}", flush=True)
+        from commercial.ui import render_commercial_page
+        render_commercial_page(page, existing_sales=None, is_admin=is_admin())
+        print(f"[COMMERCIAL] render completado: {page}", flush=True)
+    except Exception as commercial_error:
+        print(f"[COMMERCIAL][ERROR] {type(commercial_error).__name__}: {commercial_error}", flush=True)
+        st.error(f"No fue posible abrir Análisis Comercial: {page}")
+        st.exception(commercial_error)
+    st.stop()
+
 COMMERCIAL_DATA_PAGES = set(V53_COMMERCIAL_PAGES)
 
 DATA_PAGES = {
